@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import { open } from "@tauri-apps/plugin-dialog";
+import file_icon from "../assets/icons/file.svg";
 import x_icon from "../assets/icons/x.svg";
 import type { AppConfig } from "../types/music";
 import { icon_style } from "../utils/track";
 
-defineProps<{
+const props = defineProps<{
   app_config?: AppConfig | null;
 }>();
 
@@ -14,6 +16,20 @@ const emit = defineEmits<{
 }>();
 
 type SettingsSectionKey = "library" | "decoder" | "cache" | "state" | "about";
+type CacheEntryKey =
+  | "library_cache_dir"
+  | "cover_cache_dir"
+  | "lyrics_cache_dir"
+  | "my_playlist_cache_dir"
+  | "play_statistics_cache_path"
+  | "log_dir";
+
+type CacheEntry = {
+  key: CacheEntryKey;
+  title: string;
+  value: string;
+  directory: boolean;
+};
 
 const settings_sections: { key: SettingsSectionKey; title: string }[] = [
   { key: "library", title: "音乐库" },
@@ -28,6 +44,73 @@ const active_section = ref<SettingsSectionKey>("library");
 const active_section_title = computed(
   () => settings_sections.find((section) => section.key === active_section.value)?.title ?? "音乐库",
 );
+
+const cache_path_overrides = ref<Partial<Record<CacheEntryKey, string>>>({});
+
+const cache_entries = computed<CacheEntry[]>(() => [
+  {
+    key: "library_cache_dir",
+    title: "曲库缓存目录",
+    value: props.app_config?.library_cache_dir ?? "",
+    directory: true,
+  },
+  {
+    key: "cover_cache_dir",
+    title: "封面缓存目录",
+    value: props.app_config?.cover_cache_dir ?? "",
+    directory: true,
+  },
+  {
+    key: "lyrics_cache_dir",
+    title: "歌词缓存目录",
+    value: props.app_config?.lyrics_cache_dir ?? "",
+    directory: true,
+  },
+  {
+    key: "my_playlist_cache_dir",
+    title: "我的歌单缓存目录",
+    value: props.app_config?.my_playlist_cache_dir ?? "",
+    directory: true,
+  },
+  {
+    key: "play_statistics_cache_path",
+    title: "播放统计缓存文件",
+    value: props.app_config?.play_statistics_cache_path ?? "",
+    directory: false,
+  },
+  {
+    key: "log_dir",
+    title: "日志目录",
+    value: props.app_config?.log_dir ?? "",
+    directory: true,
+  },
+]);
+
+function cache_entry_value(entry: CacheEntry) {
+  return cache_path_overrides.value[entry.key] ?? entry.value;
+}
+
+function reset_cache_entry(entry: CacheEntry) {
+  const next_overrides = { ...cache_path_overrides.value };
+  delete next_overrides[entry.key];
+  cache_path_overrides.value = next_overrides;
+}
+
+async function choose_cache_path(entry: CacheEntry) {
+  const selected = await open({
+    directory: entry.directory,
+    multiple: false,
+    title: `选择${entry.title}`,
+  });
+
+  const selected_path = Array.isArray(selected) ? selected[0] : selected;
+  if (typeof selected_path !== "string" || !selected_path) return;
+
+  cache_path_overrides.value = {
+    ...cache_path_overrides.value,
+    [entry.key]: selected_path,
+  };
+}
 </script>
 
 <template>
@@ -96,29 +179,27 @@ const active_section_title = computed(
           <section v-else-if="active_section === 'cache'" class="settings_section">
             <h3>缓存</h3>
             <div class="settings_field_group">
-              <label>
-                <span>曲库缓存目录</span>
-                <input :value="app_config?.library_cache_dir ?? ''" readonly />
-              </label>
-              <label>
-                <span>封面缓存目录</span>
-                <input :value="app_config?.cover_cache_dir ?? ''" readonly />
-              </label>
-              <label>
-                <span>歌词缓存目录</span>
-                <input :value="app_config?.lyrics_cache_dir ?? ''" readonly />
-              </label>
-              <label>
-                <span>我的歌单缓存目录</span>
-                <input :value="app_config?.my_playlist_cache_dir ?? ''" readonly />
-              </label>
-              <label>
-                <span>播放统计缓存文件</span>
-                <input :value="app_config?.play_statistics_cache_path ?? ''" readonly />
-              </label>
-              <label>
-                <span>日志目录</span>
-                <input :value="app_config?.log_dir ?? ''" readonly />
+              <label v-for="entry in cache_entries" :key="entry.key">
+                <span>{{ entry.title }}</span>
+                <div class="settings_input_row">
+                  <input :value="cache_entry_value(entry)" readonly />
+                  <button
+                    class="settings_default_button"
+                    type="button"
+                    :title="`恢复默认${entry.title}`"
+                    @click="reset_cache_entry(entry)"
+                  >
+                    默认
+                  </button>
+                  <button
+                    class="settings_file_button"
+                    type="button"
+                    :title="`选择${entry.title}`"
+                    @click="choose_cache_path(entry)"
+                  >
+                    <span class="svg_icon" :style="icon_style(file_icon)" />
+                  </button>
+                </div>
               </label>
             </div>
           </section>

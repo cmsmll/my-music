@@ -2909,6 +2909,44 @@ p {
   background: #f8f9fb;
 }
 
+.settings_input_row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 40px;
+  gap: 8px;
+  min-width: 0;
+}
+
+.settings_default_button,
+.settings_file_button {
+  min-height: 40px;
+  border-radius: 8px;
+  color: #505763;
+  background: #f8f9fb;
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.settings_default_button {
+  padding: 0 14px;
+}
+
+.settings_file_button {
+  display: grid;
+  width: 40px;
+  place-items: center;
+}
+
+.settings_default_button:hover,
+.settings_file_button:hover {
+  color: #426dff;
+  background: #eaf0ff;
+}
+
+.settings_file_button .svg_icon {
+  width: 18px;
+  height: 18px;
+}
+
 .settings_section label {
   display: grid;
   gap: 6px;

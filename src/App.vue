@@ -1672,6 +1672,21 @@ p {
   background: #ffffff;
 }
 
+.player_bar button {
+  appearance: none;
+  -webkit-appearance: none;
+  outline: 0;
+  box-shadow: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.player_bar button:focus,
+.player_bar button:focus-visible,
+.player_bar button:active {
+  outline: 0;
+  box-shadow: none;
+}
+
 .player_progress {
   grid-column: 1 / -1;
   display: flex;

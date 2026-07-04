@@ -1,14 +1,111 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Tauri + Vue + Typescript App</title>
+    <title>My Music</title>
+    <style>
+      html,
+      body,
+      #app {
+        width: 100%;
+        height: 100%;
+      }
+
+      body {
+        margin: 0;
+        overflow: hidden;
+        color: #1e2026;
+        background: #ffffff;
+        font-family:
+          "Microsoft YaHei",
+          Inter,
+          system-ui,
+          sans-serif;
+      }
+
+      .startup_shell {
+        display: grid;
+        height: 100%;
+        place-items: center;
+        background: #ffffff;
+      }
+
+      .startup_mark {
+        display: grid;
+        justify-items: center;
+        gap: 14px;
+      }
+
+      .startup_icon {
+        display: flex;
+        align-items: end;
+        gap: 8px;
+        height: 52px;
+      }
+
+      .startup_icon span {
+        display: block;
+        width: 13px;
+        border-radius: 999px;
+        background: linear-gradient(180deg, #426dff, #18c7a7);
+        animation: startup_pulse 0.9s ease-in-out infinite alternate;
+      }
+
+      .startup_icon span:nth-child(1) {
+        height: 28px;
+      }
+
+      .startup_icon span:nth-child(2) {
+        height: 48px;
+        animation-delay: 120ms;
+      }
+
+      .startup_icon span:nth-child(3) {
+        height: 36px;
+        animation-delay: 240ms;
+      }
+
+      .startup_icon span:nth-child(4) {
+        height: 52px;
+        animation-delay: 360ms;
+      }
+
+      .startup_title {
+        color: #1e2026;
+        font-size: 15px;
+        font-weight: 900;
+        letter-spacing: 0;
+      }
+
+      @keyframes startup_pulse {
+        from {
+          opacity: 0.62;
+          transform: scaleY(0.72);
+        }
+
+        to {
+          opacity: 1;
+          transform: scaleY(1);
+        }
+      }
+    </style>
   </head>
 
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <div class="startup_shell">
+        <div class="startup_mark">
+          <div class="startup_icon" aria-hidden="true">
+            <span></span>
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+          <div class="startup_title">My Music</div>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

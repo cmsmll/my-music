@@ -16,20 +16,20 @@ use std::{
     path::{Path, PathBuf},
 };
 
-/// 获取应用启动所需的配置、曲库歌曲和歌单缓存数据。
+/// 获取应用启动所需的配置数据。
+///
+/// 启动阶段只读取配置，不自动加载或扫描曲库，避免大曲库导致首屏白屏。
 #[tauri::command]
 pub(crate) fn get_startup_state(
     config_manager: tauri::State<'_, ConfigManager>,
 ) -> Result<AppStartup, String> {
     let config = config_manager.get()?;
-    let tracks = load_or_scan_all_directories(&config_manager, &config)?;
-    let playlists = load_playlist_bundle(&config)?;
 
     Ok(AppStartup {
         config,
         default_config: config_manager.get_default(),
-        tracks,
-        playlists,
+        tracks: Vec::new(),
+        playlists: empty_playlist_bundle(),
     })
 }
 
@@ -93,6 +93,25 @@ pub(crate) fn run_decoder(
 ) -> Result<DecoderRunSummary, String> {
     let config = config_manager.get()?;
     Ok(run_config_decoder(&config))
+}
+
+/// 读取曲库重载后生成的歌单缓存。
+#[tauri::command]
+pub(crate) fn get_playlist_bundle(
+    config_manager: tauri::State<'_, ConfigManager>,
+) -> Result<PlaylistBundle, String> {
+    let config = config_manager.get()?;
+    load_playlist_bundle(&config)
+}
+
+fn empty_playlist_bundle() -> PlaylistBundle {
+    PlaylistBundle {
+        recent: empty_playlist("recent", "最近播放", "recent"),
+        my_playlist: empty_playlist("my_playlist", "我的歌单", "user"),
+        my_playlists: Vec::new(),
+        artists: empty_playlist("artists", "歌手", "artists"),
+        albums: empty_playlist("albums", "专辑", "albums"),
+    }
 }
 
 /// 将指定歌曲添加到用户歌单，并刷新返回所有歌单数据。

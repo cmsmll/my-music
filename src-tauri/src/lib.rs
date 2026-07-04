@@ -45,6 +45,7 @@ pub fn run() {
             commands::add_music_dirs,
             commands::scan_music_dir,
             commands::run_decoder,
+            commands::get_playlist_bundle,
             commands::add_track_to_playlist,
             commands::remove_track_from_playlist,
             commands::create_user_playlist,

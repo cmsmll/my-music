@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { storeToRefs } from "pinia";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -8,13 +8,9 @@ import { getCurrentWindow, PhysicalSize } from "@tauri-apps/api/window";
 import repeat_one_icon from "./assets/icons/repeat-one.svg";
 import repeat_icon from "./assets/icons/repeat.svg";
 import shuffle_icon from "./assets/icons/shuffle.svg";
-import ConfirmDialog from "./components/ConfirmDialog.vue";
 import ContentArea from "./components/ContentArea.vue";
 import LibrarySidebar from "./components/LibrarySidebar.vue";
-import LibraryScanDialog from "./components/LibraryScanDialog.vue";
 import PlayerBar from "./components/PlayerBar.vue";
-import PlaybackQueuePanel from "./components/PlaybackQueuePanel.vue";
-import SettingsPanel from "./components/SettingsPanel.vue";
 import TopBar from "./components/TopBar.vue";
 import { use_app_config_store } from "./stores/app_config";
 import { use_player_queue_store } from "./stores/player_queue";
@@ -35,6 +31,13 @@ import type {
   ViewKey,
 } from "./types/music";
 import { display_album, display_artist, is_missing_track } from "./utils/track";
+
+const ConfirmDialog = defineAsyncComponent(() => import("./components/ConfirmDialog.vue"));
+const LibraryScanDialog = defineAsyncComponent(() => import("./components/LibraryScanDialog.vue"));
+const PlaybackQueuePanel = defineAsyncComponent(
+  () => import("./components/PlaybackQueuePanel.vue"),
+);
+const SettingsPanel = defineAsyncComponent(() => import("./components/SettingsPanel.vue"));
 
 type PlayerBarExpose = {
   render_progress: (percent: number, seconds: number) => void;
@@ -84,6 +87,7 @@ const status = ref<PlaybackStatus>({
 });
 const selected_directories = ref<string[]>([]);
 const loading = ref(false);
+const library_loaded = ref(false);
 const error_message = ref("");
 const query = ref("");
 const playlists = ref<PlaylistBundle>(empty_playlist_bundle());
@@ -314,8 +318,15 @@ async function scan_directory(directories: string[]) {
 
   try {
     const scanned_tracks = await invoke<Track[]>("scan_music_dir", { dirs: directories });
+    library_loaded.value = true;
     player_queue.set_library_tracks(scanned_tracks);
-    await load_startup_state();
+    playlists.value = await invoke<PlaylistBundle>("get_playlist_bundle");
+    await load_play_statistics();
+    ensure_selected_playlist();
+    const restored_player_cache = restore_player_cache();
+    if (!restored_player_cache) {
+      set_queue_for_current_view();
+    }
     library_scan_dialog.value = {
       visible: true,
       status: "success",
@@ -401,18 +412,15 @@ async function load_startup_state() {
   try {
     const startup = await invoke<AppStartup>("get_startup_state");
     app_config_store.hydrate_config(startup.config, startup.default_config);
-    await apply_config_state(startup.config);
-    playlists.value = startup.playlists;
-    await load_play_statistics();
-    ensure_selected_playlist();
+    apply_config_state(startup.config);
+    playlists.value = empty_playlist_bundle();
+    play_statistics.value = empty_play_statistics();
     restoring_player_cache = true;
-    player_queue.set_library_tracks(startup.tracks);
+    library_loaded.value = false;
+    player_queue.set_library_tracks([]);
     selected_directories.value = startup.config.music_directory;
-    const restored_player_cache = restore_player_cache();
     restoring_player_cache = false;
-    if (!restored_player_cache) {
-      set_queue_for_current_view();
-    }
+    set_queue_for_current_view();
   } catch (error) {
     restoring_player_cache = false;
     show_error_message(error);
@@ -421,24 +429,25 @@ async function load_startup_state() {
   }
 }
 
-async function apply_config_state(config: AppConfig) {
+function apply_config_state(config: AppConfig) {
   sidebar_width.value = clamp_sidebar_width(config.state.sidebar_width);
   status.value = {
     ...status.value,
     volume: config.state.volume,
   };
 
-  try {
-    const next_status = await invoke<PlaybackStatus>("set_volume", {
-      volume: config.state.volume,
+  void invoke<PlaybackStatus>("set_volume", {
+    volume: config.state.volume,
+  })
+    .then((next_status) => {
+      status.value = {
+        ...status.value,
+        volume: next_status.volume,
+      };
+    })
+    .catch((error) => {
+      console.warn("无法同步配置音量", error);
     });
-    status.value = {
-      ...status.value,
-      volume: next_status.volume,
-    };
-  } catch (error) {
-    console.warn("无法同步配置音量", error);
-  }
 
   if (config.state.width > 0 && config.state.height > 0) {
     void app_window.setSize(new PhysicalSize(config.state.width, config.state.height));
@@ -811,6 +820,7 @@ function cache_elapsed_seconds() {
 
 function save_player_cache() {
   if (restoring_player_cache) return;
+  if (!library_loaded.value && !status.value.path) return;
 
   const cache: PlayerCache = {
     version: 1,

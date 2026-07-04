@@ -2620,8 +2620,7 @@ p {
   inset: 0;
   z-index: 5;
   display: flex;
-  justify-content: flex-end;
-  background: rgba(18, 21, 28, 0.22);
+  background: #ffffff;
 }
 
 .queue_overlay {
@@ -2637,11 +2636,10 @@ p {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   gap: 22px;
-  width: min(820px, 100vw);
+  width: 100%;
   height: 100%;
   padding: 28px;
   background: #ffffff;
-  box-shadow: -20px 0 60px rgba(19, 24, 34, 0.16);
 }
 
 .queue_panel {

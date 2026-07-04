@@ -1138,6 +1138,43 @@ fn add_track_to_playlist(
 }
 
 #[tauri::command]
+fn remove_track_from_playlist(
+    config_manager: tauri::State<'_, ConfigManager>,
+    playlist_id: String,
+    track_id: String,
+) -> Result<PlaylistBundle, String> {
+    let config = config_manager.get()?;
+    let all_playlist_path = playlist_cache_path(&config, "all_playlist.json");
+    let content = fs::read_to_string(&all_playlist_path)
+        .map_err(|err| format!("无法读取全部歌单缓存: {err}"))?;
+    let all_playlist: AllPlaylistCache =
+        serde_json::from_str(&content).map_err(|err| format!("无法解析全部歌单缓存: {err}"))?;
+
+    let playlist_path = if playlist_id == "recent" {
+        playlist_cache_path(&config, "recent_playlist.json")
+    } else {
+        user_playlist_cache_path(&config, &playlist_id)?
+    };
+    let mut playlist = read_playlist_cache(&playlist_path)?.unwrap_or_else(|| {
+        if playlist_id == "recent" {
+            empty_playlist("recent", "最近播放", "recent")
+        } else {
+            empty_playlist("my_playlist", "我的歌单", "user")
+        }
+    });
+    playlist.track_ids.retain(|current| current != &track_id);
+    update_user_playlist_metadata(&mut playlist, &all_playlist.tracks);
+
+    let label = if playlist_id == "recent" {
+        "最近播放缓存"
+    } else {
+        "我的歌单缓存"
+    };
+    write_json_cache(&playlist_path, &playlist, label)?;
+    load_playlist_bundle(&config)
+}
+
+#[tauri::command]
 fn play_track(
     engine: tauri::State<'_, AudioEngine>,
     config_manager: tauri::State<'_, ConfigManager>,
@@ -1547,6 +1584,7 @@ pub fn run() {
             get_startup_state,
             scan_music_dir,
             add_track_to_playlist,
+            remove_track_from_playlist,
             play_track,
             pause_track,
             resume_track,

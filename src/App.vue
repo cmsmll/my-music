@@ -868,6 +868,27 @@ async function add_context_track_to_playlist(playlist: PlaylistCache) {
   }
 }
 
+function active_record_playlist_id() {
+  if (active_view.value === "recent") return "recent";
+  if (active_view.value === "playlist_1") return "my_playlist";
+  return "";
+}
+
+async function remove_track_record(track: Track) {
+  const playlist_id = active_record_playlist_id();
+  if (!playlist_id) return;
+
+  try {
+    playlists.value = await invoke<PlaylistBundle>("remove_track_from_playlist", {
+      playlistId: playlist_id,
+      trackId: track.id,
+    });
+    set_queue_for_current_view();
+  } catch (error) {
+    error_message.value = String(error);
+  }
+}
+
 async function play_track_from_queue(track: Track) {
   await play(track);
 }
@@ -1088,6 +1109,7 @@ watch([current_queue, queue_source, playback_mode], () => {
         :total_duration="total_duration"
         @play_track="play_track_from_view"
         @open_track_menu="open_track_context_menu"
+        @remove_track_record="remove_track_record"
         @open_artist="open_artist_playlist"
         @open_album="open_album_playlist"
         @close_detail="close_detail_playlist"
@@ -1101,7 +1123,7 @@ watch([current_queue, queue_source, playback_mode], () => {
       @click.stop
       @contextmenu.prevent
     >
-      <p>添加到我的歌单</p>
+      <p>添加到歌单</p>
       <button
         v-for="playlist in user_playlist_items"
         :key="playlist.id"
@@ -1605,6 +1627,14 @@ p {
   gap: 3px;
 }
 
+.song_title_row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
 .song_text strong,
 .song_text small,
 .album_cell,
@@ -1615,6 +1645,27 @@ p {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.song_title_row strong {
+  min-width: 0;
+}
+
+.record_delete_button {
+  flex: 0 0 auto;
+  border-radius: 8px;
+  padding: 2px 8px;
+  color: #b65b5b;
+  background: transparent;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.record_delete_button:hover,
+.record_delete_button:focus {
+  color: #c33131;
+  background: #fff0f0;
+  outline: 0;
 }
 
 .song_text strong {

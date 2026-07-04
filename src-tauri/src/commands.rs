@@ -14,6 +14,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+/// 获取应用启动所需的配置、曲库歌曲和歌单缓存数据。
 #[tauri::command]
 pub(crate) fn get_startup_state(
     config_manager: tauri::State<'_, ConfigManager>,
@@ -29,6 +30,7 @@ pub(crate) fn get_startup_state(
     })
 }
 
+/// 添加并扫描音乐目录，刷新对应目录的曲库缓存后返回完整歌曲列表。
 #[tauri::command]
 pub(crate) fn scan_music_dir(
     config_manager: tauri::State<'_, ConfigManager>,
@@ -53,6 +55,8 @@ pub(crate) fn scan_music_dir(
 
     load_or_scan_all_directories(&config_manager, &config)
 }
+
+/// 将指定歌曲添加到用户歌单，并刷新返回所有歌单数据。
 #[tauri::command]
 pub(crate) fn add_track_to_playlist(
     config_manager: tauri::State<'_, ConfigManager>,
@@ -76,6 +80,7 @@ pub(crate) fn add_track_to_playlist(
     load_playlist_bundle(&config)
 }
 
+/// 从最近播放或用户歌单中移除指定歌曲记录，不删除音频文件。
 #[tauri::command]
 pub(crate) fn remove_track_from_playlist(
     config_manager: tauri::State<'_, ConfigManager>,
@@ -112,6 +117,7 @@ pub(crate) fn remove_track_from_playlist(
     load_playlist_bundle(&config)
 }
 
+/// 创建新的用户歌单缓存文件，并返回刷新后的歌单集合。
 #[tauri::command]
 pub(crate) fn create_user_playlist(
     config_manager: tauri::State<'_, ConfigManager>,
@@ -141,6 +147,7 @@ pub(crate) fn create_user_playlist(
     load_playlist_bundle(&config)
 }
 
+/// 重命名指定用户歌单，并同步更新该歌单的元数据。
 #[tauri::command]
 pub(crate) fn rename_user_playlist(
     config_manager: tauri::State<'_, ConfigManager>,
@@ -170,6 +177,7 @@ pub(crate) fn rename_user_playlist(
     load_playlist_bundle(&config)
 }
 
+/// 删除指定用户歌单缓存文件，保留曲库和音频文件不变。
 #[tauri::command]
 pub(crate) fn delete_user_playlist(
     config_manager: tauri::State<'_, ConfigManager>,
@@ -192,6 +200,7 @@ pub(crate) fn delete_user_playlist(
     load_playlist_bundle(&config)
 }
 
+/// 按前端传入的顺序更新用户歌单的 index 元数据。
 #[tauri::command]
 pub(crate) fn reorder_user_playlists(
     config_manager: tauri::State<'_, ConfigManager>,
@@ -233,6 +242,7 @@ pub(crate) fn reorder_user_playlists(
     load_playlist_bundle(&config)
 }
 
+/// 播放指定路径的音频文件，并记录到最近播放列表。
 #[tauri::command]
 pub(crate) fn play_track(
     engine: tauri::State<'_, AudioEngine>,
@@ -246,12 +256,14 @@ pub(crate) fn play_track(
     engine.status()
 }
 
+/// 暂停当前播放的音频并返回最新播放状态。
 #[tauri::command]
 pub(crate) fn pause_track(engine: tauri::State<'_, AudioEngine>) -> Result<PlaybackStatus, String> {
     engine.send(|reply| AudioCommand::Pause { reply })?;
     engine.status()
 }
 
+/// 恢复当前音频播放并返回最新播放状态。
 #[tauri::command]
 pub(crate) fn resume_track(
     engine: tauri::State<'_, AudioEngine>,
@@ -260,12 +272,14 @@ pub(crate) fn resume_track(
     engine.status()
 }
 
+/// 停止当前音频播放并清空后端播放状态。
 #[tauri::command]
 pub(crate) fn stop_track(engine: tauri::State<'_, AudioEngine>) -> Result<PlaybackStatus, String> {
     engine.send(|reply| AudioCommand::Stop { reply })?;
     engine.status()
 }
 
+/// 设置播放器音量并返回最新播放状态。
 #[tauri::command]
 pub(crate) fn set_volume(
     engine: tauri::State<'_, AudioEngine>,
@@ -275,6 +289,7 @@ pub(crate) fn set_volume(
     engine.status()
 }
 
+/// 跳转当前音频播放进度到指定秒数并返回最新播放状态。
 #[tauri::command]
 pub(crate) fn seek_track(
     engine: tauri::State<'_, AudioEngine>,
@@ -284,6 +299,7 @@ pub(crate) fn seek_track(
     engine.status()
 }
 
+/// 获取当前后端播放器状态，用于前端同步播放进度和按钮状态。
 #[tauri::command]
 pub(crate) fn get_playback_status(
     engine: tauri::State<'_, AudioEngine>,

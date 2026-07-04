@@ -955,10 +955,7 @@ function apply_playlist_bundle(next_playlists: PlaylistBundle) {
   ensure_selected_playlist();
 }
 
-async function create_playlist() {
-  const name = window.prompt("请输入歌单名称", "新建歌单");
-  if (name === null) return;
-
+async function create_playlist(name: string) {
   const trimmed_name = name.trim();
   if (!trimmed_name) return;
 
@@ -1616,6 +1613,26 @@ p {
 
 .create_playlist {
   margin-top: auto;
+}
+
+.create_playlist_input_row {
+  cursor: text;
+}
+
+.create_playlist_input {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  outline: 0;
+  padding: 0;
+  color: #202329;
+  background: transparent;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.create_playlist_input::placeholder {
+  color: #a0a5af;
 }
 
 .workspace {

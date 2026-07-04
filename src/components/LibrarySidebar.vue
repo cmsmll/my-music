@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { nextTick, ref } from "vue";
 import album_icon from "../assets/icons/album.svg";
 import artist_icon from "../assets/icons/artist.svg";
 import clock_fill_icon from "../assets/icons/clock-fill.svg";
@@ -23,10 +24,34 @@ defineProps<{
 const emit = defineEmits<{
   show_view: [view: ViewKey];
   show_playlist: [playlist_id: string];
-  create_playlist: [];
+  create_playlist: [name: string];
   open_playlist_menu: [playlist: PlaylistCache, event: MouseEvent];
   begin_resize: [event: PointerEvent];
 }>();
+
+const creating_playlist = ref(false);
+const new_playlist_name = ref("");
+const new_playlist_input = ref<HTMLInputElement | null>(null);
+
+async function start_create_playlist() {
+  creating_playlist.value = true;
+  new_playlist_name.value = "";
+  await nextTick();
+  new_playlist_input.value?.focus();
+}
+
+function cancel_create_playlist() {
+  creating_playlist.value = false;
+  new_playlist_name.value = "";
+}
+
+function submit_create_playlist() {
+  const name = new_playlist_name.value.trim();
+  if (name) {
+    emit("create_playlist", name);
+  }
+  cancel_create_playlist();
+}
 </script>
 
 <template>
@@ -100,7 +125,20 @@ const emit = defineEmits<{
           <span class="nav_icon svg_icon" :style="icon_style(playlist_grid_icon)" />
           <span>{{ playlist.name }}</span>
         </button>
-        <button class="nav_item create_playlist" type="button" @click="emit('create_playlist')">
+        <label v-if="creating_playlist" class="nav_item create_playlist create_playlist_input_row">
+          <span class="nav_icon svg_icon" :style="icon_style(plus_icon)" />
+          <input
+            ref="new_playlist_input"
+            v-model="new_playlist_name"
+            class="create_playlist_input"
+            type="text"
+            placeholder="新建歌单"
+            @blur="submit_create_playlist"
+            @keydown.esc.prevent="cancel_create_playlist"
+            @keydown.enter.prevent="submit_create_playlist"
+          />
+        </label>
+        <button v-else class="nav_item create_playlist" type="button" @click="start_create_playlist">
           <span class="nav_icon svg_icon" :style="icon_style(plus_icon)" />
           <span>新建歌单</span>
         </button>

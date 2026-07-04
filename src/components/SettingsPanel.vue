@@ -2,6 +2,7 @@
 import { computed, ref } from "vue";
 import { open } from "@tauri-apps/plugin-dialog";
 import folder_open_icon from "../assets/icons/folder-open.svg";
+import system_icon from "../assets/icons/system.svg";
 import x_icon from "../assets/icons/x.svg";
 import type { AppConfig } from "../types/music";
 import { icon_style } from "../utils/track";
@@ -189,7 +190,7 @@ async function choose_cache_path(entry: CacheEntry) {
                     :title="`恢复默认${entry.title}`"
                     @click="reset_cache_entry(entry)"
                   >
-                    默认
+                    <span class="svg_icon" :style="icon_style(system_icon)" />
                   </button>
                   <button
                     class="settings_file_button"

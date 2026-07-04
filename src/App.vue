@@ -2911,7 +2911,7 @@ p {
 
 .settings_input_row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto 40px;
+  grid-template-columns: minmax(0, 1fr) 40px 40px;
   gap: 8px;
   min-width: 0;
 }
@@ -2927,9 +2927,11 @@ p {
 }
 
 .settings_default_button {
+  display: grid;
+  width: 40px;
+  place-items: center;
   color: #ffffff;
   background: #426dff;
-  padding: 0 14px;
 }
 
 .settings_default_button:hover {
@@ -2948,6 +2950,7 @@ p {
   background: #eaf0ff;
 }
 
+.settings_default_button .svg_icon,
 .settings_file_button .svg_icon {
   width: 18px;
   height: 18px;

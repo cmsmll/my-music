@@ -136,6 +136,7 @@ let listening_track_id: string | null = null;
 let listening_started_at = 0;
 let closing_window = false;
 let error_message_timer: number | undefined;
+let app_window_shown = false;
 
 const sidebar_min_width = 72;
 const sidebar_max_width = 420;
@@ -412,7 +413,7 @@ async function load_startup_state() {
   try {
     const startup = await invoke<AppStartup>("get_startup_state");
     app_config_store.hydrate_config(startup.config, startup.default_config);
-    apply_config_state(startup.config);
+    await apply_config_state(startup.config);
     playlists.value = empty_playlist_bundle();
     play_statistics.value = empty_play_statistics();
     restoring_player_cache = true;
@@ -424,12 +425,13 @@ async function load_startup_state() {
   } catch (error) {
     restoring_player_cache = false;
     show_error_message(error);
+    await show_app_window();
   } finally {
     loading.value = false;
   }
 }
 
-function apply_config_state(config: AppConfig) {
+async function apply_config_state(config: AppConfig) {
   sidebar_width.value = clamp_sidebar_width(config.state.sidebar_width);
   status.value = {
     ...status.value,
@@ -450,7 +452,23 @@ function apply_config_state(config: AppConfig) {
     });
 
   if (config.state.width > 0 && config.state.height > 0) {
-    void app_window.setSize(new PhysicalSize(config.state.width, config.state.height));
+    try {
+      await app_window.setSize(new PhysicalSize(config.state.width, config.state.height));
+    } catch (error) {
+      console.warn("无法同步配置窗口大小", error);
+    }
+  }
+
+  await show_app_window();
+}
+
+async function show_app_window() {
+  if (app_window_shown) return;
+  app_window_shown = true;
+  try {
+    await app_window.show();
+  } catch (error) {
+    console.warn("无法显示窗口", error);
   }
 }
 

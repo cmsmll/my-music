@@ -6,7 +6,7 @@ import music_note_icon from "../assets/icons/music-note.svg";
 import playlist_grid_icon from "../assets/icons/playlist-grid.svg";
 import plus_icon from "../assets/icons/plus.svg";
 import statistics_icon from "../assets/icons/statistics.svg";
-import type { ViewKey } from "../types/music";
+import type { PlaylistCache, ViewKey } from "../types/music";
 import { icon_style } from "../utils/track";
 
 defineProps<{
@@ -16,11 +16,15 @@ defineProps<{
   artist_count: number;
   album_count: number;
   recent_count: number;
-  playlist_count: number;
+  playlist_items: PlaylistCache[];
+  active_playlist_id: string;
 }>();
 
 const emit = defineEmits<{
   show_view: [view: ViewKey];
+  show_playlist: [playlist_id: string];
+  create_playlist: [];
+  open_playlist_menu: [playlist: PlaylistCache, event: MouseEvent];
   begin_resize: [event: PointerEvent];
 }>();
 </script>
@@ -84,16 +88,19 @@ const emit = defineEmits<{
           <span>最近播放</span>
         </button>
         <button
+          v-for="playlist in playlist_items"
+          :key="playlist.id"
           class="nav_item"
-          :class="{ active: active_view === 'playlist_1' }"
+          :class="{ active: active_view === 'playlist_1' && active_playlist_id === playlist.id }"
           type="button"
-          :title="String(playlist_count)"
-          @click="emit('show_view', 'playlist_1')"
+          :title="String(playlist.metadata.track_count)"
+          @click="emit('show_playlist', playlist.id)"
+          @contextmenu.prevent="emit('open_playlist_menu', playlist, $event)"
         >
           <span class="nav_icon svg_icon" :style="icon_style(playlist_grid_icon)" />
-          <span>我的歌单</span>
+          <span>{{ playlist.name }}</span>
         </button>
-        <button class="nav_item create_playlist" type="button">
+        <button class="nav_item create_playlist" type="button" @click="emit('create_playlist')">
           <span class="nav_icon svg_icon" :style="icon_style(plus_icon)" />
           <span>新建歌单</span>
         </button>

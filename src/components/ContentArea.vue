@@ -13,6 +13,7 @@ const props = defineProps<{
   is_playing: boolean;
   selected_artist: string;
   selected_album: string;
+  selected_playlist_id: string;
   playback_queue_source: QueueSource;
   artist_items: ArtistItem[];
   album_items: AlbumItem[];
@@ -48,7 +49,10 @@ function visible_list_matches_playback_source() {
     return props.playback_queue_source.type === "album" && props.playback_queue_source.id === props.selected_album;
   }
   if (props.active_view === "playlist_1") {
-    return props.playback_queue_source.type === "playlist";
+    return (
+      props.playback_queue_source.type === "playlist" &&
+      props.playback_queue_source.id === props.selected_playlist_id
+    );
   }
   return props.playback_queue_source.type === props.active_view;
 }

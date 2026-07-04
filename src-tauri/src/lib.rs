@@ -941,7 +941,9 @@ fn load_my_playlist_cache(config: &AppConfig) -> Result<Option<PlaylistCache>, S
 
     if let Some(playlist) = playlist.as_mut() {
         playlist.id = "my_playlist".to_string();
-        playlist.name = "我的歌单".to_string();
+        if playlist.name.trim().is_empty() {
+            playlist.name = "我的歌单".to_string();
+        }
         playlist.kind = "user".to_string();
         playlist.metadata.track_count = playlist.track_ids.len();
         playlist.metadata.item_count = 0;
@@ -1019,6 +1021,20 @@ fn user_playlist_cache_path(config: &AppConfig, playlist_id: &str) -> Result<Pat
     Err(format!("找不到歌单: {playlist_id}"))
 }
 
+fn read_user_playlist_for_id(
+    config: &AppConfig,
+    playlist_id: &str,
+    playlist_path: &Path,
+) -> Result<PlaylistCache, String> {
+    if playlist_id == "my_playlist" {
+        return Ok(load_my_playlist_cache(config)?
+            .unwrap_or_else(|| empty_playlist("my_playlist", "我的歌单", "user")));
+    }
+
+    Ok(read_playlist_cache(playlist_path)?
+        .unwrap_or_else(|| empty_playlist(playlist_id, "我的歌单", "user")))
+}
+
 fn update_user_playlist_metadata(
     playlist: &mut PlaylistCache,
     all_tracks: &BTreeMap<String, Track>,
@@ -1027,20 +1043,45 @@ fn update_user_playlist_metadata(
     playlist.metadata = playlist_metadata(&playlist.track_ids, all_tracks, 0);
 }
 
+fn read_all_playlist_cache(config: &AppConfig) -> Result<AllPlaylistCache, String> {
+    let all_playlist_path = playlist_cache_path(config, "all_playlist.json");
+    let content = fs::read_to_string(&all_playlist_path)
+        .map_err(|err| format!("无法读取全部歌单缓存: {err}"))?;
+    serde_json::from_str(&content).map_err(|err| format!("无法解析全部歌单缓存: {err}"))
+}
+
+fn unique_user_playlist_id(name: &str) -> String {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    format!("playlist_{}", short_hash(&format!("{name}-{nanos}")))
+}
+
+fn ensure_unique_playlist_name(
+    playlists: &[PlaylistCache],
+    name: &str,
+    current_id: Option<&str>,
+) -> Result<(), String> {
+    let exists = playlists.iter().any(|playlist| {
+        Some(playlist.id.as_str()) != current_id && playlist.name.trim() == name
+    });
+    if exists {
+        return Err("歌单名称已存在".to_string());
+    }
+    Ok(())
+}
+
 fn record_recent_track(config: &AppConfig, path: &str) -> Result<(), String> {
     if path.is_empty() {
         return Ok(());
     }
 
-    let all_playlist_path = playlist_cache_path(config, "all_playlist.json");
-    if !all_playlist_path.exists() {
+    if !playlist_cache_path(config, "all_playlist.json").exists() {
         return Ok(());
     }
 
-    let content = fs::read_to_string(&all_playlist_path)
-        .map_err(|err| format!("无法读取全部歌单缓存: {err}"))?;
-    let all_playlist: AllPlaylistCache =
-        serde_json::from_str(&content).map_err(|err| format!("无法解析全部歌单缓存: {err}"))?;
+    let all_playlist = read_all_playlist_cache(config)?;
 
     let track_id = if all_playlist.tracks.contains_key(path) {
         path.to_string()
@@ -1116,19 +1157,14 @@ fn add_track_to_playlist(
     track_id: String,
 ) -> Result<PlaylistBundle, String> {
     let config = config_manager.get()?;
-    let all_playlist_path = playlist_cache_path(&config, "all_playlist.json");
-    let content = fs::read_to_string(&all_playlist_path)
-        .map_err(|err| format!("无法读取全部歌单缓存: {err}"))?;
-    let all_playlist: AllPlaylistCache =
-        serde_json::from_str(&content).map_err(|err| format!("无法解析全部歌单缓存: {err}"))?;
+    let all_playlist = read_all_playlist_cache(&config)?;
 
     if !all_playlist.tracks.contains_key(&track_id) {
         return Err("歌曲不存在于当前曲库缓存".to_string());
     }
 
     let playlist_path = user_playlist_cache_path(&config, &playlist_id)?;
-    let mut playlist = read_playlist_cache(&playlist_path)?
-        .unwrap_or_else(|| empty_playlist("my_playlist", "我的歌单", "user"));
+    let mut playlist = read_user_playlist_for_id(&config, &playlist_id, &playlist_path)?;
     playlist.track_ids.retain(|current| current != &track_id);
     playlist.track_ids.push(track_id);
     update_user_playlist_metadata(&mut playlist, &all_playlist.tracks);
@@ -1144,11 +1180,7 @@ fn remove_track_from_playlist(
     track_id: String,
 ) -> Result<PlaylistBundle, String> {
     let config = config_manager.get()?;
-    let all_playlist_path = playlist_cache_path(&config, "all_playlist.json");
-    let content = fs::read_to_string(&all_playlist_path)
-        .map_err(|err| format!("无法读取全部歌单缓存: {err}"))?;
-    let all_playlist: AllPlaylistCache =
-        serde_json::from_str(&content).map_err(|err| format!("无法解析全部歌单缓存: {err}"))?;
+    let all_playlist = read_all_playlist_cache(&config)?;
 
     let playlist_path = if playlist_id == "recent" {
         playlist_cache_path(&config, "recent_playlist.json")
@@ -1159,9 +1191,12 @@ fn remove_track_from_playlist(
         if playlist_id == "recent" {
             empty_playlist("recent", "最近播放", "recent")
         } else {
-            empty_playlist("my_playlist", "我的歌单", "user")
+            empty_playlist(&playlist_id, "我的歌单", "user")
         }
     });
+    if playlist_id != "recent" {
+        playlist = read_user_playlist_for_id(&config, &playlist_id, &playlist_path)?;
+    }
     playlist.track_ids.retain(|current| current != &track_id);
     update_user_playlist_metadata(&mut playlist, &all_playlist.tracks);
 
@@ -1171,6 +1206,78 @@ fn remove_track_from_playlist(
         "我的歌单缓存"
     };
     write_json_cache(&playlist_path, &playlist, label)?;
+    load_playlist_bundle(&config)
+}
+
+#[tauri::command]
+fn create_user_playlist(
+    config_manager: tauri::State<'_, ConfigManager>,
+    name: String,
+) -> Result<PlaylistBundle, String> {
+    let config = config_manager.get()?;
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("歌单名称不能为空".to_string());
+    }
+
+    let playlists = load_my_playlist_caches(&config)?;
+    ensure_unique_playlist_name(&playlists, name, None)?;
+
+    let id = unique_user_playlist_id(name);
+    let file_name = format!("{}_{}.json", safe_cache_name(name), short_hash(&id));
+    let playlist_path = my_playlist_cache_path(&config, &file_name);
+    let mut playlist = empty_playlist(&id, name, "user");
+
+    let all_tracks = read_all_playlist_cache(&config)
+        .map(|cache| cache.tracks)
+        .unwrap_or_default();
+    update_user_playlist_metadata(&mut playlist, &all_tracks);
+
+    write_json_cache(&playlist_path, &playlist, "我的歌单缓存")?;
+    load_playlist_bundle(&config)
+}
+
+#[tauri::command]
+fn rename_user_playlist(
+    config_manager: tauri::State<'_, ConfigManager>,
+    playlist_id: String,
+    name: String,
+) -> Result<PlaylistBundle, String> {
+    let config = config_manager.get()?;
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("歌单名称不能为空".to_string());
+    }
+
+    let playlists = load_my_playlist_caches(&config)?;
+    ensure_unique_playlist_name(&playlists, name, Some(&playlist_id))?;
+
+    let playlist_path = user_playlist_cache_path(&config, &playlist_id)?;
+    let mut playlist = read_user_playlist_for_id(&config, &playlist_id, &playlist_path)?;
+    playlist.name = name.to_string();
+    playlist.kind = "user".to_string();
+
+    let all_tracks = read_all_playlist_cache(&config)
+        .map(|cache| cache.tracks)
+        .unwrap_or_default();
+    update_user_playlist_metadata(&mut playlist, &all_tracks);
+
+    write_json_cache(&playlist_path, &playlist, "我的歌单缓存")?;
+    load_playlist_bundle(&config)
+}
+
+#[tauri::command]
+fn delete_user_playlist(
+    config_manager: tauri::State<'_, ConfigManager>,
+    playlist_id: String,
+) -> Result<PlaylistBundle, String> {
+    if playlist_id == "my_playlist" {
+        return Err("默认歌单不能删除".to_string());
+    }
+
+    let config = config_manager.get()?;
+    let playlist_path = user_playlist_cache_path(&config, &playlist_id)?;
+    fs::remove_file(&playlist_path).map_err(|err| format!("无法删除歌单缓存: {err}"))?;
     load_playlist_bundle(&config)
 }
 
@@ -1585,6 +1692,9 @@ pub fn run() {
             scan_music_dir,
             add_track_to_playlist,
             remove_track_from_playlist,
+            create_user_playlist,
+            rename_user_playlist,
+            delete_user_playlist,
             play_track,
             pause_track,
             resume_track,

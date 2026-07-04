@@ -53,6 +53,12 @@ type TrackContextMenu = {
   remove_playlist_id: string | null;
 };
 
+type PlaylistContextMenu = {
+  playlist: PlaylistCache;
+  x: number;
+  y: number;
+};
+
 const player_queue = use_player_queue_store();
 const { library_tracks: tracks, current_queue, playback_mode, queue_source } = storeToRefs(player_queue);
 const status = ref<PlaybackStatus>({
@@ -70,9 +76,11 @@ const playlists = ref<PlaylistBundle>(empty_playlist_bundle());
 const active_view = ref<ViewKey>("all");
 const selected_artist = ref("");
 const selected_album = ref("");
+const selected_playlist_id = ref("my_playlist");
 const settings_open = ref(false);
 const playback_queue_open = ref(false);
 const track_context_menu = ref<TrackContextMenu | null>(null);
+const playlist_context_menu = ref<PlaylistContextMenu | null>(null);
 const progress_dragging = ref(false);
 const player_bar = ref<PlayerBarExpose | null>(null);
 const sidebar_width = ref(250);
@@ -191,6 +199,14 @@ const user_playlist_items = computed<PlaylistCache[]>(() => {
     : [playlists.value.my_playlist];
 });
 
+const selected_user_playlist = computed(() => {
+  return (
+    user_playlist_items.value.find((playlist) => playlist.id === selected_playlist_id.value) ??
+    user_playlist_items.value[0] ??
+    playlists.value.my_playlist
+  );
+});
+
 async function choose_music_directory() {
   error_message.value = "";
   const selected = await open({
@@ -242,6 +258,7 @@ async function load_startup_state() {
     const startup = await invoke<AppStartup>("get_startup_state");
     app_config.value = startup.config;
     playlists.value = startup.playlists;
+    ensure_selected_playlist();
     restoring_player_cache = true;
     player_queue.set_library_tracks(startup.tracks);
     selected_directories.value = startup.config.music_directory;
@@ -706,6 +723,11 @@ function show_view(view: ViewKey) {
   selected_album.value = "";
 }
 
+function show_playlist(playlist_id: string) {
+  selected_playlist_id.value = playlist_id;
+  show_view("playlist_1");
+}
+
 function queue_source_for_view(view: ViewKey): QueueSource {
   if (view === "artists" && selected_artist.value) {
     return { type: "artist", id: selected_artist.value, label: selected_artist.value };
@@ -714,10 +736,11 @@ function queue_source_for_view(view: ViewKey): QueueSource {
     return { type: "album", id: selected_album.value, label: selected_album.value };
   }
   if (view === "playlist_1") {
+    const playlist = selected_user_playlist.value;
     return {
       type: "playlist",
-      id: playlists.value.my_playlist.id,
-      label: playlists.value.my_playlist.name,
+      id: playlist.id,
+      label: playlist.name,
     };
   }
 
@@ -740,7 +763,7 @@ function queue_tracks_for_view(view: ViewKey) {
     return tracks.value.filter((track) => display_album(track) === selected_album.value);
   }
   if (view === "recent") return tracks_from_ids(playlists.value.recent.track_ids);
-  if (view === "playlist_1") return tracks_from_ids(playlists.value.my_playlist.track_ids);
+  if (view === "playlist_1") return tracks_from_ids(selected_user_playlist.value.track_ids);
   return tracks.value;
 }
 
@@ -773,8 +796,19 @@ function queue_tracks_for_source(source: QueueSource) {
   return tracks.value;
 }
 
+function queue_source_with_latest_label(source: QueueSource) {
+  if (source.type === "playlist") {
+    const playlist = user_playlist_items.value.find((item) => item.id === source.id);
+    if (playlist) return { ...source, label: playlist.name };
+  }
+  return { ...source };
+}
+
 function refresh_current_queue_source() {
-  player_queue.set_current_queue({ ...queue_source.value }, queue_tracks_for_source(queue_source.value));
+  player_queue.set_current_queue(
+    queue_source_with_latest_label(queue_source.value),
+    queue_tracks_for_source(queue_source.value),
+  );
 }
 
 function tracks_from_ids(track_ids: string[]) {
@@ -819,6 +853,14 @@ function empty_playlist_bundle(): PlaylistBundle {
     artists: empty_playlist("artists", "歌手", "artists"),
     albums: empty_playlist("albums", "专辑", "albums"),
   };
+}
+
+function ensure_selected_playlist() {
+  if (user_playlist_items.value.some((playlist) => playlist.id === selected_playlist_id.value)) {
+    return;
+  }
+
+  selected_playlist_id.value = user_playlist_items.value[0]?.id ?? playlists.value.my_playlist.id;
 }
 
 function set_queue_for_current_view() {
@@ -875,9 +917,7 @@ async function play_track_from_view(track: Track) {
 function active_record_playlist_id() {
   if (query.value.trim() || selected_artist.value || selected_album.value) return "";
   if (active_view.value === "recent") return "recent";
-  if (active_view.value === "playlist_1") {
-    return queue_source.value.type === "playlist" ? queue_source.value.id : playlists.value.my_playlist.id;
-  }
+  if (active_view.value === "playlist_1") return selected_user_playlist.value.id;
   return "";
 }
 
@@ -894,6 +934,107 @@ function open_track_context_menu(track: Track, event: MouseEvent) {
 
 function close_track_context_menu() {
   track_context_menu.value = null;
+}
+
+function open_playlist_context_menu(playlist: PlaylistCache, event: MouseEvent) {
+  const menu_width = 170;
+  const menu_min_height = 96;
+  playlist_context_menu.value = {
+    playlist,
+    x: Math.min(event.clientX, Math.max(window.innerWidth - menu_width - 12, 12)),
+    y: Math.min(event.clientY, Math.max(window.innerHeight - menu_min_height - 12, 12)),
+  };
+}
+
+function close_playlist_context_menu() {
+  playlist_context_menu.value = null;
+}
+
+function apply_playlist_bundle(next_playlists: PlaylistBundle) {
+  playlists.value = next_playlists;
+  ensure_selected_playlist();
+}
+
+async function create_playlist() {
+  const name = window.prompt("请输入歌单名称", "新建歌单");
+  if (name === null) return;
+
+  const trimmed_name = name.trim();
+  if (!trimmed_name) return;
+
+  const existing_ids = new Set(user_playlist_items.value.map((playlist) => playlist.id));
+  try {
+    const next_playlists = await invoke<PlaylistBundle>("create_user_playlist", {
+      name: trimmed_name,
+    });
+    apply_playlist_bundle(next_playlists);
+
+    const created_playlist =
+      next_playlists.my_playlists.find((playlist) => !existing_ids.has(playlist.id)) ??
+      next_playlists.my_playlists.find((playlist) => playlist.name === trimmed_name);
+    if (created_playlist) show_playlist(created_playlist.id);
+  } catch (error) {
+    error_message.value = String(error);
+  }
+}
+
+async function rename_context_playlist() {
+  const playlist = playlist_context_menu.value?.playlist;
+  if (!playlist) return;
+
+  close_playlist_context_menu();
+  const name = window.prompt("请输入新的歌单名称", playlist.name);
+  if (name === null) return;
+
+  const trimmed_name = name.trim();
+  if (!trimmed_name || trimmed_name === playlist.name) return;
+
+  try {
+    apply_playlist_bundle(
+      await invoke<PlaylistBundle>("rename_user_playlist", {
+        playlistId: playlist.id,
+        name: trimmed_name,
+      }),
+    );
+    if (queue_source.value.type === "playlist" && queue_source.value.id === playlist.id) {
+      refresh_current_queue_source();
+    }
+  } catch (error) {
+    error_message.value = String(error);
+  }
+}
+
+function context_playlist_can_be_deleted() {
+  return playlist_context_menu.value?.playlist.id !== "my_playlist";
+}
+
+async function delete_context_playlist() {
+  const playlist = playlist_context_menu.value?.playlist;
+  if (!playlist || !context_playlist_can_be_deleted()) return;
+
+  close_playlist_context_menu();
+  const confirmed = window.confirm(`确定删除歌单“${playlist.name}”吗？\n只会删除歌单记录，不会删除音乐文件。`);
+  if (!confirmed) return;
+
+  try {
+    const deleted_playlist_id = playlist.id;
+    const deleted_selected_playlist = selected_playlist_id.value === deleted_playlist_id;
+    apply_playlist_bundle(
+      await invoke<PlaylistBundle>("delete_user_playlist", {
+        playlistId: deleted_playlist_id,
+      }),
+    );
+
+    if (deleted_selected_playlist) {
+      ensure_selected_playlist();
+      if (active_view.value === "playlist_1") show_playlist(selected_user_playlist.value.id);
+    }
+    if (queue_source.value.type === "playlist" && queue_source.value.id === deleted_playlist_id) {
+      set_queue_for_current_view();
+    }
+  } catch (error) {
+    error_message.value = String(error);
+  }
 }
 
 function context_track_in_playlist(playlist: PlaylistCache) {
@@ -971,7 +1112,7 @@ function open_queue_source() {
     return;
   }
   if (source.type === "playlist") {
-    show_view("playlist_1");
+    show_playlist(source.id);
   }
 }
 
@@ -1047,11 +1188,16 @@ function handle_before_unload() {
 function close_track_context_menu_on_pointer(event: PointerEvent) {
   const target = event.target as HTMLElement | null;
   if (target?.closest(".track_context_menu")) return;
+  if (target?.closest(".playlist_context_menu")) return;
   close_track_context_menu();
+  close_playlist_context_menu();
 }
 
 function close_track_context_menu_on_key(event: KeyboardEvent) {
-  if (event.key === "Escape") close_track_context_menu();
+  if (event.key === "Escape") {
+    close_track_context_menu();
+    close_playlist_context_menu();
+  }
 }
 
 onBeforeUnmount(() => {
@@ -1129,8 +1275,12 @@ watch([current_queue, queue_source, playback_mode], () => {
       :artist_count="artist_count"
       :album_count="album_count"
       :recent_count="playlists.recent.metadata.track_count"
-      :playlist_count="playlists.my_playlist.metadata.track_count"
+      :playlist_items="user_playlist_items"
+      :active_playlist_id="selected_user_playlist.id"
       @show_view="show_view"
+      @show_playlist="show_playlist"
+      @create_playlist="create_playlist"
+      @open_playlist_menu="open_playlist_context_menu"
       @begin_resize="begin_sidebar_resize"
     />
 
@@ -1158,6 +1308,7 @@ watch([current_queue, queue_source, playback_mode], () => {
         :is_playing="status.playing"
         :selected_artist="selected_artist"
         :selected_album="selected_album"
+        :selected_playlist_id="selected_user_playlist.id"
         :playback_queue_source="queue_source"
         :artist_items="artist_items"
         :album_items="album_items"
@@ -1201,6 +1352,26 @@ watch([current_queue, queue_source, playback_mode], () => {
         @click="add_context_track_to_playlist(playlist)"
       >
         {{ playlist.name }}
+      </button>
+    </div>
+
+    <div
+      v-if="playlist_context_menu"
+      class="playlist_context_menu"
+      :style="{ left: `${playlist_context_menu.x}px`, top: `${playlist_context_menu.y}px` }"
+      @click.stop
+      @contextmenu.prevent
+    >
+      <button class="context_menu_button" type="button" @click="rename_context_playlist">
+        重命名
+      </button>
+      <button
+        class="context_menu_button danger"
+        type="button"
+        :disabled="!context_playlist_can_be_deleted()"
+        @click="delete_context_playlist"
+      >
+        删除
       </button>
     </div>
 
@@ -1602,18 +1773,26 @@ p {
   background: #f5f7ff;
 }
 
-.track_context_menu {
+.track_context_menu,
+.playlist_context_menu {
   position: fixed;
   z-index: 1000;
   display: grid;
-  min-width: 190px;
-  max-width: 240px;
   gap: 4px;
   border: 1px solid #eef0f4;
   border-radius: 8px;
   padding: 8px;
   background: #ffffff;
   box-shadow: 0 12px 34px rgba(19, 24, 34, 0.16);
+}
+
+.track_context_menu {
+  min-width: 190px;
+  max-width: 240px;
+}
+
+.playlist_context_menu {
+  min-width: 150px;
 }
 
 .track_context_menu_header {
@@ -1676,6 +1855,38 @@ p {
 .track_context_playlist_button:disabled:hover {
   color: #b3b8c2;
   background: transparent;
+}
+
+.context_menu_button {
+  min-height: 34px;
+  border-radius: 8px;
+  padding: 0 10px;
+  color: #1e2026;
+  background: transparent;
+  font-size: 0.92rem;
+  font-weight: 800;
+  text-align: left;
+}
+
+.context_menu_button:hover {
+  color: #426dff;
+  background: #eaf0ff;
+}
+
+.context_menu_button.danger {
+  color: #b65b5b;
+}
+
+.context_menu_button.danger:hover {
+  color: #c33131;
+  background: #fff0f0;
+}
+
+.context_menu_button:disabled,
+.context_menu_button:disabled:hover {
+  color: #b3b8c2;
+  background: transparent;
+  cursor: default;
 }
 
 .index_cell,

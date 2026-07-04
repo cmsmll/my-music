@@ -85,6 +85,7 @@ export type PlaylistMetadata = {
   total_duration: number;
   item_count: number;
   cover_cache_path?: string | null;
+  index: number;
 };
 
 export type PlaylistSummary = {

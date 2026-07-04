@@ -143,6 +143,8 @@ struct PlaylistMetadata {
     total_duration: u64,
     item_count: usize,
     cover_cache_path: Option<String>,
+    #[serde(default)]
+    index: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -877,6 +879,7 @@ fn empty_playlist(id: &str, name: &str, kind: &str) -> PlaylistCache {
             total_duration: 0,
             item_count: 0,
             cover_cache_path: None,
+            index: 0,
         },
         track_ids: Vec::new(),
         children: Vec::new(),
@@ -906,6 +909,7 @@ fn playlist_metadata(
         total_duration,
         item_count,
         cover_cache_path,
+        index: 0,
     }
 }
 
@@ -981,13 +985,11 @@ fn load_my_playlist_caches(config: &AppConfig) -> Result<Vec<PlaylistCache>, Str
     }
 
     playlists.sort_by(|left, right| {
-        if left.id == "my_playlist" {
-            std::cmp::Ordering::Less
-        } else if right.id == "my_playlist" {
-            std::cmp::Ordering::Greater
-        } else {
-            left.name.cmp(&right.name)
-        }
+        left.metadata
+            .index
+            .cmp(&right.metadata.index)
+            .then_with(|| left.name.cmp(&right.name))
+            .then_with(|| left.id.cmp(&right.id))
     });
     Ok(playlists)
 }
@@ -1037,8 +1039,10 @@ fn update_user_playlist_metadata(
     playlist: &mut PlaylistCache,
     all_tracks: &BTreeMap<String, Track>,
 ) {
+    let index = playlist.metadata.index;
     playlist.generated_at = unix_timestamp();
     playlist.metadata = playlist_metadata(&playlist.track_ids, all_tracks, 0);
+    playlist.metadata.index = index;
 }
 
 fn read_all_playlist_cache(config: &AppConfig) -> Result<AllPlaylistCache, String> {
@@ -1068,6 +1072,15 @@ fn ensure_unique_playlist_name(
         return Err("歌单名称已存在".to_string());
     }
     Ok(())
+}
+
+fn next_user_playlist_index(playlists: &[PlaylistCache]) -> usize {
+    playlists
+        .iter()
+        .map(|playlist| playlist.metadata.index)
+        .max()
+        .map(|index| index + 1)
+        .unwrap_or(0)
 }
 
 fn record_recent_track(config: &AppConfig, path: &str) -> Result<(), String> {
@@ -1225,6 +1238,7 @@ fn create_user_playlist(
     let file_name = format!("{}_{}.json", safe_cache_name(name), short_hash(&id));
     let playlist_path = my_playlist_cache_path(&config, &file_name);
     let mut playlist = empty_playlist(&id, name, "user");
+    playlist.metadata.index = next_user_playlist_index(&playlists);
 
     let all_tracks = read_all_playlist_cache(&config)
         .map(|cache| cache.tracks)
@@ -1280,6 +1294,42 @@ fn delete_user_playlist(
         if fallback_path.exists() {
             fs::remove_file(&fallback_path)
                 .map_err(|err| format!("无法删除旧版默认歌单缓存: {err}"))?;
+        }
+    }
+
+    load_playlist_bundle(&config)
+}
+
+#[tauri::command]
+fn reorder_user_playlists(
+    config_manager: tauri::State<'_, ConfigManager>,
+    playlist_ids: Vec<String>,
+) -> Result<PlaylistBundle, String> {
+    let config = config_manager.get()?;
+    let mut playlists = load_my_playlist_caches(&config)?;
+    let mut ordered_ids = Vec::new();
+
+    for playlist_id in playlist_ids {
+        if playlists.iter().any(|playlist| playlist.id == playlist_id)
+            && !ordered_ids.iter().any(|current| current == &playlist_id)
+        {
+            ordered_ids.push(playlist_id);
+        }
+    }
+
+    for playlist in &playlists {
+        if !ordered_ids.iter().any(|playlist_id| playlist_id == &playlist.id) {
+            ordered_ids.push(playlist.id.clone());
+        }
+    }
+
+    for playlist in &mut playlists {
+        if let Some(index) = ordered_ids.iter().position(|playlist_id| playlist_id == &playlist.id)
+        {
+            playlist.metadata.index = index;
+            playlist.generated_at = unix_timestamp();
+            let playlist_path = user_playlist_cache_path(&config, &playlist.id)?;
+            write_json_cache(&playlist_path, playlist, "我的歌单缓存")?;
         }
     }
 
@@ -1700,6 +1750,7 @@ pub fn run() {
             create_user_playlist,
             rename_user_playlist,
             delete_user_playlist,
+            reorder_user_playlists,
             play_track,
             pause_track,
             resume_track,

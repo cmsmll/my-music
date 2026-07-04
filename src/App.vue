@@ -87,7 +87,6 @@ const progress_dragging = ref(false);
 const player_bar = ref<PlayerBarExpose | null>(null);
 const sidebar_width = ref(250);
 const sidebar_resizing = ref(false);
-const playlist_order = ref<string[]>([]);
 
 let status_timer: number | undefined;
 let progress_frame: number | undefined;
@@ -112,7 +111,6 @@ const sidebar_max_width = 420;
 const sidebar_compact_width = 100;
 const sidebar_width_storage_key = "music_box_sidebar_width";
 const player_cache_storage_key = "music_box_player_cache";
-const playlist_order_storage_key = "music_box_playlist_order";
 const app_window = getCurrentWindow();
 const playback_modes: PlaybackModeItem[] = [
   { mode: "shuffle", icon: shuffle_icon, label: "随机播放" },
@@ -202,10 +200,9 @@ const user_playlist_items = computed<PlaylistCache[]>(() => {
 });
 
 const ordered_user_playlist_items = computed<PlaylistCache[]>(() => {
-  const order_index = new Map(playlist_order.value.map((playlist_id, index) => [playlist_id, index]));
   return [...user_playlist_items.value].sort((left, right) => {
-    const left_index = order_index.get(left.id) ?? Number.MAX_SAFE_INTEGER;
-    const right_index = order_index.get(right.id) ?? Number.MAX_SAFE_INTEGER;
+    const left_index = left.metadata.index ?? 0;
+    const right_index = right.metadata.index ?? 0;
     if (left_index !== right_index) return left_index - right_index;
     return left.name.localeCompare(right.name, "zh-Hans-CN");
   });
@@ -270,7 +267,6 @@ async function load_startup_state() {
     const startup = await invoke<AppStartup>("get_startup_state");
     app_config.value = startup.config;
     playlists.value = startup.playlists;
-    normalize_playlist_order();
     ensure_selected_playlist();
     restoring_player_cache = true;
     player_queue.set_library_tracks(startup.tracks);
@@ -854,6 +850,7 @@ function empty_playlist_bundle(): PlaylistBundle {
       total_duration: 0,
       item_count: 0,
       cover_cache_path: null,
+      index: 0,
     },
     track_ids: [],
     children: [],
@@ -965,39 +962,19 @@ function close_playlist_context_menu() {
 
 function apply_playlist_bundle(next_playlists: PlaylistBundle) {
   playlists.value = next_playlists;
-  normalize_playlist_order();
   ensure_selected_playlist();
 }
 
-function normalize_playlist_order() {
-  const playlist_ids = user_playlist_items.value.map((playlist) => playlist.id);
-  const playlist_id_set = new Set(playlist_ids);
-  const next_order = playlist_order.value.filter((playlist_id) => playlist_id_set.has(playlist_id));
-  for (const playlist_id of playlist_ids) {
-    if (!next_order.includes(playlist_id)) next_order.push(playlist_id);
-  }
-  playlist_order.value = next_order;
-  save_playlist_order();
-}
-
-function load_playlist_order() {
+async function reorder_playlists(playlist_ids: string[]) {
   try {
-    const raw_order = localStorage.getItem(playlist_order_storage_key);
-    const order = raw_order ? JSON.parse(raw_order) : [];
-    playlist_order.value = Array.isArray(order) ? order.filter((item) => typeof item === "string") : [];
+    apply_playlist_bundle(
+      await invoke<PlaylistBundle>("reorder_user_playlists", {
+        playlistIds: playlist_ids,
+      }),
+    );
   } catch (error) {
-    console.warn("无法读取歌单排序缓存", error);
-    playlist_order.value = [];
+    error_message.value = String(error);
   }
-}
-
-function save_playlist_order() {
-  localStorage.setItem(playlist_order_storage_key, JSON.stringify(playlist_order.value));
-}
-
-function reorder_playlists(playlist_ids: string[]) {
-  playlist_order.value = playlist_ids;
-  normalize_playlist_order();
 }
 
 async function create_playlist(name: string) {
@@ -1277,7 +1254,6 @@ onBeforeUnmount(() => {
 onMounted(() => {
   media_shortcut_listeners_disposed = false;
   load_sidebar_width();
-  load_playlist_order();
   window.addEventListener("beforeunload", handle_before_unload);
   window.addEventListener("pointerdown", close_track_context_menu_on_pointer);
   window.addEventListener("keydown", close_track_context_menu_on_key);

@@ -9,8 +9,6 @@ pub(crate) struct Track {
     pub(crate) album: String,
     pub(crate) path: String,
     pub(crate) duration: Option<u64>,
-    #[serde(default)]
-    pub(crate) file_size: Option<u64>,
     pub(crate) cover_cache_path: Option<String>,
     pub(crate) lyrics_cache_path: String,
     pub(crate) metadata: TrackMetadata,

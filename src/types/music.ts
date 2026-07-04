@@ -5,7 +5,6 @@ export type Track = {
   album: string;
   path: string;
   duration?: number | null;
-  file_size?: number | null;
   cover_cache_path?: string | null;
   lyrics_cache_path: string;
   metadata: TrackMetadata;
@@ -73,32 +72,6 @@ export type AlbumItem = {
   track_count: number;
   total_duration: number;
   cover_track?: Track;
-};
-
-export type StatRankItem = {
-  name: string;
-  value: number;
-  description?: string;
-};
-
-export type StatsOverview = {
-  total_tracks: number;
-  total_artists: number;
-  total_albums: number;
-  total_duration: number;
-  total_size: number;
-  average_duration: number;
-  playlist_count: number;
-  directory_count: number;
-  known_year_count: number;
-  known_genre_count: number;
-  longest_track?: Track;
-  shortest_track?: Track;
-  top_artists: StatRankItem[];
-  top_albums: StatRankItem[];
-  top_genres: StatRankItem[];
-  top_years: StatRankItem[];
-  format_distribution: StatRankItem[];
 };
 
 export type QueueSourceType = ViewKey | "search" | "artist" | "album" | "playlist";

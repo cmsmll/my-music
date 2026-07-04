@@ -20,9 +20,14 @@ use std::{
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+use tauri::Emitter;
+use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Shortcut, ShortcutState};
 use walkdir::WalkDir;
 
 const SUPPORTED_EXTENSIONS: &[&str] = &["mp3", "flac", "wav", "ogg", "m4a", "aac"];
+const MEDIA_PLAY_PAUSE_EVENT: &str = "media-play-pause";
+const MEDIA_PREVIOUS_EVENT: &str = "media-previous";
+const MEDIA_NEXT_EVENT: &str = "media-next";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Track {
@@ -240,8 +245,8 @@ impl ConfigManager {
 
     fn save(&self) -> Result<(), String> {
         let config = self.get()?;
-        let content = toml::to_string_pretty(&config)
-            .map_err(|err| format!("无法序列化配置文件: {err}"))?;
+        let content =
+            toml::to_string_pretty(&config).map_err(|err| format!("无法序列化配置文件: {err}"))?;
         fs::write(&self.config_path, content).map_err(|err| format!("无法写入配置文件: {err}"))
     }
 
@@ -269,28 +274,29 @@ impl ConfigManager {
         let hash = short_hash(music_dir);
         Ok(PathBuf::from(config.library_cache_dir).join(format!("{safe_name}-{hash}.json")))
     }
-
 }
 
 fn parse_config(content: &str, default_config: &AppConfig) -> Option<AppConfig> {
-    toml::from_str::<ConfigFile>(content).ok().map(|config| AppConfig {
-        music_directory: config
-            .music_directory
-            .map(MusicDirectoryConfig::into_vec)
-            .unwrap_or_else(|| default_config.music_directory.clone()),
-        library_cache_dir: config
-            .library_cache_dir
-            .unwrap_or_else(|| default_config.library_cache_dir.clone()),
-        cover_cache_dir: config
-            .cover_cache_dir
-            .unwrap_or_else(|| default_config.cover_cache_dir.clone()),
-        lyrics_cache_dir: config
-            .lyrics_cache_dir
-            .unwrap_or_else(|| default_config.lyrics_cache_dir.clone()),
-        my_playlist_cache_dir: config
-            .my_playlist_cache_dir
-            .unwrap_or_else(|| default_config.my_playlist_cache_dir.clone()),
-    })
+    toml::from_str::<ConfigFile>(content)
+        .ok()
+        .map(|config| AppConfig {
+            music_directory: config
+                .music_directory
+                .map(MusicDirectoryConfig::into_vec)
+                .unwrap_or_else(|| default_config.music_directory.clone()),
+            library_cache_dir: config
+                .library_cache_dir
+                .unwrap_or_else(|| default_config.library_cache_dir.clone()),
+            cover_cache_dir: config
+                .cover_cache_dir
+                .unwrap_or_else(|| default_config.cover_cache_dir.clone()),
+            lyrics_cache_dir: config
+                .lyrics_cache_dir
+                .unwrap_or_else(|| default_config.lyrics_cache_dir.clone()),
+            my_playlist_cache_dir: config
+                .my_playlist_cache_dir
+                .unwrap_or_else(|| default_config.my_playlist_cache_dir.clone()),
+        })
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -380,8 +386,8 @@ impl AudioEngine {
                 match command {
                     AudioCommand::Play { path, reply } => {
                         let result = (|| {
-                            let file =
-                                File::open(&path).map_err(|err| format!("无法打开音频文件: {err}"))?;
+                            let file = File::open(&path)
+                                .map_err(|err| format!("无法打开音频文件: {err}"))?;
                             let source = Decoder::new(BufReader::new(file))
                                 .map_err(|err| format!("无法解码音频文件: {err}"))?;
                             let sink = Sink::try_new(&handle)
@@ -449,7 +455,8 @@ impl AudioEngine {
                         if let Some(current) = playback.as_ref() {
                             current.sink.set_volume(next_volume);
                         }
-                        let _ = update_snapshot(&thread_snapshot, |state| state.volume = next_volume);
+                        let _ =
+                            update_snapshot(&thread_snapshot, |state| state.volume = next_volume);
                         let _ = reply.send(Ok(()));
                     }
                     AudioCommand::Seek { seconds, reply } => {
@@ -510,7 +517,10 @@ impl AudioEngine {
         Self { tx, snapshot }
     }
 
-    fn send(&self, command: impl FnOnce(Sender<Result<(), String>>) -> AudioCommand) -> Result<(), String> {
+    fn send(
+        &self,
+        command: impl FnOnce(Sender<Result<(), String>>) -> AudioCommand,
+    ) -> Result<(), String> {
         let (reply_tx, reply_rx) = mpsc::channel();
         self.tx
             .send(command(reply_tx))
@@ -539,7 +549,9 @@ impl AudioEngine {
 }
 
 #[tauri::command]
-fn get_startup_state(config_manager: tauri::State<'_, ConfigManager>) -> Result<AppStartup, String> {
+fn get_startup_state(
+    config_manager: tauri::State<'_, ConfigManager>,
+) -> Result<AppStartup, String> {
     let config = config_manager.get()?;
     let tracks = load_or_scan_all_directories(&config_manager, &config)?;
     let playlists = load_playlist_bundle(&config)?;
@@ -624,17 +636,14 @@ fn scan_tracks(root: &Path, config: &AppConfig) -> Result<Vec<Track>, String> {
         }
     }
 
-    tracks.sort_by(|a, b| {
-        a.artist
-            .cmp(&b.artist)
-            .then(a.title.cmp(&b.title))
-    });
+    tracks.sort_by(|a, b| a.artist.cmp(&b.artist).then(a.title.cmp(&b.title)));
 
     Ok(tracks)
 }
 
 fn read_library_cache(cache_path: &Path) -> Result<Vec<Track>, String> {
-    let content = fs::read_to_string(cache_path).map_err(|err| format!("无法读取歌曲缓存: {err}"))?;
+    let content =
+        fs::read_to_string(cache_path).map_err(|err| format!("无法读取歌曲缓存: {err}"))?;
     let cache: LibraryCache =
         serde_json::from_str(&content).map_err(|err| format!("无法解析歌曲缓存: {err}"))?;
     Ok(cache.tracks.into_tracks())
@@ -653,8 +662,8 @@ fn write_library_cache(
         generated_at: unix_timestamp(),
         tracks: TrackCacheEntries::ById(track_map_from_tracks(tracks)),
     };
-    let content = serde_json::to_string_pretty(&cache)
-        .map_err(|err| format!("无法序列化歌曲缓存: {err}"))?;
+    let content =
+        serde_json::to_string_pretty(&cache).map_err(|err| format!("无法序列化歌曲缓存: {err}"))?;
     if let Some(parent) = cache_path.parent() {
         fs::create_dir_all(parent).map_err(|err| format!("无法创建歌曲缓存目录: {err}"))?;
     }
@@ -767,18 +776,26 @@ fn write_group_playlists(
     let mut grouped: BTreeMap<String, Vec<Track>> = BTreeMap::new();
 
     for track in tracks {
-        grouped.entry(group_name(track)).or_default().push(track.clone());
+        grouped
+            .entry(group_name(track))
+            .or_default()
+            .push(track.clone());
     }
 
     let mut children = Vec::new();
     let group_root = PathBuf::from(&config.library_cache_dir).join(group_dir);
-    fs::create_dir_all(&group_root).map_err(|err| format!("无法创建{aggregate_name}缓存目录: {err}"))?;
+    fs::create_dir_all(&group_root)
+        .map_err(|err| format!("无法创建{aggregate_name}缓存目录: {err}"))?;
 
     for (name, mut group_tracks) in grouped {
         group_tracks.sort_by(|a, b| a.title.cmp(&b.title).then(a.path.cmp(&b.path)));
         let track_ids = track_ids_from_tracks(&group_tracks);
         let id = format!("{child_kind}_{}", short_hash(&name));
-        let cache_path = group_root.join(format!("{}_{}.json", safe_cache_name(&name), short_hash(&name)));
+        let cache_path = group_root.join(format!(
+            "{}_{}.json",
+            safe_cache_name(&name),
+            short_hash(&name)
+        ));
         let playlist = PlaylistCache {
             id,
             name: name.clone(),
@@ -788,7 +805,11 @@ fn write_group_playlists(
             track_ids,
             children: Vec::new(),
         };
-        write_json_cache(&cache_path, &playlist, &format!("{aggregate_name}细分歌单缓存"))?;
+        write_json_cache(
+            &cache_path,
+            &playlist,
+            &format!("{aggregate_name}细分歌单缓存"),
+        )?;
         children.push(playlist_summary_from_cache(&playlist, &cache_path));
     }
 
@@ -829,7 +850,9 @@ fn existing_playlist_or_default(
     playlist.name = name.to_string();
     playlist.kind = kind.to_string();
     playlist.generated_at = generated_at;
-    playlist.track_ids.retain(|track_id| all_tracks.contains_key(track_id));
+    playlist
+        .track_ids
+        .retain(|track_id| all_tracks.contains_key(track_id));
     playlist.children.clear();
     playlist.metadata = playlist_metadata(&playlist.track_ids, all_tracks, 0);
     playlist
@@ -929,8 +952,8 @@ fn record_recent_track(config: &AppConfig, path: &str) -> Result<(), String> {
         return Ok(());
     }
 
-    let content =
-        fs::read_to_string(&all_playlist_path).map_err(|err| format!("无法读取全部歌单缓存: {err}"))?;
+    let content = fs::read_to_string(&all_playlist_path)
+        .map_err(|err| format!("无法读取全部歌单缓存: {err}"))?;
     let all_playlist: AllPlaylistCache =
         serde_json::from_str(&content).map_err(|err| format!("无法解析全部歌单缓存: {err}"))?;
 
@@ -954,7 +977,9 @@ fn record_recent_track(config: &AppConfig, path: &str) -> Result<(), String> {
         .unwrap_or_else(|| empty_playlist("recent", "最近播放", "recent"));
     recent.track_ids.retain(|current| current != &track_id);
     recent.track_ids.insert(0, track_id);
-    recent.track_ids.retain(|track_id| all_playlist.tracks.contains_key(track_id));
+    recent
+        .track_ids
+        .retain(|track_id| all_playlist.tracks.contains_key(track_id));
     recent.track_ids.truncate(100);
     recent.generated_at = unix_timestamp();
     recent.metadata = playlist_metadata(&recent.track_ids, &all_playlist.tracks, 0);
@@ -963,8 +988,8 @@ fn record_recent_track(config: &AppConfig, path: &str) -> Result<(), String> {
 }
 
 fn write_json_cache<T: Serialize>(path: &Path, value: &T, label: &str) -> Result<(), String> {
-    let content = serde_json::to_string_pretty(value)
-        .map_err(|err| format!("无法序列化{label}: {err}"))?;
+    let content =
+        serde_json::to_string_pretty(value).map_err(|err| format!("无法序列化{label}: {err}"))?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|err| format!("无法创建{label}目录: {err}"))?;
     }
@@ -1031,13 +1056,19 @@ fn stop_track(engine: tauri::State<'_, AudioEngine>) -> Result<PlaybackStatus, S
 }
 
 #[tauri::command]
-fn set_volume(engine: tauri::State<'_, AudioEngine>, volume: f32) -> Result<PlaybackStatus, String> {
+fn set_volume(
+    engine: tauri::State<'_, AudioEngine>,
+    volume: f32,
+) -> Result<PlaybackStatus, String> {
     engine.send(|reply| AudioCommand::SetVolume { volume, reply })?;
     engine.status()
 }
 
 #[tauri::command]
-fn seek_track(engine: tauri::State<'_, AudioEngine>, seconds: u64) -> Result<PlaybackStatus, String> {
+fn seek_track(
+    engine: tauri::State<'_, AudioEngine>,
+    seconds: u64,
+) -> Result<PlaybackStatus, String> {
     engine.send(|reply| AudioCommand::Seek { seconds, reply })?;
     engine.status()
 }
@@ -1133,14 +1164,18 @@ fn parse_track_metadata(path: &Path, config: &AppConfig) -> TrackMetadata {
     };
 
     let properties = tagged_file.properties();
-    let tag = tagged_file.primary_tag().or_else(|| tagged_file.first_tag());
+    let tag = tagged_file
+        .primary_tag()
+        .or_else(|| tagged_file.first_tag());
 
-    let embedded_title = tag.and_then(|tag| non_empty_owned(tag.title().map(|value| value.into_owned())));
+    let embedded_title =
+        tag.and_then(|tag| non_empty_owned(tag.title().map(|value| value.into_owned())));
     let embedded_artist = tag.and_then(|tag| {
         non_empty_owned(tag.artist().map(|value| value.into_owned()))
             .or_else(|| non_empty_owned(tag.get_string(ItemKey::AlbumArtist).map(String::from)))
     });
-    let embedded_album = tag.and_then(|tag| non_empty_owned(tag.album().map(|value| value.into_owned())));
+    let embedded_album =
+        tag.and_then(|tag| non_empty_owned(tag.album().map(|value| value.into_owned())));
 
     let used_fallback =
         embedded_title.is_none() || embedded_artist.is_none() || embedded_album.is_none();
@@ -1161,7 +1196,9 @@ fn parse_track_metadata(path: &Path, config: &AppConfig) -> TrackMetadata {
         artist: embedded_artist.unwrap_or(fallback_artist),
         album: embedded_album.unwrap_or(fallback_album),
         duration: Some(properties.duration().as_secs()).filter(|duration| *duration > 0),
-        bitrate: properties.audio_bitrate().or_else(|| properties.overall_bitrate()),
+        bitrate: properties
+            .audio_bitrate()
+            .or_else(|| properties.overall_bitrate()),
         sample_rate: properties.sample_rate(),
         year: tag.and_then(|tag| tag.date().map(|date| date.year)),
         genre: tag
@@ -1182,8 +1219,11 @@ fn cache_cover(tag: &lofty::tag::Tag, audio_path: &Path, config: &AppConfig) -> 
         .map(mime_type_to_string)
         .unwrap_or("image/jpeg");
     let extension = extension_for_mime(mime);
-    let cache_path = PathBuf::from(&config.cover_cache_dir)
-        .join(format!("{}.{}", short_hash(&audio_path.to_string_lossy()), extension));
+    let cache_path = PathBuf::from(&config.cover_cache_dir).join(format!(
+        "{}.{}",
+        short_hash(&audio_path.to_string_lossy()),
+        extension
+    ));
 
     if let Some(parent) = cache_path.parent() {
         let _ = fs::create_dir_all(parent);
@@ -1341,13 +1381,55 @@ fn elapsed_seconds(snapshot: &PlaybackSnapshot) -> u64 {
     (snapshot.elapsed_offset + active_elapsed.saturating_sub(snapshot.paused_total)).as_secs()
 }
 
+fn media_shortcut_event(shortcut: &Shortcut) -> Option<&'static str> {
+    match shortcut.key {
+        Code::MediaPlayPause => Some(MEDIA_PLAY_PAUSE_EVENT),
+        Code::MediaTrackPrevious => Some(MEDIA_PREVIOUS_EVENT),
+        Code::MediaTrackNext => Some(MEDIA_NEXT_EVENT),
+        _ => None,
+    }
+}
+
+fn media_shortcut_plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
+    tauri_plugin_global_shortcut::Builder::new()
+        .with_handler(|app, shortcut, event| {
+            if event.state() != ShortcutState::Pressed {
+                return;
+            }
+
+            if let Some(event_name) = media_shortcut_event(shortcut) {
+                let _ = app.emit(event_name, shortcut.to_string());
+            }
+        })
+        .build()
+}
+
+fn register_media_shortcuts<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    let shortcuts = [
+        Shortcut::new(None, Code::MediaPlayPause),
+        Shortcut::new(None, Code::MediaTrackPrevious),
+        Shortcut::new(None, Code::MediaTrackNext),
+    ];
+
+    for shortcut in shortcuts {
+        if let Err(error) = app.global_shortcut().register(shortcut) {
+            eprintln!("无法注册系统媒体热键 {shortcut}: {error}");
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(media_shortcut_plugin())
         .plugin(tauri_plugin_opener::init())
         .manage(AudioEngine::new())
         .manage(ConfigManager::new())
+        .setup(|app| {
+            register_media_shortcuts(app.handle());
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             get_startup_state,
             scan_music_dir,

@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { storeToRefs } from "pinia";
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import repeat_one_icon from "./assets/icons/repeat-one.svg";
@@ -69,6 +70,8 @@ let visual_elapsed = 0;
 let handled_completion_path = "";
 let sidebar_resize_start_x = 0;
 let sidebar_resize_start_width = 250;
+let media_shortcut_unlisteners: UnlistenFn[] = [];
+let media_shortcut_listeners_disposed = false;
 
 const sidebar_min_width = 72;
 const sidebar_max_width = 420;
@@ -742,9 +745,37 @@ function begin_sidebar_resize(event: PointerEvent) {
   window.addEventListener("pointercancel", end_sidebar_resize);
 }
 
+async function listen_media_shortcuts() {
+  try {
+    const unlisteners = await Promise.all([
+      listen("media-play-pause", () => {
+        void toggle_playback();
+      }),
+      listen("media-previous", () => {
+        void previous_track();
+      }),
+      listen("media-next", () => {
+        void next_track();
+      }),
+    ]);
+
+    if (media_shortcut_listeners_disposed) {
+      unlisteners.forEach((unlisten) => unlisten());
+      return;
+    }
+
+    media_shortcut_unlisteners = unlisteners;
+  } catch (error) {
+    console.warn("无法监听系统媒体热键", error);
+  }
+}
+
 onBeforeUnmount(() => {
   if (status_timer) window.clearInterval(status_timer);
   if (progress_frame) window.cancelAnimationFrame(progress_frame);
+  media_shortcut_listeners_disposed = true;
+  media_shortcut_unlisteners.forEach((unlisten) => unlisten());
+  media_shortcut_unlisteners = [];
   window.removeEventListener("pointermove", resize_sidebar);
   window.removeEventListener("pointerup", end_sidebar_resize);
   window.removeEventListener("pointercancel", end_sidebar_resize);
@@ -752,7 +783,9 @@ onBeforeUnmount(() => {
 });
 
 onMounted(() => {
+  media_shortcut_listeners_disposed = false;
   load_sidebar_width();
+  void listen_media_shortcuts();
   void load_startup_state();
 });
 

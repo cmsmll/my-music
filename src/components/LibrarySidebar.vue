@@ -10,7 +10,7 @@ import statistics_icon from "../assets/icons/statistics.svg";
 import type { PlaylistCache, ViewKey } from "../types/music";
 import { icon_style } from "../utils/track";
 
-defineProps<{
+const props = defineProps<{
   active_view: ViewKey;
   has_query: boolean;
   track_count: number;
@@ -25,6 +25,7 @@ const emit = defineEmits<{
   show_view: [view: ViewKey];
   show_playlist: [playlist_id: string];
   create_playlist: [name: string];
+  reorder_playlists: [playlist_ids: string[]];
   open_playlist_menu: [playlist: PlaylistCache, event: MouseEvent];
   begin_resize: [event: PointerEvent];
 }>();
@@ -32,6 +33,8 @@ const emit = defineEmits<{
 const creating_playlist = ref(false);
 const new_playlist_name = ref("");
 const new_playlist_input = ref<HTMLInputElement | null>(null);
+const dragging_playlist_id = ref("");
+const drag_over_playlist_id = ref("");
 
 async function start_create_playlist() {
   creating_playlist.value = true;
@@ -51,6 +54,38 @@ function submit_create_playlist() {
     emit("create_playlist", name);
   }
   cancel_create_playlist();
+}
+
+function drag_playlist(playlist_id: string) {
+  dragging_playlist_id.value = playlist_id;
+}
+
+function drag_over_playlist(playlist_id: string, event: DragEvent) {
+  if (!dragging_playlist_id.value || dragging_playlist_id.value === playlist_id) return;
+  event.preventDefault();
+  drag_over_playlist_id.value = playlist_id;
+}
+
+function drop_playlist(target_playlist_id: string) {
+  const dragged_playlist_id = dragging_playlist_id.value;
+  dragging_playlist_id.value = "";
+  drag_over_playlist_id.value = "";
+
+  if (!dragged_playlist_id || dragged_playlist_id === target_playlist_id) return;
+
+  const playlist_ids = props.playlist_items.map((playlist) => playlist.id);
+  const from_index = playlist_ids.indexOf(dragged_playlist_id);
+  const to_index = playlist_ids.indexOf(target_playlist_id);
+  if (from_index < 0 || to_index < 0) return;
+
+  playlist_ids.splice(from_index, 1);
+  playlist_ids.splice(to_index, 0, dragged_playlist_id);
+  emit("reorder_playlists", playlist_ids);
+}
+
+function end_drag_playlist() {
+  dragging_playlist_id.value = "";
+  drag_over_playlist_id.value = "";
 }
 </script>
 
@@ -116,11 +151,21 @@ function submit_create_playlist() {
           v-for="playlist in playlist_items"
           :key="playlist.id"
           class="nav_item"
-          :class="{ active: active_view === 'playlist_1' && active_playlist_id === playlist.id }"
+          :class="{
+            active: active_view === 'playlist_1' && active_playlist_id === playlist.id,
+            dragging: dragging_playlist_id === playlist.id,
+            drag_over: drag_over_playlist_id === playlist.id,
+          }"
           type="button"
+          draggable="true"
           :title="String(playlist.metadata.track_count)"
           @click="emit('show_playlist', playlist.id)"
           @contextmenu.prevent="emit('open_playlist_menu', playlist, $event)"
+          @dragstart="drag_playlist(playlist.id)"
+          @dragover="drag_over_playlist(playlist.id, $event)"
+          @dragleave="drag_over_playlist_id = ''"
+          @drop.prevent="drop_playlist(playlist.id)"
+          @dragend="end_drag_playlist"
         >
           <span class="nav_icon svg_icon" :style="icon_style(playlist_grid_icon)" />
           <span>{{ playlist.name }}</span>

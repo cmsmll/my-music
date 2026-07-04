@@ -43,6 +43,10 @@ const settings_sections: { key: SettingsSectionKey; title: string }[] = [
 
 const active_section = ref<SettingsSectionKey>("library");
 const music_directory_overrides = ref<string[] | null>(null);
+const window_width = ref("");
+const window_height = ref("");
+const remember_window_size = ref("yes");
+const background_image = ref("");
 
 const active_section_title = computed(
   () => settings_sections.find((section) => section.key === active_section.value)?.title ?? "音乐库",
@@ -105,6 +109,29 @@ function reset_cache_entry(entry: CacheEntry) {
 
 function remove_music_directory(directory: string) {
   music_directory_overrides.value = music_directories.value.filter((current) => current !== directory);
+}
+
+function reset_background_image() {
+  background_image.value = "";
+}
+
+async function choose_background_image() {
+  const selected = await open({
+    directory: false,
+    multiple: false,
+    title: "选择背景图片",
+    filters: [
+      {
+        name: "图片",
+        extensions: ["png", "jpg", "jpeg", "webp", "bmp", "gif"],
+      },
+    ],
+  });
+
+  const selected_path = Array.isArray(selected) ? selected[0] : selected;
+  if (typeof selected_path !== "string" || !selected_path) return;
+
+  background_image.value = selected_path;
 }
 
 async function choose_cache_path(entry: CacheEntry) {
@@ -239,10 +266,28 @@ watch(
                 <span>音量等级</span>
                 <input value="播放器状态缓存" readonly />
               </label>
-              <label>
-                <span>页面大小</span>
-                <input value="系统窗口状态" readonly />
-              </label>
+              <div class="settings_size_group">
+                <span class="settings_group_label">页面大小</span>
+                <label>
+                  <span>宽度</span>
+                  <input v-model="window_width" placeholder="宽度" inputmode="numeric" />
+                </label>
+                <label>
+                  <span>高度</span>
+                  <input v-model="window_height" placeholder="高度" inputmode="numeric" />
+                </label>
+                <fieldset class="settings_radio_group">
+                  <legend>记录</legend>
+                  <label>
+                    <input v-model="remember_window_size" type="radio" value="yes" />
+                    <span>是</span>
+                  </label>
+                  <label>
+                    <input v-model="remember_window_size" type="radio" value="no" />
+                    <span>否</span>
+                  </label>
+                </fieldset>
+              </div>
               <label>
                 <span>侧边栏宽度</span>
                 <input value="本地界面状态" readonly />
@@ -250,6 +295,28 @@ watch(
               <label>
                 <span>背景颜色</span>
                 <input value="#ffffff" readonly />
+              </label>
+              <label>
+                <span>背景图片</span>
+                <div class="settings_input_row">
+                  <input v-model="background_image" placeholder="默认空" readonly />
+                  <button
+                    class="settings_default_button"
+                    type="button"
+                    title="恢复默认背景图片"
+                    @click="reset_background_image"
+                  >
+                    <span class="svg_icon" :style="icon_style(system_icon)" />
+                  </button>
+                  <button
+                    class="settings_file_button"
+                    type="button"
+                    title="选择背景图片"
+                    @click="choose_background_image"
+                  >
+                    <span class="svg_icon" :style="icon_style(folder_open_icon)" />
+                  </button>
+                </div>
               </label>
             </div>
           </section>

@@ -2923,6 +2923,60 @@ p {
   min-width: 0;
 }
 
+.settings_size_group {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(120px, 1fr) auto;
+  align-items: end;
+  gap: 12px;
+  min-width: 0;
+}
+
+.settings_group_label {
+  grid-column: 1 / -1;
+  color: #8b919c;
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.settings_radio_group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 40px;
+  border: 1px solid #e5e8ef;
+  border-radius: 8px;
+  margin: 0;
+  padding: 0 12px;
+  color: #505763;
+  background: #f8f9fb;
+}
+
+.settings_radio_group legend {
+  padding: 0 4px;
+  color: #8b919c;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.settings_radio_group label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #505763;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.settings_radio_group input {
+  width: auto;
+  min-height: auto;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  accent-color: #426dff;
+}
+
 .settings_default_button,
 .settings_file_button,
 .settings_delete_button {

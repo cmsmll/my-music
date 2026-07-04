@@ -1,7 +1,7 @@
 use std::fmt;
 use std::io::{self, Read, Seek, SeekFrom, Write};
 
-use aes::cipher::{BlockDecrypt, KeyInit};
+use aes::cipher::{Block, BlockCipherDecrypt, KeyInit};
 use aes::Aes128;
 use base64::engine::general_purpose;
 use base64::Engine;
@@ -259,7 +259,9 @@ fn aes_128_ecb_decrypt(data: &[u8], key: &[u8; 16]) -> Result<Vec<u8>, NcmError>
     let mut out = data.to_vec();
 
     for chunk in out.chunks_exact_mut(16) {
-        let block = aes::cipher::generic_array::GenericArray::from_mut_slice(chunk);
+        let block = <&mut Block<Aes128>>::from(
+            <&mut [u8; 16]>::try_from(chunk).map_err(|_| NcmError::InvalidKey)?,
+        );
         cipher.decrypt_block(block);
     }
 

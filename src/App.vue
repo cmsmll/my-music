@@ -2926,27 +2926,19 @@ p {
 .settings_size_group {
   display: grid;
   grid-template-columns: minmax(120px, 1fr) minmax(120px, 1fr) auto;
-  align-items: end;
   gap: 12px;
   min-width: 0;
-}
-
-.settings_group_label {
-  grid-column: 1 / -1;
-  color: #8b919c;
-  font-size: 0.84rem;
-  font-weight: 800;
 }
 
 .settings_radio_group {
   display: flex;
   align-items: center;
   gap: 12px;
-  min-height: 40px;
+  align-self: stretch;
   border: 1px solid #e5e8ef;
   border-radius: 8px;
   margin: 0;
-  padding: 0 12px;
+  padding: 14px 12px 8px;
   color: #505763;
   background: #f8f9fb;
 }

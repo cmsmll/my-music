@@ -267,7 +267,6 @@ watch(
                 <input value="播放器状态缓存" readonly />
               </label>
               <div class="settings_size_group">
-                <span class="settings_group_label">页面大小</span>
                 <label>
                   <span>宽度</span>
                   <input v-model="window_width" placeholder="宽度" inputmode="numeric" />

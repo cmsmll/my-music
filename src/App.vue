@@ -2937,16 +2937,24 @@ p {
 
 .settings_window_size_row {
   display: grid;
-  grid-template-columns: auto 30px auto auto 30px auto;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: center;
-  justify-content: start;
-  gap: 16px;
+  gap: 24px;
+  min-width: 0;
+}
+
+.settings_window_size_set {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 30px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
   min-width: 0;
 }
 
 .settings_inline_field {
   display: flex !important;
   align-items: center;
+  justify-content: space-between;
   gap: 8px !important;
   min-width: 0;
   color: #1e2026 !important;
@@ -2956,7 +2964,7 @@ p {
 }
 
 .settings_inline_field input {
-  width: 110px;
+  width: 104px;
   min-height: 40px;
   border-radius: 8px;
   padding: 10px 12px;

@@ -271,28 +271,32 @@ watch(
               <div class="settings_window_size_group">
                 <strong>窗口大小</strong>
                 <div class="settings_window_size_row">
-                  <label class="settings_inline_field">
-                    <span>默认宽度：</span>
-                    <input v-model="default_window_width" inputmode="numeric" />
-                  </label>
-                  <label class="settings_mode_radio" title="使用默认宽高">
-                    <input v-model="window_size_mode" type="radio" value="default" />
-                  </label>
-                  <label class="settings_inline_field">
-                    <span>默认高度：</span>
-                    <input v-model="default_window_height" inputmode="numeric" />
-                  </label>
-                  <label class="settings_inline_field">
-                    <span>动态宽度：</span>
-                    <input v-model="dynamic_window_width" inputmode="numeric" />
-                  </label>
-                  <label class="settings_mode_radio" title="使用动态宽高">
-                    <input v-model="window_size_mode" type="radio" value="dynamic" />
-                  </label>
-                  <label class="settings_inline_field">
-                    <span>动态高度：</span>
-                    <input v-model="dynamic_window_height" inputmode="numeric" />
-                  </label>
+                  <div class="settings_window_size_set">
+                    <label class="settings_inline_field">
+                      <span>默认宽度：</span>
+                      <input v-model="default_window_width" inputmode="numeric" />
+                    </label>
+                    <label class="settings_mode_radio" title="使用默认宽高">
+                      <input v-model="window_size_mode" type="radio" value="default" />
+                    </label>
+                    <label class="settings_inline_field">
+                      <span>默认高度：</span>
+                      <input v-model="default_window_height" inputmode="numeric" />
+                    </label>
+                  </div>
+                  <div class="settings_window_size_set">
+                    <label class="settings_inline_field">
+                      <span>动态宽度：</span>
+                      <input v-model="dynamic_window_width" inputmode="numeric" />
+                    </label>
+                    <label class="settings_mode_radio" title="使用动态宽高">
+                      <input v-model="window_size_mode" type="radio" value="dynamic" />
+                    </label>
+                    <label class="settings_inline_field">
+                      <span>动态高度：</span>
+                      <input v-model="dynamic_window_height" inputmode="numeric" />
+                    </label>
+                  </div>
                 </div>
               </div>
               <label>

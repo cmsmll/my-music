@@ -139,6 +139,20 @@ pnpm build
 pnpm release
 ```
 
+`pnpm release` 默认递增 patch 版本，并同步更新 `package.json`、`src-tauri/Cargo.toml` 和 `src-tauri/tauri.conf.json` 后执行 Tauri 打包。也可以指定版本类型或明确版本号：
+
+```bash
+pnpm release minor
+pnpm release major
+pnpm release 1.2.3
+```
+
+如果只想打包、不更新版本号：
+
+```bash
+pnpm tauri:build
+```
+
 Rust 检查：
 
 ```bash

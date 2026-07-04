@@ -8,7 +8,8 @@
     "build": "vue-tsc --noEmit && vite build --mode production",
     "build:release": "vue-tsc --noEmit && vite build --mode production",
     "preview": "vite preview",
-    "release": "tauri build",
+    "release": "node scripts/release.mjs",
+    "tauri:build": "tauri build",
     "tauri": "tauri"
   },
   "dependencies": {

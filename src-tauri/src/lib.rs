@@ -956,8 +956,6 @@ fn load_my_playlist_caches(config: &AppConfig) -> Result<Vec<PlaylistCache>, Str
     let mut playlists = Vec::new();
     if let Some(playlist) = load_my_playlist_cache(config)? {
         playlists.push(playlist);
-    } else {
-        playlists.push(empty_playlist("my_playlist", "我的歌单", "user"));
     }
 
     let root = PathBuf::from(&config.my_playlist_cache_dir);
@@ -1271,13 +1269,20 @@ fn delete_user_playlist(
     config_manager: tauri::State<'_, ConfigManager>,
     playlist_id: String,
 ) -> Result<PlaylistBundle, String> {
-    if playlist_id == "my_playlist" {
-        return Err("默认歌单不能删除".to_string());
-    }
-
     let config = config_manager.get()?;
     let playlist_path = user_playlist_cache_path(&config, &playlist_id)?;
-    fs::remove_file(&playlist_path).map_err(|err| format!("无法删除歌单缓存: {err}"))?;
+    if playlist_path.exists() {
+        fs::remove_file(&playlist_path).map_err(|err| format!("无法删除歌单缓存: {err}"))?;
+    }
+
+    if playlist_id == "my_playlist" {
+        let fallback_path = playlist_cache_path(&config, "my_playlist.json");
+        if fallback_path.exists() {
+            fs::remove_file(&fallback_path)
+                .map_err(|err| format!("无法删除旧版默认歌单缓存: {err}"))?;
+        }
+    }
+
     load_playlist_bundle(&config)
 }
 

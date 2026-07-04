@@ -194,9 +194,7 @@ const playback_mode_button = computed(() => {
 });
 
 const user_playlist_items = computed<PlaylistCache[]>(() => {
-  return playlists.value.my_playlists?.length
-    ? playlists.value.my_playlists
-    : [playlists.value.my_playlist];
+  return playlists.value.my_playlists ?? [];
 });
 
 const selected_user_playlist = computed(() => {
@@ -1002,7 +1000,7 @@ async function rename_context_playlist() {
 }
 
 function context_playlist_can_be_deleted() {
-  return playlist_context_menu.value?.playlist.id !== "my_playlist";
+  return Boolean(playlist_context_menu.value?.playlist);
 }
 
 async function delete_context_playlist() {
@@ -1024,7 +1022,13 @@ async function delete_context_playlist() {
 
     if (deleted_selected_playlist) {
       ensure_selected_playlist();
-      if (active_view.value === "playlist_1") show_playlist(selected_user_playlist.value.id);
+      if (active_view.value === "playlist_1") {
+        if (user_playlist_items.value.length) {
+          show_playlist(selected_user_playlist.value.id);
+        } else {
+          show_view("all");
+        }
+      }
     }
     if (queue_source.value.type === "playlist" && queue_source.value.id === deleted_playlist_id) {
       set_queue_for_current_view();

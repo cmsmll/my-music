@@ -1,0 +1,170 @@
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct Track {
+    pub(crate) id: String,
+    pub(crate) title: String,
+    pub(crate) artist: String,
+    pub(crate) album: String,
+    pub(crate) path: String,
+    pub(crate) duration: Option<u64>,
+    pub(crate) cover_cache_path: Option<String>,
+    pub(crate) lyrics_cache_path: String,
+    pub(crate) metadata: TrackMetadata,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct TrackMetadata {
+    pub(crate) title: String,
+    pub(crate) artist: String,
+    pub(crate) album: String,
+    pub(crate) duration: Option<u64>,
+    pub(crate) bitrate: Option<u32>,
+    pub(crate) sample_rate: Option<u32>,
+    pub(crate) year: Option<u16>,
+    pub(crate) genre: Vec<String>,
+    pub(crate) track_number: Option<u32>,
+    pub(crate) disk_number: Option<u32>,
+    pub(crate) cover_cache_path: Option<String>,
+    pub(crate) lyrics_cache_path: String,
+    pub(crate) metadata_source: MetadataSource,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum MetadataSource {
+    Embedded,
+    EmbeddedWithFilenameFallback,
+    Filename,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct AppConfig {
+    pub(crate) music_directory: Vec<String>,
+    pub(crate) library_cache_dir: String,
+    pub(crate) cover_cache_dir: String,
+    pub(crate) lyrics_cache_dir: String,
+    pub(crate) my_playlist_cache_dir: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct ConfigFile {
+    pub(crate) music_directory: Option<MusicDirectoryConfig>,
+    pub(crate) library_cache_dir: Option<String>,
+    pub(crate) cover_cache_dir: Option<String>,
+    pub(crate) lyrics_cache_dir: Option<String>,
+    pub(crate) my_playlist_cache_dir: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub(crate) enum MusicDirectoryConfig {
+    Single(String),
+    Multiple(Vec<String>),
+}
+
+impl MusicDirectoryConfig {
+    pub(crate) fn into_vec(self) -> Vec<String> {
+        match self {
+            Self::Single(directory) => vec![directory],
+            Self::Multiple(directories) => directories,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct LibraryCache {
+    pub(crate) music_directory: String,
+    pub(crate) cover_cache_dir: String,
+    pub(crate) lyrics_cache_dir: String,
+    pub(crate) generated_at: u64,
+    pub(crate) tracks: TrackCacheEntries,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub(crate) enum TrackCacheEntries {
+    ById(BTreeMap<String, Track>),
+    List(Vec<Track>),
+}
+
+impl TrackCacheEntries {
+    pub(crate) fn into_tracks(self) -> Vec<Track> {
+        match self {
+            Self::ById(tracks) => tracks.into_values().collect(),
+            Self::List(tracks) => tracks,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct PlaylistSummary {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) kind: String,
+    pub(crate) cache_path: String,
+    pub(crate) track_count: usize,
+    pub(crate) total_duration: u64,
+    pub(crate) cover_cache_path: Option<String>,
+    #[serde(default)]
+    pub(crate) track_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct PlaylistMetadata {
+    pub(crate) track_count: usize,
+    pub(crate) total_duration: u64,
+    pub(crate) item_count: usize,
+    pub(crate) cover_cache_path: Option<String>,
+    #[serde(default)]
+    pub(crate) index: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct PlaylistCache {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) kind: String,
+    pub(crate) generated_at: u64,
+    pub(crate) metadata: PlaylistMetadata,
+    pub(crate) track_ids: Vec<String>,
+    pub(crate) children: Vec<PlaylistSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct AllPlaylistCache {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) kind: String,
+    pub(crate) music_directory: Vec<String>,
+    pub(crate) cover_cache_dir: String,
+    pub(crate) lyrics_cache_dir: String,
+    pub(crate) generated_at: u64,
+    pub(crate) tracks: BTreeMap<String, Track>,
+    pub(crate) playlists: Vec<PlaylistSummary>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct PlaylistBundle {
+    pub(crate) recent: PlaylistCache,
+    pub(crate) my_playlist: PlaylistCache,
+    pub(crate) my_playlists: Vec<PlaylistCache>,
+    pub(crate) artists: PlaylistCache,
+    pub(crate) albums: PlaylistCache,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct AppStartup {
+    pub(crate) config: AppConfig,
+    pub(crate) tracks: Vec<Track>,
+    pub(crate) playlists: PlaylistBundle,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct PlaybackStatus {
+    pub(crate) path: Option<String>,
+    pub(crate) playing: bool,
+    pub(crate) volume: f32,
+    pub(crate) elapsed: u64,
+}

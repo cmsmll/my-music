@@ -1,13 +1,14 @@
 use crate::audio::{AudioCommand, AudioEngine};
 use crate::config::ConfigManager;
 use crate::library::{load_or_scan_all_directories, scan_tracks, write_library_cache};
-use crate::models::{AppStartup, PlaybackStatus, PlaylistBundle, Track};
+use crate::models::{AppStartup, PlayStatistics, PlaybackStatus, PlaylistBundle, Track};
 use crate::playlist::{
     empty_playlist, ensure_unique_playlist_name, load_my_playlist_caches, load_playlist_bundle,
     my_playlist_cache_path, next_user_playlist_index, playlist_cache_path, read_all_playlist_cache,
     read_playlist_cache, read_user_playlist_for_id, record_recent_track, unique_user_playlist_id,
     update_user_playlist_metadata, user_playlist_cache_path,
 };
+use crate::statistics::{read_play_statistics, record_track_listening_seconds, record_track_play};
 use crate::utils::{safe_cache_name, short_hash, unix_timestamp, write_json_cache};
 use std::{
     fs,
@@ -249,11 +250,23 @@ pub(crate) fn play_track(
     config_manager: tauri::State<'_, ConfigManager>,
     path: String,
 ) -> Result<PlaybackStatus, String> {
+    let requested_path = path.clone();
     engine.send(|reply| AudioCommand::Play { path, reply })?;
+    let status = engine.status()?;
     if let Ok(config) = config_manager.get() {
-        let _ = record_recent_track(&config, &engine.status()?.path.unwrap_or_default());
+        let active_path = status.path.as_deref().unwrap_or(&requested_path);
+        let _ = record_recent_track(&config, active_path);
+        if let Ok(all_playlist) = read_all_playlist_cache(&config) {
+            if let Some(track) = all_playlist
+                .tracks
+                .values()
+                .find(|track| track.path == active_path || track.id == active_path)
+            {
+                let _ = record_track_play(&config, track);
+            }
+        }
     }
-    engine.status()
+    Ok(status)
 }
 
 /// 暂停当前播放的音频并返回最新播放状态。
@@ -305,4 +318,28 @@ pub(crate) fn get_playback_status(
     engine: tauri::State<'_, AudioEngine>,
 ) -> Result<PlaybackStatus, String> {
     engine.status()
+}
+
+/// 获取播放统计缓存，用于统计页展示累计播放、聆听时长和常听歌曲。
+#[tauri::command]
+pub(crate) fn get_play_statistics(
+    config_manager: tauri::State<'_, ConfigManager>,
+) -> Result<PlayStatistics, String> {
+    let config = config_manager.get()?;
+    read_play_statistics(&config)
+}
+
+/// 记录指定歌曲本次聆听的秒数，并写入播放统计缓存。
+#[tauri::command]
+pub(crate) fn record_listening_time(
+    config_manager: tauri::State<'_, ConfigManager>,
+    track_id: String,
+    seconds: u64,
+) -> Result<PlayStatistics, String> {
+    let config = config_manager.get()?;
+    let all_playlist = read_all_playlist_cache(&config).ok();
+    let track = all_playlist
+        .as_ref()
+        .and_then(|playlist| playlist.tracks.get(&track_id));
+    record_track_listening_seconds(&config, track, &track_id, seconds)
 }

@@ -32,7 +32,7 @@ pub(crate) fn load_or_scan_all_directories(
         }
 
         let cache_path = config_manager.library_cache_path(dir)?;
-        let tracks = if cache_path.exists() {
+        let mut tracks = if cache_path.exists() {
             read_library_cache(&cache_path).unwrap_or_else(|_| {
                 let tracks = scan_tracks(Path::new(dir), config).unwrap_or_default();
                 let _ = write_library_cache(&cache_path, dir, config, &tracks);
@@ -43,6 +43,10 @@ pub(crate) fn load_or_scan_all_directories(
             write_library_cache(&cache_path, dir, config, &tracks)?;
             tracks
         };
+
+        if fill_missing_file_sizes(&mut tracks) {
+            let _ = write_library_cache(&cache_path, dir, config, &tracks);
+        }
 
         all_tracks.extend(tracks);
     }
@@ -122,10 +126,25 @@ pub(crate) fn track_from_path(path: &Path, config: &AppConfig) -> Track {
         album: metadata.album.clone(),
         path: path.to_string_lossy().to_string(),
         duration: metadata.duration,
+        file_size: fs::metadata(path).ok().map(|metadata| metadata.len()),
         cover_cache_path: metadata.cover_cache_path.clone(),
         lyrics_cache_path: metadata.lyrics_cache_path.clone(),
         metadata,
     }
+}
+
+fn fill_missing_file_sizes(tracks: &mut [Track]) -> bool {
+    let mut changed = false;
+    for track in tracks {
+        if track.file_size.is_some() {
+            continue;
+        }
+        track.file_size = fs::metadata(&track.path)
+            .ok()
+            .map(|metadata| metadata.len());
+        changed = true;
+    }
+    changed
 }
 
 pub(crate) fn parse_track_metadata(path: &Path, config: &AppConfig) -> TrackMetadata {

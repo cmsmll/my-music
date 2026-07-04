@@ -5,6 +5,7 @@ export type Track = {
   album: string;
   path: string;
   duration?: number | null;
+  file_size?: number | null;
   cover_cache_path?: string | null;
   lyrics_cache_path: string;
   metadata: TrackMetadata;
@@ -34,6 +35,7 @@ export type AppConfig = {
   lyrics_cache_dir: string;
   my_playlist_cache_dir: string;
   log_dir: string;
+  play_statistics_cache_path: string;
 };
 
 export type AppStartup = {
@@ -117,4 +119,21 @@ export type PlaylistBundle = {
   my_playlists: PlaylistCache[];
   artists: PlaylistCache;
   albums: PlaylistCache;
+};
+
+export type TrackPlayStatistic = {
+  track_id: string;
+  title: string;
+  artist: string;
+  album: string;
+  path: string;
+  play_count: number;
+  listening_seconds: number;
+  last_played_at: number;
+};
+
+export type PlayStatistics = {
+  total_play_count: number;
+  total_listening_seconds: number;
+  tracks: Record<string, TrackPlayStatistic>;
 };

@@ -24,6 +24,11 @@ impl ConfigManager {
                 .to_string_lossy()
                 .to_string(),
             log_dir: app_dir.join("logs").to_string_lossy().to_string(),
+            play_statistics_cache_path: app_dir
+                .join("library-cache")
+                .join("play-statistics.json")
+                .to_string_lossy()
+                .to_string(),
         };
 
         let config = fs::read_to_string(&config_path)
@@ -83,6 +88,9 @@ impl ConfigManager {
         fs::create_dir_all(&config.my_playlist_cache_dir)
             .map_err(|err| format!("无法创建我的歌单缓存目录: {err}"))?;
         fs::create_dir_all(&config.log_dir).map_err(|err| format!("无法创建日志目录: {err}"))?;
+        if let Some(parent) = Path::new(&config.play_statistics_cache_path).parent() {
+            fs::create_dir_all(parent).map_err(|err| format!("无法创建播放统计缓存目录: {err}"))?;
+        }
         Ok(())
     }
 
@@ -122,5 +130,8 @@ pub(crate) fn parse_config(content: &str, default_config: &AppConfig) -> Option<
             log_dir: config
                 .log_dir
                 .unwrap_or_else(|| default_config.log_dir.clone()),
+            play_statistics_cache_path: config
+                .play_statistics_cache_path
+                .unwrap_or_else(|| default_config.play_statistics_cache_path.clone()),
         })
 }

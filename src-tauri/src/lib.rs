@@ -5,6 +5,7 @@ mod library;
 mod media_shortcuts;
 mod models;
 mod playlist;
+mod statistics;
 mod utils;
 
 use audio::AudioEngine;
@@ -49,7 +50,9 @@ pub fn run() {
             commands::stop_track,
             commands::set_volume,
             commands::seek_track,
-            commands::get_playback_status
+            commands::get_playback_status,
+            commands::get_play_statistics,
+            commands::record_listening_time
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

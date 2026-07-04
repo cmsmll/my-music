@@ -27,6 +27,22 @@ export function format_duration(seconds?: number | null) {
   return `${minutes}:${String(rest).padStart(2, "0")}`;
 }
 
+export function format_file_size(bytes?: number | null) {
+  if (!bytes) return "0 B";
+
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unit_index = 0;
+
+  while (value >= 1024 && unit_index < units.length - 1) {
+    value /= 1024;
+    unit_index += 1;
+  }
+
+  const precision = value >= 10 || unit_index === 0 ? 0 : 1;
+  return `${value.toFixed(precision)} ${units[unit_index]}`;
+}
+
 export function cover_src(track?: Track | null) {
   return track?.cover_cache_path ? convertFileSrc(track.cover_cache_path) : "";
 }

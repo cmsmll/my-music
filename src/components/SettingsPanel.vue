@@ -57,6 +57,10 @@ const emit = defineEmits<{
           <span>log_dir</span>
           <input :value="app_config?.log_dir ?? ''" readonly />
         </label>
+        <label>
+          <span>play_statistics_cache_path</span>
+          <input :value="app_config?.play_statistics_cache_path ?? ''" readonly />
+        </label>
       </section>
     </aside>
   </div>

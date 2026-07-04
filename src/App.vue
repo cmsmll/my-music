@@ -23,6 +23,7 @@ import type {
   ArtistItem,
   PlaybackMode,
   PlaybackModeItem,
+  PlayStatistics,
   PlaybackStatus,
   PlaylistBundle,
   PlaylistCache,
@@ -74,6 +75,7 @@ const error_message = ref("");
 const query = ref("");
 const app_config = ref<AppConfig | null>(null);
 const playlists = ref<PlaylistBundle>(empty_playlist_bundle());
+const play_statistics = ref<PlayStatistics>(empty_play_statistics());
 const active_view = ref<ViewKey>("all");
 const selected_artist = ref("");
 const selected_album = ref("");
@@ -105,6 +107,8 @@ let media_shortcut_unlisteners: UnlistenFn[] = [];
 let media_shortcut_listeners_disposed = false;
 let restored_playback_pending = false;
 let restoring_player_cache = false;
+let listening_track_id: string | null = null;
+let listening_started_at = 0;
 
 const sidebar_min_width = 72;
 const sidebar_max_width = 420;
@@ -183,6 +187,10 @@ const artist_items = computed<ArtistItem[]>(() => {
 
 const total_duration = computed(() =>
   tracks.value.reduce((total, track) => total + (track.duration ?? 0), 0),
+);
+
+const total_size = computed(() =>
+  tracks.value.reduce((total, track) => total + (track.file_size ?? 0), 0),
 );
 
 const sidebar_compact = computed(() => sidebar_width.value < sidebar_compact_width);
@@ -267,6 +275,7 @@ async function load_startup_state() {
     const startup = await invoke<AppStartup>("get_startup_state");
     app_config.value = startup.config;
     playlists.value = startup.playlists;
+    await load_play_statistics();
     ensure_selected_playlist();
     restoring_player_cache = true;
     player_queue.set_library_tracks(startup.tracks);
@@ -286,11 +295,14 @@ async function load_startup_state() {
 
 async function play(track: Track) {
   try {
+    await flush_listening_time();
     restored_playback_pending = false;
     handled_completion_path = "";
     clear_pending_seek();
     apply_playback_status(await invoke<PlaybackStatus>("play_track", { path: track.path }));
     add_recent_track(track);
+    await load_play_statistics();
+    start_listening_session(track);
     start_status_polling();
   } catch (error) {
     error_message.value = String(error);
@@ -315,9 +327,15 @@ async function toggle_playback() {
     }
   }
 
-  apply_playback_status(
-    await invoke<PlaybackStatus>(status.value.playing ? "pause_track" : "resume_track"),
-  );
+  const was_playing = status.value.playing;
+  if (was_playing) {
+    await flush_listening_time();
+  }
+
+  apply_playback_status(await invoke<PlaybackStatus>(was_playing ? "pause_track" : "resume_track"));
+  if (!was_playing && status.value.playing && current_track.value) {
+    start_listening_session(current_track.value);
+  }
   start_status_polling();
 }
 
@@ -335,11 +353,42 @@ async function next_track() {
 
 async function stop_playback() {
   try {
+    await flush_listening_time();
     restored_playback_pending = false;
     clear_pending_seek();
     apply_playback_status(await invoke<PlaybackStatus>("stop_track"));
   } catch (error) {
     error_message.value = String(error);
+  }
+}
+
+async function load_play_statistics() {
+  play_statistics.value = await invoke<PlayStatistics>("get_play_statistics");
+}
+
+function start_listening_session(track: Track) {
+  if (!status.value.playing || is_missing_track(track)) return;
+  listening_track_id = track.id;
+  listening_started_at = performance.now();
+}
+
+async function flush_listening_time() {
+  if (!listening_track_id || !listening_started_at) return;
+
+  const track_id = listening_track_id;
+  const seconds = Math.floor((performance.now() - listening_started_at) / 1000);
+  listening_track_id = null;
+  listening_started_at = 0;
+
+  if (seconds <= 0) return;
+
+  try {
+    play_statistics.value = await invoke<PlayStatistics>("record_listening_time", {
+      trackId: track_id,
+      seconds,
+    });
+  } catch (error) {
+    console.warn("无法记录聆听时长", error);
   }
 }
 
@@ -839,6 +888,7 @@ function missing_track_from_id(track_id: string): Track {
     album: "",
     path: "",
     duration: null,
+    file_size: null,
     cover_cache_path: null,
     lyrics_cache_path: "",
     missing: true,
@@ -857,6 +907,14 @@ function missing_track_from_id(track_id: string): Track {
       lyrics_cache_path: "",
       metadata_source: "filename",
     },
+  };
+}
+
+function empty_play_statistics(): PlayStatistics {
+  return {
+    total_play_count: 0,
+    total_listening_seconds: 0,
+    tracks: {},
   };
 }
 
@@ -1254,6 +1312,7 @@ async function listen_media_shortcuts() {
 
 function handle_before_unload() {
   save_player_cache();
+  void flush_listening_time();
 }
 
 function close_track_context_menu_on_pointer(event: PointerEvent) {
@@ -1273,6 +1332,7 @@ function close_track_context_menu_on_key(event: KeyboardEvent) {
 
 onBeforeUnmount(() => {
   save_player_cache();
+  void flush_listening_time();
   if (status_timer) window.clearInterval(status_timer);
   if (progress_frame) window.cancelAnimationFrame(progress_frame);
   media_shortcut_listeners_disposed = true;
@@ -1387,6 +1447,8 @@ watch([current_queue, queue_source, playback_mode], () => {
         :album_count="album_count"
         :artist_count="artist_count"
         :total_duration="total_duration"
+        :total_size="total_size"
+        :play_statistics="play_statistics"
         @play_track="play_track_from_view"
         @open_track_menu="open_track_context_menu"
         @open_artist="open_artist_playlist"
@@ -2230,26 +2292,108 @@ p {
 
 .stats_view {
   display: grid;
-  grid-template-columns: repeat(4, minmax(120px, 1fr));
-  gap: 16px;
+  align-content: start;
+  gap: 24px;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 18px 8px;
 }
 
-.stats_view article {
+.stats_section {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.stats_section h2 {
+  margin: 0;
+  color: #1e2026;
+  font-size: 1.18rem;
+  font-weight: 900;
+}
+
+.stats_card_grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(130px, 1fr));
+  gap: 16px;
+}
+
+.music_stats_grid {
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
+}
+
+.stats_card_grid article {
   display: grid;
   gap: 8px;
+  min-width: 0;
   border: 1px solid #eef0f4;
   border-radius: 8px;
-  padding: 24px;
+  padding: 20px;
   background: #fbfcfe;
 }
 
-.stats_view strong {
-  font-size: 1.8rem;
+.stats_card_grid strong {
+  overflow: hidden;
+  color: #1e2026;
+  font-size: 1.55rem;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.stats_view span {
+.stats_card_grid span {
   color: #8b919c;
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
+.most_played_section {
+  padding-bottom: 18px;
+}
+
+.most_played_list {
+  display: grid;
+  gap: 4px;
+}
+
+.most_played_row {
+  display: grid;
+  grid-template-columns: 52px minmax(180px, 1fr) minmax(140px, 0.7fr) 76px;
+  align-items: center;
+  gap: 16px;
+  min-height: 54px;
+  border-radius: 8px;
+  padding: 6px 12px 6px 0;
+  background: transparent;
+}
+
+.most_played_row:hover {
+  background: #f5f7ff;
+}
+
+.most_played_song {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.most_played_song strong,
+.most_played_song small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.most_played_song small,
+.play_count_cell {
+  color: #8b919c;
+  font-size: 0.9rem;
+}
+
+.play_count_cell {
+  justify-self: end;
+  font-weight: 800;
 }
 
 .spinning_cover {

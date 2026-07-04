@@ -9,6 +9,8 @@ pub(crate) struct Track {
     pub(crate) album: String,
     pub(crate) path: String,
     pub(crate) duration: Option<u64>,
+    #[serde(default)]
+    pub(crate) file_size: Option<u64>,
     pub(crate) cover_cache_path: Option<String>,
     pub(crate) lyrics_cache_path: String,
     pub(crate) metadata: TrackMetadata,
@@ -47,6 +49,7 @@ pub(crate) struct AppConfig {
     pub(crate) lyrics_cache_dir: String,
     pub(crate) my_playlist_cache_dir: String,
     pub(crate) log_dir: String,
+    pub(crate) play_statistics_cache_path: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -57,6 +60,7 @@ pub(crate) struct ConfigFile {
     pub(crate) lyrics_cache_dir: Option<String>,
     pub(crate) my_playlist_cache_dir: Option<String>,
     pub(crate) log_dir: Option<String>,
+    pub(crate) play_statistics_cache_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -169,4 +173,24 @@ pub(crate) struct PlaybackStatus {
     pub(crate) playing: bool,
     pub(crate) volume: f32,
     pub(crate) elapsed: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub(crate) struct PlayStatistics {
+    pub(crate) total_play_count: u64,
+    pub(crate) total_listening_seconds: u64,
+    #[serde(default)]
+    pub(crate) tracks: BTreeMap<String, TrackPlayStatistic>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct TrackPlayStatistic {
+    pub(crate) track_id: String,
+    pub(crate) title: String,
+    pub(crate) artist: String,
+    pub(crate) album: String,
+    pub(crate) path: String,
+    pub(crate) play_count: u64,
+    pub(crate) listening_seconds: u64,
+    pub(crate) last_played_at: u64,
 }

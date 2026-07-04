@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import type { AlbumItem, ArtistItem, QueueSource, Track, ViewKey } from "../types/music";
-import { cover_src, display_album, display_artist, display_title, format_duration, is_missing_track } from "../utils/track";
+import { computed } from "vue";
+import type { AlbumItem, ArtistItem, PlayStatistics, QueueSource, Track, TrackPlayStatistic, ViewKey } from "../types/music";
+import { cover_src, display_album, display_artist, display_title, format_duration, format_file_size, is_missing_track } from "../utils/track";
 
 const props = defineProps<{
   active_view: ViewKey;
@@ -20,6 +21,8 @@ const props = defineProps<{
   album_count: number;
   artist_count: number;
   total_duration: number;
+  total_size: number;
+  play_statistics: PlayStatistics;
 }>();
 
 const emit = defineEmits<{
@@ -90,6 +93,48 @@ function album_card_should_spin(name: string) {
 function play_track(track: Track) {
   if (is_missing_track(track)) return;
   emit("play_track", track);
+}
+
+const most_played_tracks = computed(() =>
+  Object.values(props.play_statistics.tracks)
+    .filter((track) => track.play_count > 0)
+    .sort((left, right) => {
+      if (right.play_count !== left.play_count) return right.play_count - left.play_count;
+      return right.listening_seconds - left.listening_seconds;
+    })
+    .slice(0, 20),
+);
+
+const favorite_artist = computed(() => favorite_group("artist"));
+const favorite_album = computed(() => favorite_group("album"));
+
+function favorite_group(field: "artist" | "album") {
+  const groups = new Map<string, number>();
+
+  for (const track of Object.values(props.play_statistics.tracks)) {
+    const name = (field === "artist" ? track.artist : track.album).trim();
+    const fallback = field === "artist" ? "未知歌手" : "未知专辑";
+    groups.set(name || fallback, (groups.get(name || fallback) ?? 0) + track.play_count);
+  }
+
+  return (
+    Array.from(groups.entries()).sort((left, right) => {
+      if (right[1] !== left[1]) return right[1] - left[1];
+      return left[0].localeCompare(right[0], "zh-Hans-CN");
+    })[0]?.[0] ?? "--"
+  );
+}
+
+function statistic_track_title(track: TrackPlayStatistic) {
+  return track.title.trim() || track.track_id;
+}
+
+function statistic_track_artist(track: TrackPlayStatistic) {
+  return track.artist.trim() || "未知歌手";
+}
+
+function format_stat_duration(seconds: number) {
+  return seconds > 0 ? format_duration(seconds) : "0:00";
 }
 </script>
 
@@ -197,22 +242,69 @@ function play_track(track: Track) {
     </section>
 
     <section v-else-if="active_view === 'stats'" class="stats_view">
-      <article>
-        <strong>{{ tracks.length }}</strong>
-        <span>歌曲</span>
-      </article>
-      <article>
-        <strong>{{ album_count }}</strong>
-        <span>专辑</span>
-      </article>
-      <article>
-        <strong>{{ artist_count }}</strong>
-        <span>歌手</span>
-      </article>
-      <article>
-        <strong>{{ format_duration(total_duration) }}</strong>
-        <span>总时长</span>
-      </article>
+      <section class="stats_section">
+        <h2>音乐统计</h2>
+        <div class="stats_card_grid music_stats_grid">
+          <article>
+            <strong>{{ tracks.length }}</strong>
+            <span>歌曲</span>
+          </article>
+          <article>
+            <strong>{{ artist_count }}</strong>
+            <span>歌手</span>
+          </article>
+          <article>
+            <strong>{{ album_count }}</strong>
+            <span>专辑</span>
+          </article>
+          <article>
+            <strong>{{ format_stat_duration(total_duration) }}</strong>
+            <span>总时长</span>
+          </article>
+          <article>
+            <strong>{{ format_file_size(total_size) }}</strong>
+            <span>总大小</span>
+          </article>
+        </div>
+      </section>
+
+      <section class="stats_section">
+        <h2>播放统计</h2>
+        <div class="stats_card_grid">
+          <article>
+            <strong>{{ play_statistics.total_play_count }}</strong>
+            <span>累计播放</span>
+          </article>
+          <article>
+            <strong>{{ format_stat_duration(play_statistics.total_listening_seconds) }}</strong>
+            <span>聆听时长</span>
+          </article>
+          <article>
+            <strong :title="favorite_artist">{{ favorite_artist }}</strong>
+            <span>最爱歌手</span>
+          </article>
+          <article>
+            <strong :title="favorite_album">{{ favorite_album }}</strong>
+            <span>最爱专辑</span>
+          </article>
+        </div>
+      </section>
+
+      <section class="stats_section most_played_section">
+        <h2>最常播放</h2>
+        <div v-if="most_played_tracks.length" class="most_played_list">
+          <div v-for="(track, index) in most_played_tracks" :key="track.track_id" class="most_played_row">
+            <span class="index_cell">{{ index + 1 }}</span>
+            <span class="most_played_song">
+              <strong :title="statistic_track_title(track)">{{ statistic_track_title(track) }}</strong>
+              <small :title="statistic_track_artist(track)">{{ statistic_track_artist(track) }}</small>
+            </span>
+            <span class="album_cell">{{ track.album || "未知专辑" }}</span>
+            <span class="play_count_cell">{{ track.play_count }} 次</span>
+          </div>
+        </div>
+        <p v-else class="empty_state">播放歌曲后会在这里展示最常播放。</p>
+      </section>
     </section>
 
     <section v-else class="placeholder_view">

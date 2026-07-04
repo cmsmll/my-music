@@ -1663,18 +1663,23 @@ p {
   opacity: 0.45;
 }
 
-.nav_item[draggable="true"] {
+.playlist_item {
   cursor: grab;
+  touch-action: none;
 }
 
-.nav_item[draggable="true"]:active {
+.playlist_item:active {
   cursor: grabbing;
 }
 
 .nav_item.drag_over {
   color: #426dff;
   background: #f1f5ff;
-  box-shadow: inset 3px 0 0 #426dff;
+  box-shadow: inset 0 3px 0 #426dff;
+}
+
+.nav_item.drag_over_after {
+  box-shadow: inset 0 -3px 0 #426dff;
 }
 
 .nav_icon {

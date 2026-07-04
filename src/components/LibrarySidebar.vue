@@ -35,6 +35,14 @@ const new_playlist_name = ref("");
 const new_playlist_input = ref<HTMLInputElement | null>(null);
 const dragging_playlist_id = ref("");
 const drag_over_playlist_id = ref("");
+const drag_over_after = ref(false);
+
+let playlist_drag_start_x = 0;
+let playlist_drag_start_y = 0;
+let playlist_drag_candidate_id = "";
+let playlist_drag_pointer_id = -1;
+let playlist_drag_started = false;
+let suppress_playlist_click = false;
 
 async function start_create_playlist() {
   creating_playlist.value = true;
@@ -56,44 +64,115 @@ function submit_create_playlist() {
   cancel_create_playlist();
 }
 
-function drag_playlist(playlist_id: string, event: DragEvent) {
-  dragging_playlist_id.value = playlist_id;
-  if (event.dataTransfer) {
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("text/plain", playlist_id);
+function click_playlist(playlist_id: string, event: MouseEvent) {
+  if (suppress_playlist_click) {
+    event.preventDefault();
+    event.stopPropagation();
+    return;
   }
+  emit("show_playlist", playlist_id);
 }
 
-function drag_over_playlist(playlist_id: string, event: DragEvent) {
-  event.preventDefault();
-  if (event.dataTransfer) {
-    event.dataTransfer.dropEffect = "move";
-  }
-  if (!dragging_playlist_id.value || dragging_playlist_id.value === playlist_id) return;
-  drag_over_playlist_id.value = playlist_id;
-}
-
-function drop_playlist(target_playlist_id: string, event: DragEvent) {
-  event.preventDefault();
-  const dragged_playlist_id = dragging_playlist_id.value || event.dataTransfer?.getData("text/plain") || "";
-  dragging_playlist_id.value = "";
+function begin_playlist_pointer_drag(playlist_id: string, event: PointerEvent) {
+  if (event.button !== 0) return;
+  playlist_drag_candidate_id = playlist_id;
+  playlist_drag_pointer_id = event.pointerId;
+  playlist_drag_start_x = event.clientX;
+  playlist_drag_start_y = event.clientY;
+  playlist_drag_started = false;
   drag_over_playlist_id.value = "";
+  drag_over_after.value = false;
+  (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+}
 
-  if (!dragged_playlist_id || dragged_playlist_id === target_playlist_id) return;
+function move_playlist_pointer_drag(event: PointerEvent) {
+  if (event.pointerId !== playlist_drag_pointer_id || !playlist_drag_candidate_id) return;
 
+  const distance = Math.hypot(event.clientX - playlist_drag_start_x, event.clientY - playlist_drag_start_y);
+  if (!playlist_drag_started && distance < 6) return;
+
+  event.preventDefault();
+  if (!playlist_drag_started) {
+    playlist_drag_started = true;
+    suppress_playlist_click = true;
+    dragging_playlist_id.value = playlist_drag_candidate_id;
+  }
+
+  update_drag_target(event);
+}
+
+function end_playlist_pointer_drag(event: PointerEvent) {
+  if (event.pointerId !== playlist_drag_pointer_id) return;
+
+  const dragged_playlist_id = playlist_drag_candidate_id;
+  const target_playlist_id = drag_over_playlist_id.value;
+  const insert_after = drag_over_after.value;
+  const should_reorder = playlist_drag_started && dragged_playlist_id && target_playlist_id && dragged_playlist_id !== target_playlist_id;
+
+  try {
+    (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
+  } catch {
+    // Pointer capture can already be released by the browser.
+  }
+
+  reset_playlist_drag();
+  if (should_reorder) reorder_playlist_ids(dragged_playlist_id, target_playlist_id, insert_after);
+
+  window.setTimeout(() => {
+    suppress_playlist_click = false;
+  });
+}
+
+function cancel_playlist_pointer_drag(event: PointerEvent) {
+  if (event.pointerId !== playlist_drag_pointer_id) return;
+  reset_playlist_drag();
+  window.setTimeout(() => {
+    suppress_playlist_click = false;
+  });
+}
+
+function update_drag_target(event: PointerEvent) {
+  const target = document
+    .elementFromPoint(event.clientX, event.clientY)
+    ?.closest<HTMLElement>("[data-playlist-id]");
+  if (!target) {
+    drag_over_playlist_id.value = "";
+    drag_over_after.value = false;
+    return;
+  }
+
+  const playlist_id = target?.dataset.playlistId ?? "";
+  if (!playlist_id || playlist_id === playlist_drag_candidate_id) {
+    drag_over_playlist_id.value = "";
+    drag_over_after.value = false;
+    return;
+  }
+
+  const rect = target.getBoundingClientRect();
+  drag_over_playlist_id.value = playlist_id;
+  drag_over_after.value = event.clientY > rect.top + rect.height / 2;
+}
+
+function reorder_playlist_ids(dragged_playlist_id: string, target_playlist_id: string, insert_after: boolean) {
   const playlist_ids = props.playlist_items.map((playlist) => playlist.id);
   const from_index = playlist_ids.indexOf(dragged_playlist_id);
-  const to_index = playlist_ids.indexOf(target_playlist_id);
-  if (from_index < 0 || to_index < 0) return;
+  if (from_index < 0) return;
 
-  playlist_ids.splice(from_index, 1);
-  playlist_ids.splice(to_index, 0, dragged_playlist_id);
+  const [dragged_id] = playlist_ids.splice(from_index, 1);
+  const target_index = playlist_ids.indexOf(target_playlist_id);
+  if (target_index < 0) return;
+
+  playlist_ids.splice(target_index + (insert_after ? 1 : 0), 0, dragged_id);
   emit("reorder_playlists", playlist_ids);
 }
 
-function end_drag_playlist() {
+function reset_playlist_drag() {
+  playlist_drag_candidate_id = "";
+  playlist_drag_pointer_id = -1;
+  playlist_drag_started = false;
   dragging_playlist_id.value = "";
   drag_over_playlist_id.value = "";
+  drag_over_after.value = false;
 }
 </script>
 
@@ -158,23 +237,22 @@ function end_drag_playlist() {
         <button
           v-for="playlist in playlist_items"
           :key="playlist.id"
-          class="nav_item"
+          class="nav_item playlist_item"
           :class="{
             active: active_view === 'playlist_1' && active_playlist_id === playlist.id,
             dragging: dragging_playlist_id === playlist.id,
             drag_over: drag_over_playlist_id === playlist.id,
+            drag_over_after: drag_over_playlist_id === playlist.id && drag_over_after,
           }"
           type="button"
-          draggable="true"
+          :data-playlist-id="playlist.id"
           :title="String(playlist.metadata.track_count)"
-          @click="emit('show_playlist', playlist.id)"
+          @click="click_playlist(playlist.id, $event)"
           @contextmenu.prevent="emit('open_playlist_menu', playlist, $event)"
-          @dragstart="drag_playlist(playlist.id, $event)"
-          @dragenter.prevent="drag_over_playlist(playlist.id, $event)"
-          @dragover="drag_over_playlist(playlist.id, $event)"
-          @dragleave="drag_over_playlist_id = ''"
-          @drop="drop_playlist(playlist.id, $event)"
-          @dragend="end_drag_playlist"
+          @pointerdown="begin_playlist_pointer_drag(playlist.id, $event)"
+          @pointermove="move_playlist_pointer_drag"
+          @pointerup="end_playlist_pointer_drag"
+          @pointercancel="cancel_playlist_pointer_drag"
         >
           <span class="nav_icon svg_icon" :style="icon_style(playlist_grid_icon)" />
           <span>{{ playlist.name }}</span>

@@ -1316,8 +1316,14 @@ button {
   flex: 1;
   flex-direction: column;
   min-height: 0;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   padding: 28px 28px;
+  scrollbar-width: none;
+}
+
+.sidebar_nav::-webkit-scrollbar {
+  display: none;
 }
 
 .nav_group {

@@ -4,7 +4,13 @@ import { storeToRefs } from "pinia";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
-import { getCurrentWindow, PhysicalSize } from "@tauri-apps/api/window";
+import {
+  currentMonitor,
+  getCurrentWindow,
+  PhysicalPosition,
+  PhysicalSize,
+  primaryMonitor,
+} from "@tauri-apps/api/window";
 import repeat_one_icon from "./assets/icons/repeat-one.svg";
 import repeat_icon from "./assets/icons/repeat.svg";
 import shuffle_icon from "./assets/icons/shuffle.svg";
@@ -13,6 +19,7 @@ import LibrarySidebar from "./components/LibrarySidebar.vue";
 import PlayerBar from "./components/PlayerBar.vue";
 import TopBar from "./components/TopBar.vue";
 import { use_app_config_store } from "./stores/app_config";
+import { use_library_store } from "./stores/library";
 import { use_player_queue_store } from "./stores/player_queue";
 import type {
   AppConfig,
@@ -77,21 +84,19 @@ type LibraryScanDialogState = {
 
 const player_queue = use_player_queue_store();
 const app_config_store = use_app_config_store();
+const library_store = use_library_store();
 const { library_tracks: tracks, current_queue, playback_mode, queue_source } = storeToRefs(player_queue);
 const { config: app_config } = storeToRefs(app_config_store);
+const { selected_directories, library_loaded, playlists, play_statistics } = storeToRefs(library_store);
 const status = ref<PlaybackStatus>({
   path: null,
   playing: false,
   volume: 1,
   elapsed: 0,
 });
-const selected_directories = ref<string[]>([]);
 const loading = ref(false);
-const library_loaded = ref(false);
 const error_message = ref("");
 const query = ref("");
-const playlists = ref<PlaylistBundle>(empty_playlist_bundle());
-const play_statistics = ref<PlayStatistics>(empty_play_statistics());
 const active_view = ref<ViewKey>("all");
 const selected_artist = ref("");
 const selected_album = ref("");
@@ -414,14 +419,18 @@ async function load_startup_state() {
     const startup = await invoke<AppStartup>("get_startup_state");
     app_config_store.hydrate_config(startup.config, startup.default_config);
     await apply_config_state(startup.config);
-    playlists.value = empty_playlist_bundle();
-    play_statistics.value = empty_play_statistics();
+    playlists.value = startup.playlists;
+    play_statistics.value = startup.play_statistics;
     restoring_player_cache = true;
-    library_loaded.value = false;
-    player_queue.set_library_tracks([]);
+    library_loaded.value = startup.tracks.length > 0;
+    player_queue.set_library_tracks(startup.tracks);
     selected_directories.value = startup.config.music_directory;
+    ensure_selected_playlist();
+    const restored_player_cache = restore_player_cache();
     restoring_player_cache = false;
-    set_queue_for_current_view();
+    if (!restored_player_cache) {
+      set_queue_for_current_view();
+    }
   } catch (error) {
     restoring_player_cache = false;
     show_error_message(error);
@@ -454,12 +463,28 @@ async function apply_config_state(config: AppConfig) {
   if (config.state.width > 0 && config.state.height > 0) {
     try {
       await app_window.setSize(new PhysicalSize(config.state.width, config.state.height));
+      await center_app_window(config.state.width, config.state.height);
     } catch (error) {
       console.warn("无法同步配置窗口大小", error);
     }
   }
 
   await show_app_window();
+}
+
+async function center_app_window(width: number, height: number) {
+  const monitor = (await currentMonitor()) ?? (await primaryMonitor());
+  if (!monitor) return;
+
+  const work_area = monitor.workArea;
+  const left = work_area.position.x + Math.round((work_area.size.width - width) / 2);
+  const top = work_area.position.y + Math.round((work_area.size.height - height) / 2);
+  await app_window.setPosition(
+    new PhysicalPosition(
+      Math.max(work_area.position.x, left),
+      Math.max(work_area.position.y, top),
+    ),
+  );
 }
 
 async function show_app_window() {
@@ -479,7 +504,7 @@ async function play(track: Track) {
     handled_completion_path = "";
     clear_pending_seek();
     apply_playback_status(await invoke<PlaybackStatus>("play_track", { path: track.path }));
-    add_recent_track(track);
+    library_store.add_recent_track(track);
     await load_play_statistics();
     start_listening_session(track);
     start_status_polling();
@@ -1121,53 +1146,6 @@ function missing_track_from_id(track_id: string): Track {
       lyrics_cache_path: "",
       metadata_source: "filename",
     },
-  };
-}
-
-function empty_play_statistics(): PlayStatistics {
-  return {
-    total_play_count: 0,
-    total_listening_seconds: 0,
-    tracks: {},
-  };
-}
-
-function add_recent_track(track: Track) {
-  const track_ids = playlists.value.recent.track_ids.filter((track_id) => track_id !== track.id);
-  track_ids.unshift(track.id);
-  playlists.value.recent = {
-    ...playlists.value.recent,
-    track_ids: track_ids.slice(0, 100),
-    metadata: {
-      ...playlists.value.recent.metadata,
-      track_count: Math.min(track_ids.length, 100),
-    },
-  };
-}
-
-function empty_playlist_bundle(): PlaylistBundle {
-  const empty_playlist = (id: string, name: string, kind: string) => ({
-    id,
-    name,
-    kind,
-    generated_at: 0,
-    metadata: {
-      track_count: 0,
-      total_duration: 0,
-      item_count: 0,
-      cover_cache_path: null,
-      index: 0,
-    },
-    track_ids: [],
-    children: [],
-  });
-
-  return {
-    recent: empty_playlist("recent", "最近播放", "recent"),
-    my_playlist: empty_playlist("my_playlist", "我的歌单", "user"),
-    my_playlists: [empty_playlist("my_playlist", "我的歌单", "user")],
-    artists: empty_playlist("artists", "歌手", "artists"),
-    albums: empty_playlist("albums", "专辑", "albums"),
   };
 }
 
@@ -1871,31 +1849,6 @@ button {
   background-repeat: no-repeat;
 }
 
-.sidebar {
-  grid-area: sidebar;
-  display: flex;
-  flex-direction: column;
-  position: relative;
-  min-height: 0;
-  border-right: 1px solid #ebedf2;
-  background: transparent;
-}
-
-.sidebar_resize_handle {
-  position: absolute;
-  top: 0;
-  right: -4px;
-  z-index: 20;
-  width: 8px;
-  height: 100%;
-  cursor: col-resize;
-}
-
-.sidebar_resize_handle:hover,
-.sidebar_resizing .sidebar_resize_handle {
-  background: rgba(66, 109, 255, 0.12);
-}
-
 .tool_button,
 .window_button,
 .player_tools button,
@@ -1921,145 +1874,10 @@ button {
   mask: var(--icon) center / contain no-repeat;
 }
 
-.sidebar_nav {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-height: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
-  padding: 28px 28px;
-  scrollbar-width: none;
-}
-
-.sidebar_nav::-webkit-scrollbar {
-  display: none;
-}
-
-.nav_group {
-  display: grid;
-  gap: 12px;
-}
-
-.playlist_group {
-  flex: 1;
-  align-content: start;
-  margin-top: 28px;
-}
-
-.nav_group h2,
 .settings_panel h2,
 .settings_section h3,
 p {
   margin: 0;
-}
-
-.nav_group h2 {
-  margin-bottom: 12px;
-  color: #7d828c;
-  font-size: 1rem;
-  font-weight: 800;
-}
-
-.nav_item {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  width: 100%;
-  min-height: 48px;
-  border-radius: 8px;
-  padding: 0 22px;
-  color: #202329;
-  background: transparent;
-  font-size: 1.05rem;
-  font-weight: 700;
-  text-align: left;
-}
-
-.nav_item span:not(.nav_icon) {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.nav_item:hover,
-.nav_item.active {
-  color: #426dff;
-  background: #eaf0ff;
-}
-
-.nav_item.dragging {
-  opacity: 0.45;
-}
-
-.playlist_item {
-  cursor: grab;
-  touch-action: none;
-}
-
-.playlist_item:active {
-  cursor: grabbing;
-}
-
-.nav_item.drag_over {
-  color: #426dff;
-  background: #f1f5ff;
-  box-shadow: inset 0 3px 0 #426dff;
-}
-
-.nav_item.drag_over_after {
-  box-shadow: inset 0 -3px 0 #426dff;
-}
-
-.nav_icon {
-  width: 24px;
-  height: 24px;
-}
-
-.sidebar_compact .sidebar_nav {
-  padding-inline: 12px;
-}
-
-.sidebar_compact .nav_group h2,
-.sidebar_compact .nav_item span:not(.nav_icon) {
-  display: none;
-}
-
-.sidebar_compact .nav_item {
-  justify-content: center;
-  gap: 0;
-  padding-inline: 0;
-}
-
-.resizing_sidebar,
-.resizing_sidebar * {
-  cursor: col-resize !important;
-  user-select: none;
-}
-
-.create_playlist {
-  margin-top: auto;
-}
-
-.create_playlist_input_row {
-  cursor: text;
-}
-
-.create_playlist_input {
-  min-width: 0;
-  width: 100%;
-  border: 0;
-  outline: 0;
-  padding: 0;
-  color: #202329;
-  background: transparent;
-  font-size: 1.05rem;
-  font-weight: 700;
-}
-
-.create_playlist_input::placeholder {
-  color: #a0a5af;
 }
 
 .workspace {
@@ -2071,68 +1889,11 @@ p {
   background: transparent;
 }
 
-.top_bar {
-  display: grid;
-  justify-content: center;
-  align-items: center;
-  grid-template-columns: 1fr 260px;
-  border-bottom: 1px solid #eef0f4;
-  padding-right: 28px;
-  cursor: move;
-  user-select: none;
-}
-
-.search_box {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  justify-self: center;
-  gap: 12px;
-  flex: 1;
-  width: 60%;
-  min-width: 300px;
-  height: 52px;
-  border-radius: 8px;
-  padding: 0 18px;
-  color: #858b96;
-  background: #f4f5f8;
-  cursor: text;
-  user-select: auto;
-}
-
-.search_box input {
-  width: 100%;
-  border: 0;
-  outline: 0;
-  color: #1e2026;
-  background: transparent;
-  font-size: 1rem;
-  user-select: none;
-  -webkit-user-select: none;
-}
-
-.search_box .svg_icon {
-  width: 18px;
-  height: 18px;
-}
-
-.toolbar {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  flex-shrink: 0;
-  cursor: default;
-}
-
 .tool_button:hover,
 .window_button:hover,
 .player_tools button:hover,
 .control_row button:hover {
   background: #f0f2f6;
-}
-
-.window_button.close {
-  font-weight: 900;
 }
 
 .tool_button .svg_icon,
@@ -2670,209 +2431,6 @@ p {
   to {
     transform: rotate(360deg);
   }
-}
-
-.player_bar {
-  grid-area: player;
-  display: grid;
-  grid-template-columns: minmax(240px, 360px) minmax(340px, 1fr) minmax(280px, 420px);
-  grid-template-rows: 2px minmax(0, 1fr);
-  align-items: center;
-  column-gap: 28px;
-  row-gap: 0;
-  min-width: 0;
-  padding: 0 38px;
-  background: transparent;
-}
-
-.player_bar button {
-  appearance: none;
-  -webkit-appearance: none;
-  outline: 0;
-  box-shadow: none;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.player_bar button:focus,
-.player_bar button:focus-visible,
-.player_bar button:active {
-  outline: 0;
-  box-shadow: none;
-}
-
-.player_progress {
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
-  width: calc(100% + 76px);
-  height: 14px;
-  align-self: stretch;
-  cursor: pointer;
-  transform: translateX(-38px) translateY(-6px);
-  touch-action: none;
-  user-select: none;
-  z-index: 99;
-}
-
-.progress_bar_container {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  cursor: pointer;
-  position: relative;
-}
-
-.progress_track {
-  position: relative;
-  width: 100%;
-  height: 2px;
-  overflow: visible;
-  border-radius: 15px;
-  background: rgba(128, 128, 128, 0.18);
-}
-
-.progress_fill {
-  width: 100%;
-  height: 100%;
-  border-radius: 15px;
-  background: #426dff;
-  transform: scaleX(0);
-  transform-origin: left center;
-  will-change: transform;
-}
-
-.progress_handle {
-  position: absolute;
-  top: 50%;
-  left: 0%;
-  z-index: 2;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: #ffffff;
-  box-shadow: 0.5px 0.5px 2px 1px rgba(0, 0, 0, 0.12);
-  cursor: pointer;
-  transform: translate(-50%, -50%);
-  visibility: hidden;
-  will-change: left;
-}
-
-.progress_tooltip {
-  position: absolute;
-  bottom: 25px;
-  left: 0%;
-  z-index: 3;
-  border-radius: 5px;
-  padding: 2px 6px;
-  color: #000000;
-  background: #ffffff;
-  box-shadow: 0.5px 0.5px 2px 1px rgba(0, 0, 0, 0.08);
-  font-size: 0.75rem;
-  font-weight: 700;
-  white-space: nowrap;
-  pointer-events: none;
-  opacity: 0;
-  transform: translateX(-50%);
-  transition: opacity 120ms linear;
-  will-change: left;
-}
-
-.progress_tooltip::after {
-  content: "";
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  border: 4px solid transparent;
-  border-top-color: #ffffff;
-  transform: translateX(-50%);
-}
-
-.player_progress:hover .progress_handle,
-.player_progress.dragging .progress_handle {
-  visibility: visible;
-}
-
-.player_progress.dragging .progress_tooltip {
-  opacity: 1;
-}
-
-.now_track {
-  grid-row: 2;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  min-width: 0;
-}
-
-.player_cover {
-  width: 62px;
-  height: 62px;
-  font-size: 1.8rem;
-}
-
-.now_text {
-  display: grid;
-  min-width: 0;
-  gap: 4px;
-}
-
-.now_text strong {
-  font-size: 1.05rem;
-}
-
-.now_text small {
-  color: #8b919c;
-}
-
-.player_center {
-  grid-row: 2;
-  display: grid;
-  align-items: center;
-  justify-items: center;
-  min-width: 0;
-}
-
-.control_row {
-  display: flex;
-  align-items: center;
-  gap: 24px;
-}
-
-.control_row .play_button {
-  width: 48px;
-  height: 48px;
-  color: #111318;
-  background: transparent;
-  font-size: 1.35rem;
-}
-
-.control_row .play_button .svg_icon {
-  width: 19px;
-  height: 19px;
-}
-
-.control_row .play_button:hover {
-  background: #f0f2f6;
-}
-
-.player_tools {
-  grid-row: 2;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 12px;
-  min-width: 0;
-}
-
-.volume_icon {
-  color: #111318;
-  width: 19px;
-  height: 19px;
-}
-
-.player_tools input {
-  width: 122px;
-  accent-color: #111318;
 }
 
 .settings_overlay {

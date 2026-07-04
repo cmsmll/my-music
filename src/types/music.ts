@@ -79,6 +79,7 @@ export type AppStartup = {
   default_config: AppConfig;
   tracks: Track[];
   playlists: PlaylistBundle;
+  play_statistics: PlayStatistics;
 };
 
 export type PlaybackStatus = {

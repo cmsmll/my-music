@@ -63,6 +63,34 @@ pub(crate) fn load_or_scan_all_directories(
     Ok(all_tracks)
 }
 
+pub(crate) fn load_cached_all_directories(
+    config_manager: &ConfigManager,
+    config: &AppConfig,
+) -> Result<Vec<Track>, String> {
+    let mut all_tracks = Vec::new();
+
+    for dir in &config.music_directory {
+        let cache_path = config_manager.library_cache_path(dir)?;
+        if !cache_path.exists() {
+            continue;
+        }
+
+        match read_library_cache(&cache_path) {
+            Ok(mut tracks) => all_tracks.append(&mut tracks),
+            Err(err) => eprintln!("读取启动曲库缓存失败: {err}"),
+        }
+    }
+
+    all_tracks.sort_by(|a, b| {
+        a.artist
+            .cmp(&b.artist)
+            .then(a.title.cmp(&b.title))
+            .then(a.path.cmp(&b.path))
+    });
+
+    Ok(all_tracks)
+}
+
 pub(crate) fn scan_tracks(root: &Path, config: &AppConfig) -> Result<Vec<Track>, String> {
     let mut tracks = Vec::new();
     for entry in WalkDir::new(root).follow_links(false).into_iter().flatten() {

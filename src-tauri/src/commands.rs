@@ -1,7 +1,9 @@
 use crate::audio::{AudioCommand, AudioEngine};
 use crate::config::ConfigManager;
 use crate::decoder::{run_decoder as run_config_decoder, DecoderRunSummary};
-use crate::library::{load_or_scan_all_directories, scan_tracks, write_library_cache};
+use crate::library::{
+    load_cached_all_directories, load_or_scan_all_directories, scan_tracks, write_library_cache,
+};
 use crate::models::{AppConfig, AppStartup, PlayStatistics, PlaybackStatus, PlaylistBundle, Track};
 use crate::playlist::{
     empty_playlist, ensure_unique_playlist_name, load_my_playlist_caches, load_playlist_bundle,
@@ -16,20 +18,30 @@ use std::{
     path::{Path, PathBuf},
 };
 
-/// 获取应用启动所需的配置数据。
+/// 获取应用启动所需的配置、曲库缓存、歌单缓存和播放统计。
 ///
-/// 启动阶段只读取配置，不自动加载或扫描曲库，避免大曲库导致首屏白屏。
+/// 启动阶段只读取已有缓存，不扫描音乐目录，也不刷新任何缓存文件。
 #[tauri::command]
 pub(crate) fn get_startup_state(
     config_manager: tauri::State<'_, ConfigManager>,
 ) -> Result<AppStartup, String> {
     let config = config_manager.get()?;
+    let tracks = load_cached_all_directories(&config_manager, &config)?;
+    let playlists = load_playlist_bundle(&config).unwrap_or_else(|err| {
+        eprintln!("读取启动歌单缓存失败: {err}");
+        empty_playlist_bundle()
+    });
+    let play_statistics = read_play_statistics(&config).unwrap_or_else(|err| {
+        eprintln!("读取启动播放统计失败: {err}");
+        PlayStatistics::default()
+    });
 
     Ok(AppStartup {
         config,
         default_config: config_manager.get_default(),
-        tracks: Vec::new(),
-        playlists: empty_playlist_bundle(),
+        tracks,
+        playlists,
+        play_statistics,
     })
 }
 

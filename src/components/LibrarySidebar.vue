@@ -285,3 +285,164 @@ function reset_playlist_drag() {
     />
   </aside>
 </template>
+
+<style>
+.sidebar {
+  grid-area: sidebar;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  min-height: 0;
+  border-right: 1px solid #ebedf2;
+  background: transparent;
+}
+
+.sidebar_resize_handle {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  z-index: 20;
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+}
+
+.sidebar_resize_handle:hover,
+.sidebar_resizing .sidebar_resize_handle {
+  background: rgba(66, 109, 255, 0.12);
+}
+
+.sidebar_nav {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 28px 28px;
+  scrollbar-width: none;
+}
+
+.sidebar_nav::-webkit-scrollbar {
+  display: none;
+}
+
+.nav_group {
+  display: grid;
+  gap: 12px;
+}
+
+.playlist_group {
+  flex: 1;
+  align-content: start;
+  margin-top: 28px;
+}
+
+.nav_group h2 {
+  margin: 0 0 12px;
+  color: #7d828c;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.nav_item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  min-height: 48px;
+  border-radius: 8px;
+  padding: 0 22px;
+  color: #202329;
+  background: transparent;
+  font-size: 1.05rem;
+  font-weight: 700;
+  text-align: left;
+}
+
+.nav_item span:not(.nav_icon) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav_item:hover,
+.nav_item.active {
+  color: #426dff;
+  background: #eaf0ff;
+}
+
+.nav_item.dragging {
+  opacity: 0.45;
+}
+
+.playlist_item {
+  cursor: grab;
+  touch-action: none;
+}
+
+.playlist_item:active {
+  cursor: grabbing;
+}
+
+.nav_item.drag_over {
+  color: #426dff;
+  background: #f1f5ff;
+  box-shadow: inset 0 3px 0 #426dff;
+}
+
+.nav_item.drag_over_after {
+  box-shadow: inset 0 -3px 0 #426dff;
+}
+
+.nav_icon {
+  width: 24px;
+  height: 24px;
+}
+
+.sidebar_compact .sidebar_nav {
+  padding-inline: 12px;
+}
+
+.sidebar_compact .nav_group h2,
+.sidebar_compact .nav_item span:not(.nav_icon) {
+  display: none;
+}
+
+.sidebar_compact .nav_item {
+  justify-content: center;
+  gap: 0;
+  padding-inline: 0;
+}
+
+.resizing_sidebar,
+.resizing_sidebar * {
+  cursor: col-resize !important;
+  user-select: none;
+}
+
+.create_playlist {
+  margin-top: auto;
+}
+
+.create_playlist_input_row {
+  cursor: text;
+}
+
+.create_playlist_input {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  outline: 0;
+  padding: 0;
+  color: #202329;
+  background: transparent;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.create_playlist_input::placeholder {
+  color: #a0a5af;
+}
+</style>

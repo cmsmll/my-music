@@ -120,3 +120,231 @@ defineExpose({ render_progress });
     </div>
   </footer>
 </template>
+
+<style>
+.player_bar {
+  grid-area: player;
+  display: grid;
+  grid-template-columns: minmax(240px, 360px) minmax(340px, 1fr) minmax(280px, 420px);
+  grid-template-rows: 2px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 28px;
+  row-gap: 0;
+  min-width: 0;
+  padding: 0 38px;
+  background: transparent;
+}
+
+.player_bar button {
+  appearance: none;
+  -webkit-appearance: none;
+  outline: 0;
+  box-shadow: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.player_bar button:focus,
+.player_bar button:focus-visible,
+.player_bar button:active {
+  outline: 0;
+  box-shadow: none;
+}
+
+.player_progress {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  width: calc(100% + 76px);
+  height: 14px;
+  align-self: stretch;
+  cursor: pointer;
+  transform: translateX(-38px) translateY(-6px);
+  touch-action: none;
+  user-select: none;
+  z-index: 99;
+}
+
+.progress_bar_container {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  cursor: pointer;
+  position: relative;
+}
+
+.progress_track {
+  position: relative;
+  width: 100%;
+  height: 2px;
+  overflow: visible;
+  border-radius: 15px;
+  background: rgba(128, 128, 128, 0.18);
+}
+
+.progress_fill {
+  width: 100%;
+  height: 100%;
+  border-radius: 15px;
+  background: #426dff;
+  transform: scaleX(0);
+  transform-origin: left center;
+  will-change: transform;
+}
+
+.progress_handle {
+  position: absolute;
+  top: 50%;
+  left: 0%;
+  z-index: 2;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0.5px 0.5px 2px 1px rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+  transform: translate(-50%, -50%);
+  visibility: hidden;
+  will-change: left;
+}
+
+.progress_tooltip {
+  position: absolute;
+  bottom: 25px;
+  left: 0%;
+  z-index: 3;
+  border-radius: 5px;
+  padding: 2px 6px;
+  color: #000000;
+  background: #ffffff;
+  box-shadow: 0.5px 0.5px 2px 1px rgba(0, 0, 0, 0.08);
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateX(-50%);
+  transition: opacity 120ms linear;
+  will-change: left;
+}
+
+.progress_tooltip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  border: 4px solid transparent;
+  border-top-color: #ffffff;
+  transform: translateX(-50%);
+}
+
+.player_progress:hover .progress_handle,
+.player_progress.dragging .progress_handle {
+  visibility: visible;
+}
+
+.player_progress.dragging .progress_tooltip {
+  opacity: 1;
+}
+
+.now_track {
+  grid-row: 2;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.player_cover {
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  flex: 0 0 auto;
+  width: 62px;
+  height: 62px;
+  border-radius: 8px;
+  color: #ffffff;
+  background:
+    linear-gradient(145deg, #21242b, #426dff),
+    #21242b;
+  font-size: 1.8rem;
+  font-weight: 900;
+}
+
+.player_cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.now_text {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.now_text strong,
+.now_text small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.now_text strong {
+  font-size: 1.05rem;
+}
+
+.now_text small {
+  color: #8b919c;
+}
+
+.player_center {
+  grid-row: 2;
+  display: grid;
+  align-items: center;
+  justify-items: center;
+  min-width: 0;
+}
+
+.control_row {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.control_row .play_button {
+  width: 48px;
+  height: 48px;
+  color: #111318;
+  background: transparent;
+  font-size: 1.35rem;
+}
+
+.control_row .play_button .svg_icon {
+  width: 19px;
+  height: 19px;
+}
+
+.control_row .play_button:hover {
+  background: #f0f2f6;
+}
+
+.player_tools {
+  grid-row: 2;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  min-width: 0;
+}
+
+.volume_icon {
+  color: #111318;
+  width: 19px;
+  height: 19px;
+}
+
+.player_tools input {
+  width: 122px;
+  accent-color: #111318;
+}
+</style>

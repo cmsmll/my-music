@@ -65,3 +65,62 @@ const emit = defineEmits<{
     </div>
   </header>
 </template>
+
+<style>
+.top_bar {
+  display: grid;
+  justify-content: center;
+  align-items: center;
+  grid-template-columns: 1fr 260px;
+  border-bottom: 1px solid #eef0f4;
+  padding-right: 28px;
+  cursor: move;
+  user-select: none;
+}
+
+.search_box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  justify-self: center;
+  gap: 12px;
+  flex: 1;
+  width: 60%;
+  min-width: 300px;
+  height: 52px;
+  border-radius: 8px;
+  padding: 0 18px;
+  color: #858b96;
+  background: #f4f5f8;
+  cursor: text;
+  user-select: auto;
+}
+
+.search_box input {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  color: #1e2026;
+  background: transparent;
+  font-size: 1rem;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.search_box .svg_icon {
+  width: 18px;
+  height: 18px;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-shrink: 0;
+  cursor: default;
+}
+
+.window_button.close {
+  font-weight: 900;
+}
+</style>

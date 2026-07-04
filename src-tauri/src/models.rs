@@ -231,6 +231,7 @@ pub(crate) struct AppStartup {
     pub(crate) default_config: AppConfig,
     pub(crate) tracks: Vec<Track>,
     pub(crate) playlists: PlaylistBundle,
+    pub(crate) play_statistics: PlayStatistics,
 }
 
 #[derive(Debug, Clone, Serialize)]

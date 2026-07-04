@@ -8,6 +8,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import repeat_one_icon from "./assets/icons/repeat-one.svg";
 import repeat_icon from "./assets/icons/repeat.svg";
 import shuffle_icon from "./assets/icons/shuffle.svg";
+import ConfirmDialog from "./components/ConfirmDialog.vue";
 import ContentArea from "./components/ContentArea.vue";
 import LibrarySidebar from "./components/LibrarySidebar.vue";
 import PlayerBar from "./components/PlayerBar.vue";
@@ -81,6 +82,7 @@ const settings_open = ref(false);
 const playback_queue_open = ref(false);
 const track_context_menu = ref<TrackContextMenu | null>(null);
 const playlist_context_menu = ref<PlaylistContextMenu | null>(null);
+const pending_delete_playlist = ref<PlaylistCache | null>(null);
 const progress_dragging = ref(false);
 const player_bar = ref<PlayerBarExpose | null>(null);
 const sidebar_width = ref(250);
@@ -1008,8 +1010,18 @@ async function delete_context_playlist() {
   if (!playlist || !context_playlist_can_be_deleted()) return;
 
   close_playlist_context_menu();
-  const confirmed = window.confirm(`确定删除歌单“${playlist.name}”吗？\n只会删除歌单记录，不会删除音乐文件。`);
-  if (!confirmed) return;
+  pending_delete_playlist.value = playlist;
+}
+
+function cancel_delete_playlist() {
+  pending_delete_playlist.value = null;
+}
+
+async function confirm_delete_playlist() {
+  const playlist = pending_delete_playlist.value;
+  if (!playlist) return;
+
+  pending_delete_playlist.value = null;
 
   try {
     const deleted_playlist_id = playlist.id;
@@ -1411,6 +1423,17 @@ watch([current_queue, queue_source, playback_mode], () => {
       :app_config="app_config"
       @close="settings_open = false"
       @choose_music_directory="choose_music_directory"
+    />
+
+    <ConfirmDialog
+      v-if="pending_delete_playlist"
+      title="删除歌单"
+      :message="`确定删除歌单“${pending_delete_playlist.name}”吗？`"
+      detail="只会删除歌单记录，不会删除音乐文件。"
+      confirm_label="删除"
+      cancel_label="取消"
+      @confirm="confirm_delete_playlist"
+      @cancel="cancel_delete_playlist"
     />
   </main>
 </template>

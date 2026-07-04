@@ -744,6 +744,39 @@ function queue_tracks_for_view(view: ViewKey) {
   return tracks.value;
 }
 
+function playlist_track_ids_for_source(source: QueueSource) {
+  if (source.type === "recent") return playlists.value.recent.track_ids;
+  if (source.type !== "playlist") return [];
+
+  return user_playlist_items.value.find((playlist) => playlist.id === source.id)?.track_ids ?? [];
+}
+
+function queue_tracks_for_source(source: QueueSource) {
+  if (source.type === "artist") {
+    return tracks.value.filter((track) => display_artist(track) === source.id);
+  }
+  if (source.type === "album") {
+    return tracks.value.filter((track) => display_album(track) === source.id);
+  }
+  if (source.type === "recent" || source.type === "playlist") {
+    return tracks_from_ids(playlist_track_ids_for_source(source));
+  }
+  if (source.type === "search") {
+    const keyword = source.id.trim().toLowerCase();
+    if (!keyword) return [];
+
+    return tracks.value.filter((track) =>
+      `${track.title} ${track.artist} ${track.album}`.toLowerCase().includes(keyword),
+    );
+  }
+
+  return tracks.value;
+}
+
+function refresh_current_queue_source() {
+  player_queue.set_current_queue({ ...queue_source.value }, queue_tracks_for_source(queue_source.value));
+}
+
 function tracks_from_ids(track_ids: string[]) {
   return track_ids
     .map((track_id) => tracks_by_id.value.get(track_id))
@@ -878,8 +911,8 @@ async function add_context_track_to_playlist(playlist: PlaylistCache) {
       trackId: track.id,
     });
     close_track_context_menu();
-    if (active_view.value === "playlist_1" || queue_source.value.id === playlist.id) {
-      set_queue_for_current_view();
+    if (queue_source.value.type === "playlist" && queue_source.value.id === playlist.id) {
+      refresh_current_queue_source();
     }
   } catch (error) {
     error_message.value = String(error);
@@ -902,7 +935,12 @@ async function remove_context_track_record() {
       trackId: track.id,
     });
     close_track_context_menu();
-    set_queue_for_current_view();
+    if (
+      (queue_source.value.type === "recent" && playlist_id === "recent") ||
+      (queue_source.value.type === "playlist" && queue_source.value.id === playlist_id)
+    ) {
+      refresh_current_queue_source();
+    }
   } catch (error) {
     error_message.value = String(error);
   }

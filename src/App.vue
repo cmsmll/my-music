@@ -2923,50 +2923,61 @@ p {
   min-width: 0;
 }
 
-.settings_size_group {
+.settings_window_size_group {
   display: grid;
-  grid-template-columns: minmax(120px, 1fr) minmax(120px, 1fr) auto;
-  gap: 12px;
+  gap: 10px;
   min-width: 0;
 }
 
-.settings_radio_group {
-  display: flex;
+.settings_window_size_group strong {
+  color: #1e2026;
+  font-size: 0.98rem;
+  font-weight: 900;
+}
+
+.settings_window_size_row {
+  display: grid;
+  grid-template-columns: auto 30px auto auto 30px auto;
   align-items: center;
-  gap: 12px;
-  align-self: stretch;
-  border: 1px solid #e5e8ef;
-  border-radius: 8px;
-  margin: 0;
-  padding: 14px 12px 8px;
-  color: #505763;
-  background: #f8f9fb;
+  justify-content: start;
+  gap: 16px;
+  min-width: 0;
 }
 
-.settings_radio_group legend {
-  padding: 0 4px;
-  color: #8b919c;
-  font-size: 0.78rem;
-  font-weight: 800;
-}
-
-.settings_radio_group label {
-  display: flex;
+.settings_inline_field {
+  display: flex !important;
   align-items: center;
-  gap: 5px;
-  color: #505763;
-  font-size: 0.86rem;
-  font-weight: 800;
+  gap: 8px !important;
+  min-width: 0;
+  color: #1e2026 !important;
+  font-size: 0.96rem !important;
+  font-weight: 800 !important;
+  white-space: nowrap;
 }
 
-.settings_radio_group input {
-  width: auto;
-  min-height: auto;
+.settings_inline_field input {
+  width: 96px;
+  min-height: 28px;
+  border-radius: 2px;
+  padding: 4px 8px;
+  background: #b7b9bd;
+}
+
+.settings_mode_radio {
+  display: grid !important;
+  place-items: center;
+  width: 30px;
+  min-width: 30px !important;
+}
+
+.settings_mode_radio input {
+  width: 20px;
+  height: 20px;
+  min-height: 20px;
   border: 0;
-  border-radius: 0;
   padding: 0;
   background: transparent;
-  accent-color: #426dff;
+  accent-color: #aeb1b6;
 }
 
 .settings_default_button,

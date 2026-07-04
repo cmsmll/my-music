@@ -43,9 +43,11 @@ const settings_sections: { key: SettingsSectionKey; title: string }[] = [
 
 const active_section = ref<SettingsSectionKey>("library");
 const music_directory_overrides = ref<string[] | null>(null);
-const window_width = ref("");
-const window_height = ref("");
-const remember_window_size = ref("yes");
+const default_window_width = ref("");
+const default_window_height = ref("");
+const dynamic_window_width = ref("");
+const dynamic_window_height = ref("");
+const window_size_mode = ref<"default" | "dynamic">("default");
 const background_image = ref("");
 
 const active_section_title = computed(
@@ -266,26 +268,32 @@ watch(
                 <span>音量等级</span>
                 <input value="播放器状态缓存" readonly />
               </label>
-              <div class="settings_size_group">
-                <label>
-                  <span>宽度</span>
-                  <input v-model="window_width" placeholder="宽度" inputmode="numeric" />
-                </label>
-                <label>
-                  <span>高度</span>
-                  <input v-model="window_height" placeholder="高度" inputmode="numeric" />
-                </label>
-                <fieldset class="settings_radio_group">
-                  <legend>记录</legend>
-                  <label>
-                    <input v-model="remember_window_size" type="radio" value="yes" />
-                    <span>是</span>
+              <div class="settings_window_size_group">
+                <strong>窗口大小</strong>
+                <div class="settings_window_size_row">
+                  <label class="settings_inline_field">
+                    <span>默认宽度：</span>
+                    <input v-model="default_window_width" inputmode="numeric" />
                   </label>
-                  <label>
-                    <input v-model="remember_window_size" type="radio" value="no" />
-                    <span>否</span>
+                  <label class="settings_mode_radio" title="使用默认宽高">
+                    <input v-model="window_size_mode" type="radio" value="default" />
                   </label>
-                </fieldset>
+                  <label class="settings_inline_field">
+                    <span>默认高度：</span>
+                    <input v-model="default_window_height" inputmode="numeric" />
+                  </label>
+                  <label class="settings_inline_field">
+                    <span>动态宽度：</span>
+                    <input v-model="dynamic_window_width" inputmode="numeric" />
+                  </label>
+                  <label class="settings_mode_radio" title="使用动态宽高">
+                    <input v-model="window_size_mode" type="radio" value="dynamic" />
+                  </label>
+                  <label class="settings_inline_field">
+                    <span>动态高度：</span>
+                    <input v-model="dynamic_window_height" inputmode="numeric" />
+                  </label>
+                </div>
               </div>
               <label>
                 <span>侧边栏宽度</span>

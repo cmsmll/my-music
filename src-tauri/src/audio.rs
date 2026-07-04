@@ -1,8 +1,7 @@
 use crate::models::PlaybackStatus;
-use rodio::{Decoder, OutputStream, Sink, Source};
+use rodio::{Decoder, DeviceSinkBuilder, Player};
 use std::{
     fs::File,
-    io::BufReader,
     sync::{
         mpsc::{self, Sender},
         Arc, Mutex,
@@ -37,7 +36,7 @@ impl Default for PlaybackSnapshot {
 }
 
 pub(crate) struct Playback {
-    sink: Sink,
+    player: Player,
 }
 
 pub(crate) struct AudioEngine {
@@ -76,8 +75,8 @@ impl AudioEngine {
         let thread_snapshot = Arc::clone(&snapshot);
 
         thread::spawn(move || {
-            let stream = OutputStream::try_default();
-            let Ok((_stream, handle)) = stream else {
+            let stream_handle = DeviceSinkBuilder::open_default_sink();
+            let Ok(stream_handle) = stream_handle else {
                 while let Ok(command) = rx.recv() {
                     respond(command, Err("无法打开默认音频输出设备".to_string()));
                 }
@@ -92,19 +91,18 @@ impl AudioEngine {
                         let result = (|| {
                             let file = File::open(&path)
                                 .map_err(|err| format!("无法打开音频文件: {err}"))?;
-                            let source = Decoder::new(BufReader::new(file))
+                            let source = Decoder::try_from(file)
                                 .map_err(|err| format!("无法解码音频文件: {err}"))?;
-                            let sink = Sink::try_new(&handle)
-                                .map_err(|err| format!("无法创建播放通道: {err}"))?;
+                            let player = Player::connect_new(stream_handle.mixer());
 
                             if let Some(current) = playback.take() {
-                                current.sink.stop();
+                                current.player.stop();
                             }
 
-                            sink.append(source);
-                            sink.set_volume(1.0);
-                            sink.play();
-                            playback = Some(Playback { sink });
+                            player.append(source);
+                            player.set_volume(1.0);
+                            player.play();
+                            playback = Some(Playback { player });
 
                             update_snapshot(&thread_snapshot, |state| {
                                 state.path = Some(path);
@@ -121,7 +119,7 @@ impl AudioEngine {
                     }
                     AudioCommand::Pause { reply } => {
                         if let Some(current) = playback.as_ref() {
-                            current.sink.pause();
+                            current.player.pause();
                             let _ = update_snapshot(&thread_snapshot, |state| {
                                 if state.paused_at.is_none() {
                                     state.paused_at = Some(Instant::now());
@@ -134,7 +132,7 @@ impl AudioEngine {
                     }
                     AudioCommand::Resume { reply } => {
                         if let Some(current) = playback.as_ref() {
-                            current.sink.play();
+                            current.player.play();
                             let _ = update_snapshot(&thread_snapshot, |state| {
                                 if let Some(paused_at) = state.paused_at.take() {
                                     state.paused_total += paused_at.elapsed();
@@ -147,7 +145,7 @@ impl AudioEngine {
                     }
                     AudioCommand::Stop { reply } => {
                         if let Some(current) = playback.take() {
-                            current.sink.stop();
+                            current.player.stop();
                         }
                         let _ = update_snapshot(&thread_snapshot, |state| {
                             *state = PlaybackSnapshot::default()
@@ -157,7 +155,7 @@ impl AudioEngine {
                     AudioCommand::SetVolume { volume, reply } => {
                         let next_volume = volume.clamp(0.0, 1.5);
                         if let Some(current) = playback.as_ref() {
-                            current.sink.set_volume(next_volume);
+                            current.player.set_volume(next_volume);
                         }
                         let _ =
                             update_snapshot(&thread_snapshot, |state| state.volume = next_volume);
@@ -169,7 +167,9 @@ impl AudioEngine {
                                 return Ok(());
                             };
 
-                            if current.sink.try_seek(Duration::from_secs(seconds)).is_err() {
+                            if let Err(err) = &current.player.try_seek(Duration::from_secs(seconds))
+                            {
+                                eprintln!("音频跳转失败:{err}");
                                 let snapshot = thread_snapshot
                                     .lock()
                                     .map_err(|_| "audio engine state is unavailable".to_string())?
@@ -180,24 +180,25 @@ impl AudioEngine {
 
                                 let file = File::open(&path)
                                     .map_err(|err| format!("无法打开音频文件: {err}"))?;
-                                let source = Decoder::new(BufReader::new(file))
-                                    .map_err(|err| format!("无法解码音频文件: {err}"))?
-                                    .skip_duration(Duration::from_secs(seconds));
-                                let sink = Sink::try_new(&handle)
-                                    .map_err(|err| format!("无法创建播放通道: {err}"))?;
+                                let source = Decoder::try_from(file)
+                                    .map_err(|err| format!("无法解码音频文件: {err}"))?;
+                                let player = Player::connect_new(stream_handle.mixer());
 
-                                sink.append(source);
-                                sink.set_volume(snapshot.volume);
+                                player.append(source);
+                                player.set_volume(snapshot.volume);
+                                player
+                                    .try_seek(Duration::from_secs(seconds))
+                                    .map_err(|err| format!("无法跳转播放进度: {err}"))?;
                                 if snapshot.playing {
-                                    sink.play();
+                                    player.play();
                                 } else {
-                                    sink.pause();
+                                    player.pause();
                                 }
 
                                 if let Some(current) = playback.take() {
-                                    current.sink.stop();
+                                    current.player.stop();
                                 }
-                                playback = Some(Playback { sink });
+                                playback = Some(Playback { player });
                             }
 
                             update_snapshot(&thread_snapshot, |state| {

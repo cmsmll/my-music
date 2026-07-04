@@ -96,6 +96,7 @@ export type PlaylistSummary = {
   track_count: number;
   total_duration: number;
   cover_cache_path?: string | null;
+  track_ids: string[];
 };
 
 export type PlaylistCache = {

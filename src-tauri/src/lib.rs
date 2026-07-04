@@ -135,6 +135,8 @@ struct PlaylistSummary {
     track_count: usize,
     total_duration: u64,
     cover_cache_path: Option<String>,
+    #[serde(default)]
+    track_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -793,19 +795,20 @@ fn write_group_playlists(
     }
 
     let mut children = Vec::new();
+    let aggregate_path = playlist_cache_path(config, &format!("{aggregate_id}_playlist.json"));
     let group_root = PathBuf::from(&config.library_cache_dir).join(group_dir);
-    fs::create_dir_all(&group_root)
-        .map_err(|err| format!("无法创建{aggregate_name}缓存目录: {err}"))?;
+    if group_root.is_dir() {
+        fs::remove_dir_all(&group_root)
+            .map_err(|err| format!("无法清理旧版{aggregate_name}细分缓存目录: {err}"))?;
+    } else if group_root.exists() {
+        fs::remove_file(&group_root)
+            .map_err(|err| format!("无法清理旧版{aggregate_name}细分缓存文件: {err}"))?;
+    }
 
     for (name, mut group_tracks) in grouped {
         group_tracks.sort_by(|a, b| a.title.cmp(&b.title).then(a.path.cmp(&b.path)));
         let track_ids = track_ids_from_tracks(&group_tracks);
         let id = format!("{child_kind}_{}", short_hash(&name));
-        let cache_path = group_root.join(format!(
-            "{}_{}.json",
-            safe_cache_name(&name),
-            short_hash(&name)
-        ));
         let playlist = PlaylistCache {
             id,
             name: name.clone(),
@@ -815,12 +818,7 @@ fn write_group_playlists(
             track_ids,
             children: Vec::new(),
         };
-        write_json_cache(
-            &cache_path,
-            &playlist,
-            &format!("{aggregate_name}细分歌单缓存"),
-        )?;
-        children.push(playlist_summary_from_cache(&playlist, &cache_path));
+        children.push(playlist_summary_from_cache(&playlist, &aggregate_path));
     }
 
     let all_ids = track_ids_from_tracks(tracks);
@@ -835,7 +833,7 @@ fn write_group_playlists(
     };
 
     write_json_cache(
-        &playlist_cache_path(config, &format!("{aggregate_id}_playlist.json")),
+        &aggregate_path,
         &aggregate,
         &format!("{aggregate_name}汇总歌单缓存"),
     )?;
@@ -922,6 +920,7 @@ fn playlist_summary_from_cache(playlist: &PlaylistCache, cache_path: &Path) -> P
         track_count: playlist.metadata.track_count,
         total_duration: playlist.metadata.total_duration,
         cover_cache_path: playlist.metadata.cover_cache_path.clone(),
+        track_ids: playlist.track_ids.clone(),
     }
 }
 

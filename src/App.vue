@@ -2,10 +2,11 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import album_icon from "./assets/icons/album.svg";
 import artist_icon from "./assets/icons/artist.svg";
-import light_icon from "./assets/icons/light.svg";
-import lyrics_icon from "./assets/icons/lyrics_filled.svg";
+import clock_fill_icon from "./assets/icons/clock-fill.svg";
+import lyrics_copy_icon from "./assets/icons/lyrics-copy.svg";
 import maximize_icon from "./assets/icons/maximize.svg";
 import minimize_icon from "./assets/icons/minimize.svg";
 import music_note_icon from "./assets/icons/music-note.svg";
@@ -16,7 +17,7 @@ import playlist_grid_icon from "./assets/icons/playlist-grid.svg";
 import playlist_icon from "./assets/icons/playlist.svg";
 import plus_icon from "./assets/icons/plus.svg";
 import previous_icon from "./assets/icons/previous.svg";
-import recent_icon from "./assets/icons/recent.svg";
+import refresh_icon from "./assets/icons/refresh.svg";
 import repeat_one_icon from "./assets/icons/repeat-one.svg";
 import repeat_icon from "./assets/icons/repeat.svg";
 import search_icon from "./assets/icons/search.svg";
@@ -74,7 +75,12 @@ type PlaybackStatus = {
 };
 
 type ViewKey = "all" | "artists" | "albums" | "stats" | "recent" | "playlist_1";
-type PlaybackMode = "sequence" | "shuffle" | "repeat" | "repeat_one";
+type PlaybackMode = "shuffle" | "repeat" | "repeat_one";
+type PlaybackModeItem = {
+  mode: PlaybackMode;
+  icon: string;
+  label: string;
+};
 type ArtistItem = {
   name: string;
   track_count: number;
@@ -96,7 +102,7 @@ const query = ref("");
 const app_config = ref<AppConfig | null>(null);
 const active_view = ref<ViewKey>("all");
 const settings_open = ref(false);
-const playback_mode = ref<PlaybackMode>("sequence");
+const playback_mode = ref<PlaybackMode>("repeat");
 const progress_dragging = ref(false);
 const progress_fill_element = ref<HTMLElement | null>(null);
 const progress_handle_element = ref<HTMLElement | null>(null);
@@ -122,6 +128,12 @@ const sidebar_min_width = 72;
 const sidebar_max_width = 420;
 const sidebar_compact_width = 100;
 const sidebar_width_storage_key = "music_box_sidebar_width";
+const app_window = getCurrentWindow();
+const playback_modes: PlaybackModeItem[] = [
+  { mode: "shuffle", icon: shuffle_icon, label: "随机播放" },
+  { mode: "repeat", icon: repeat_icon, label: "循环播放" },
+  { mode: "repeat_one", icon: repeat_one_icon, label: "单曲循环" },
+];
 
 const current_track = computed(() =>
   tracks.value.find((track) => track.path === status.value.path),
@@ -195,10 +207,7 @@ const app_shell_style = computed(() => ({
 }));
 
 const playback_mode_button = computed(() => {
-  if (playback_mode.value === "shuffle") return { icon: shuffle_icon, label: "随机播放" };
-  if (playback_mode.value === "repeat") return { icon: repeat_icon, label: "循环播放" };
-  if (playback_mode.value === "repeat_one") return { icon: repeat_one_icon, label: "单曲循环" };
-  return { icon: repeat_icon, label: "顺序播放" };
+  return playback_modes.find((item) => item.mode === playback_mode.value) ?? playback_modes[0];
 });
 
 async function choose_music_directory() {
@@ -301,6 +310,29 @@ async function stop_playback() {
   } catch (error) {
     error_message.value = String(error);
   }
+}
+
+function minimize_window() {
+  void app_window.minimize();
+}
+
+function toggle_maximize_window() {
+  void app_window.toggleMaximize();
+}
+
+function close_window() {
+  void app_window.close();
+}
+
+function start_window_drag(event: MouseEvent) {
+  if (event.button !== 0) return;
+
+  const target = event.target as HTMLElement | null;
+  if (target?.closest("button, input, label, a, [role='button'], .sidebar_resize_handle")) {
+    return;
+  }
+
+  void app_window.startDragging();
 }
 
 async function change_volume(event: Event) {
@@ -506,9 +538,8 @@ function queue_index(queue: Track[]) {
 }
 
 function cycle_playback_mode() {
-  const modes: PlaybackMode[] = ["sequence", "shuffle", "repeat", "repeat_one"];
-  const index = modes.indexOf(playback_mode.value);
-  playback_mode.value = modes[(index + 1) % modes.length];
+  const index = playback_modes.findIndex((item) => item.mode === playback_mode.value);
+  playback_mode.value = playback_modes[(index + 1) % playback_modes.length].mode;
 }
 
 function random_queue_index(queue: Track[], current_index: number) {
@@ -685,17 +716,17 @@ onMounted(() => {
           <h2>播放列表</h2>
           <button class="nav_item" :class="{ active: active_view === 'recent' }" type="button" title="0"
             @click="show_view('recent')">
-            <span class="nav_icon svg_icon" :style="icon_style(recent_icon)" />
+            <span class="nav_icon svg_icon" :style="icon_style(clock_fill_icon)" />
             <span>最近播放</span>
           </button>
           <button class="nav_item" :class="{ active: active_view === 'playlist_1' }" type="button" title="0"
             @click="show_view('playlist_1')">
             <span class="nav_icon svg_icon" :style="icon_style(playlist_grid_icon)" />
-            <span>歌单1</span>
+            <span>我的歌单</span>
           </button>
           <button class="nav_item create_playlist" type="button">
             <span class="nav_icon svg_icon" :style="icon_style(plus_icon)" />
-            <span>创建新歌单</span>
+            <span>新建歌单</span>
           </button>
         </section>
       </nav>
@@ -704,7 +735,7 @@ onMounted(() => {
     </aside>
 
     <section class="workspace">
-      <header class="top_bar">
+      <header class="top_bar" @mousedown="start_window_drag">
         <label class="search_box">
           <span class="svg_icon" :style="icon_style(search_icon)" />
           <input v-model="query" type="search" placeholder="搜索歌曲、歌手、专辑" @focus="active_view = 'all'" />
@@ -712,21 +743,18 @@ onMounted(() => {
 
         <div class="toolbar">
           <button class="tool_button" type="button" title="重新加载曲库" @click="reload_library">
-            <span class="svg_icon" :style="icon_style(repeat_icon)" />
+            <span class="svg_icon" :style="icon_style(refresh_icon)" />
           </button>
           <button class="tool_button" type="button" title="设置" @click="settings_open = true">
             <span class="svg_icon" :style="icon_style(settings_icon)" />
           </button>
-          <button class="tool_button" type="button" title="主题">
-            <span class="svg_icon" :style="icon_style(light_icon)" />
-          </button>
-          <button class="window_button" type="button" title="最小化">
+          <button class="window_button" type="button" title="最小化" @click="minimize_window">
             <span class="svg_icon" :style="icon_style(minimize_icon)" />
           </button>
-          <button class="window_button" type="button" title="最大化">
+          <button class="window_button" type="button" title="最大化" @click="toggle_maximize_window">
             <span class="svg_icon" :style="icon_style(maximize_icon)" />
           </button>
-          <button class="window_button close" type="button" title="关闭">
+          <button class="window_button close" type="button" title="关闭" @click="close_window">
             <span class="svg_icon" :style="icon_style(x_icon)" />
           </button>
         </div>
@@ -867,7 +895,7 @@ onMounted(() => {
           <span class="svg_icon" :style="icon_style(playback_mode_button.icon)" />
         </button>
         <button type="button" title="桌面歌词">
-          <span class="svg_icon" :style="icon_style(lyrics_icon)" />
+          <span class="svg_icon" :style="icon_style(lyrics_copy_icon)" />
         </button>
         <span class="volume_icon svg_icon" :style="icon_style(volume_icon)" />
         <input type="range" min="0" max="1.5" step="0.01" :value="status.volume" @input="change_volume" />
@@ -931,6 +959,8 @@ onMounted(() => {
 
 * {
   box-sizing: border-box;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 body {
@@ -943,6 +973,13 @@ body {
 button,
 input {
   font: inherit;
+}
+
+input,
+textarea,
+[contenteditable="true"] {
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 button {
@@ -1117,9 +1154,11 @@ p {
   display: grid;
   justify-content: center;
   align-items: center;
-  grid-template-columns: 1fr 300px;
+  grid-template-columns: 1fr 220px;
   border-bottom: 1px solid #eef0f4;
   padding-right: 28px;
+  cursor: move;
+  user-select: none;
 }
 
 .search_box {
@@ -1132,11 +1171,12 @@ p {
   width: 60%;
   min-width: 300px;
   height: 52px;
-  transform: translateX(-9px);
   border-radius: 8px;
   padding: 0 18px;
   color: #858b96;
   background: #f4f5f8;
+  cursor: text;
+  user-select: auto;
 }
 
 .search_box input {
@@ -1158,6 +1198,7 @@ p {
   align-items: center;
   gap: 14px;
   flex-shrink: 0;
+  cursor: default;
 }
 
 .tool_button:hover,

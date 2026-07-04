@@ -9,6 +9,7 @@ use rodio::{Decoder, OutputStream, Sink, Source};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
+    collections::BTreeMap,
     fs::{self, File},
     io::BufReader,
     path::{Path, PathBuf},
@@ -67,14 +68,32 @@ struct AppConfig {
     library_cache_dir: String,
     cover_cache_dir: String,
     lyrics_cache_dir: String,
+    my_playlist_cache_dir: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
-struct LegacyAppConfig {
-    music_directory: Option<String>,
-    library_cache_dir: String,
-    cover_cache_dir: String,
-    lyrics_cache_dir: String,
+struct ConfigFile {
+    music_directory: Option<MusicDirectoryConfig>,
+    library_cache_dir: Option<String>,
+    cover_cache_dir: Option<String>,
+    lyrics_cache_dir: Option<String>,
+    my_playlist_cache_dir: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+enum MusicDirectoryConfig {
+    Single(String),
+    Multiple(Vec<String>),
+}
+
+impl MusicDirectoryConfig {
+    fn into_vec(self) -> Vec<String> {
+        match self {
+            Self::Single(directory) => vec![directory],
+            Self::Multiple(directories) => directories,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -83,13 +102,81 @@ struct LibraryCache {
     cover_cache_dir: String,
     lyrics_cache_dir: String,
     generated_at: u64,
-    tracks: Vec<Track>,
+    tracks: TrackCacheEntries,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+enum TrackCacheEntries {
+    ById(BTreeMap<String, Track>),
+    List(Vec<Track>),
+}
+
+impl TrackCacheEntries {
+    fn into_tracks(self) -> Vec<Track> {
+        match self {
+            Self::ById(tracks) => tracks.into_values().collect(),
+            Self::List(tracks) => tracks,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PlaylistSummary {
+    id: String,
+    name: String,
+    kind: String,
+    cache_path: String,
+    track_count: usize,
+    total_duration: u64,
+    cover_cache_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PlaylistMetadata {
+    track_count: usize,
+    total_duration: u64,
+    item_count: usize,
+    cover_cache_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PlaylistCache {
+    id: String,
+    name: String,
+    kind: String,
+    generated_at: u64,
+    metadata: PlaylistMetadata,
+    track_ids: Vec<String>,
+    children: Vec<PlaylistSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct AllPlaylistCache {
+    id: String,
+    name: String,
+    kind: String,
+    music_directory: Vec<String>,
+    cover_cache_dir: String,
+    lyrics_cache_dir: String,
+    generated_at: u64,
+    tracks: BTreeMap<String, Track>,
+    playlists: Vec<PlaylistSummary>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct PlaylistBundle {
+    recent: PlaylistCache,
+    my_playlist: PlaylistCache,
+    artists: PlaylistCache,
+    albums: PlaylistCache,
 }
 
 #[derive(Debug, Clone, Serialize)]
 struct AppStartup {
     config: AppConfig,
     tracks: Vec<Track>,
+    playlists: PlaylistBundle,
 }
 
 struct ConfigManager {
@@ -106,11 +193,15 @@ impl ConfigManager {
             library_cache_dir: app_dir.join("library-cache").to_string_lossy().to_string(),
             cover_cache_dir: app_dir.join("cover-cache").to_string_lossy().to_string(),
             lyrics_cache_dir: app_dir.join("lyrics-cache").to_string_lossy().to_string(),
+            my_playlist_cache_dir: app_dir
+                .join("my-playlist-cache")
+                .to_string_lossy()
+                .to_string(),
         };
 
         let config = fs::read_to_string(&config_path)
             .ok()
-            .and_then(|content| parse_config(&content))
+            .and_then(|content| parse_config(&content, &default_config))
             .unwrap_or(default_config);
 
         let manager = Self {
@@ -162,6 +253,8 @@ impl ConfigManager {
             .map_err(|err| format!("无法创建图标缓存目录: {err}"))?;
         fs::create_dir_all(&config.lyrics_cache_dir)
             .map_err(|err| format!("无法创建歌词缓存目录: {err}"))?;
+        fs::create_dir_all(&config.my_playlist_cache_dir)
+            .map_err(|err| format!("无法创建我的歌单缓存目录: {err}"))?;
         Ok(())
     }
 
@@ -176,18 +269,27 @@ impl ConfigManager {
         let hash = short_hash(music_dir);
         Ok(PathBuf::from(config.library_cache_dir).join(format!("{safe_name}-{hash}.json")))
     }
+
 }
 
-fn parse_config(content: &str) -> Option<AppConfig> {
-    toml::from_str::<AppConfig>(content).ok().or_else(|| {
-        toml::from_str::<LegacyAppConfig>(content)
-            .ok()
-            .map(|legacy| AppConfig {
-                music_directory: legacy.music_directory.into_iter().collect(),
-                library_cache_dir: legacy.library_cache_dir,
-                cover_cache_dir: legacy.cover_cache_dir,
-                lyrics_cache_dir: legacy.lyrics_cache_dir,
-            })
+fn parse_config(content: &str, default_config: &AppConfig) -> Option<AppConfig> {
+    toml::from_str::<ConfigFile>(content).ok().map(|config| AppConfig {
+        music_directory: config
+            .music_directory
+            .map(MusicDirectoryConfig::into_vec)
+            .unwrap_or_else(|| default_config.music_directory.clone()),
+        library_cache_dir: config
+            .library_cache_dir
+            .unwrap_or_else(|| default_config.library_cache_dir.clone()),
+        cover_cache_dir: config
+            .cover_cache_dir
+            .unwrap_or_else(|| default_config.cover_cache_dir.clone()),
+        lyrics_cache_dir: config
+            .lyrics_cache_dir
+            .unwrap_or_else(|| default_config.lyrics_cache_dir.clone()),
+        my_playlist_cache_dir: config
+            .my_playlist_cache_dir
+            .unwrap_or_else(|| default_config.my_playlist_cache_dir.clone()),
     })
 }
 
@@ -440,8 +542,13 @@ impl AudioEngine {
 fn get_startup_state(config_manager: tauri::State<'_, ConfigManager>) -> Result<AppStartup, String> {
     let config = config_manager.get()?;
     let tracks = load_or_scan_all_directories(&config_manager, &config)?;
+    let playlists = load_playlist_bundle(&config)?;
 
-    Ok(AppStartup { config, tracks })
+    Ok(AppStartup {
+        config,
+        tracks,
+        playlists,
+    })
 }
 
 #[tauri::command]
@@ -503,6 +610,8 @@ fn load_or_scan_all_directories(
             .then(a.path.cmp(&b.path))
     });
 
+    write_playlist_caches(config, &all_tracks)?;
+
     Ok(all_tracks)
 }
 
@@ -528,7 +637,7 @@ fn read_library_cache(cache_path: &Path) -> Result<Vec<Track>, String> {
     let content = fs::read_to_string(cache_path).map_err(|err| format!("无法读取歌曲缓存: {err}"))?;
     let cache: LibraryCache =
         serde_json::from_str(&content).map_err(|err| format!("无法解析歌曲缓存: {err}"))?;
-    Ok(cache.tracks)
+    Ok(cache.tracks.into_tracks())
 }
 
 fn write_library_cache(
@@ -542,7 +651,7 @@ fn write_library_cache(
         cover_cache_dir: config.cover_cache_dir.clone(),
         lyrics_cache_dir: config.lyrics_cache_dir.clone(),
         generated_at: unix_timestamp(),
-        tracks: tracks.to_vec(),
+        tracks: TrackCacheEntries::ById(track_map_from_tracks(tracks)),
     };
     let content = serde_json::to_string_pretty(&cache)
         .map_err(|err| format!("无法序列化歌曲缓存: {err}"))?;
@@ -552,9 +661,354 @@ fn write_library_cache(
     fs::write(cache_path, content).map_err(|err| format!("无法写入歌曲缓存: {err}"))
 }
 
+fn write_playlist_caches(config: &AppConfig, tracks: &[Track]) -> Result<(), String> {
+    let all_tracks = track_map_from_tracks(tracks);
+    let all_ids = track_ids_from_tracks(tracks);
+    let generated_at = unix_timestamp();
+
+    let recent_path = playlist_cache_path(config, "recent_playlist.json");
+    let my_playlist_path = my_playlist_cache_path(config, "my_playlist.json");
+    let artists_path = playlist_cache_path(config, "artists_playlist.json");
+    let albums_path = playlist_cache_path(config, "albums_playlist.json");
+
+    let recent = existing_playlist_or_default(
+        &recent_path,
+        "recent",
+        "最近播放",
+        "recent",
+        generated_at,
+        &all_tracks,
+    );
+    let my_playlist = load_my_playlist_cache(config)?
+        .unwrap_or_else(|| empty_playlist("my_playlist", "我的歌单", "user"));
+
+    let artists = write_group_playlists(
+        config,
+        "artists",
+        "artists",
+        "歌手",
+        "artist",
+        tracks,
+        |track| normalized_group_name(&track.artist, "未知歌手"),
+    )?;
+    let albums = write_group_playlists(
+        config,
+        "albums",
+        "albums",
+        "专辑",
+        "album",
+        tracks,
+        |track| normalized_group_name(&track.album, "未知专辑"),
+    )?;
+
+    let all_playlist_path = playlist_cache_path(config, "all_playlist.json");
+    let all_playlist = AllPlaylistCache {
+        id: "all".to_string(),
+        name: "全部".to_string(),
+        kind: "all".to_string(),
+        music_directory: config.music_directory.clone(),
+        cover_cache_dir: config.cover_cache_dir.clone(),
+        lyrics_cache_dir: config.lyrics_cache_dir.clone(),
+        generated_at,
+        tracks: all_tracks.clone(),
+        playlists: vec![
+            playlist_summary_from_cache(&recent, &recent_path),
+            playlist_summary_from_cache(&my_playlist, &my_playlist_path),
+            playlist_summary_from_cache(&artists, &artists_path),
+            playlist_summary_from_cache(&albums, &albums_path),
+        ],
+    };
+
+    write_json_cache(&all_playlist_path, &all_playlist, "全部歌单缓存")?;
+    write_json_cache(&recent_path, &recent, "最近播放缓存")?;
+
+    let all_track_playlist = PlaylistCache {
+        id: "all_tracks".to_string(),
+        name: "全部歌曲".to_string(),
+        kind: "all_tracks".to_string(),
+        generated_at,
+        metadata: playlist_metadata(&all_ids, &all_tracks, 0),
+        track_ids: all_ids,
+        children: Vec::new(),
+    };
+    write_json_cache(
+        &playlist_cache_path(config, "all_tracks_playlist.json"),
+        &all_track_playlist,
+        "全部歌曲歌单缓存",
+    )?;
+
+    Ok(())
+}
+
+fn load_playlist_bundle(config: &AppConfig) -> Result<PlaylistBundle, String> {
+    Ok(PlaylistBundle {
+        recent: read_playlist_cache(&playlist_cache_path(config, "recent_playlist.json"))?
+            .unwrap_or_else(|| empty_playlist("recent", "最近播放", "recent")),
+        my_playlist: load_my_playlist_cache(config)?
+            .unwrap_or_else(|| empty_playlist("my_playlist", "我的歌单", "user")),
+        artists: read_playlist_cache(&playlist_cache_path(config, "artists_playlist.json"))?
+            .unwrap_or_else(|| empty_playlist("artists", "歌手", "artists")),
+        albums: read_playlist_cache(&playlist_cache_path(config, "albums_playlist.json"))?
+            .unwrap_or_else(|| empty_playlist("albums", "专辑", "albums")),
+    })
+}
+
+fn write_group_playlists(
+    config: &AppConfig,
+    group_dir: &str,
+    aggregate_id: &str,
+    aggregate_name: &str,
+    child_kind: &str,
+    tracks: &[Track],
+    group_name: impl Fn(&Track) -> String,
+) -> Result<PlaylistCache, String> {
+    let generated_at = unix_timestamp();
+    let all_tracks = track_map_from_tracks(tracks);
+    let mut grouped: BTreeMap<String, Vec<Track>> = BTreeMap::new();
+
+    for track in tracks {
+        grouped.entry(group_name(track)).or_default().push(track.clone());
+    }
+
+    let mut children = Vec::new();
+    let group_root = PathBuf::from(&config.library_cache_dir).join(group_dir);
+    fs::create_dir_all(&group_root).map_err(|err| format!("无法创建{aggregate_name}缓存目录: {err}"))?;
+
+    for (name, mut group_tracks) in grouped {
+        group_tracks.sort_by(|a, b| a.title.cmp(&b.title).then(a.path.cmp(&b.path)));
+        let track_ids = track_ids_from_tracks(&group_tracks);
+        let id = format!("{child_kind}_{}", short_hash(&name));
+        let cache_path = group_root.join(format!("{}_{}.json", safe_cache_name(&name), short_hash(&name)));
+        let playlist = PlaylistCache {
+            id,
+            name: name.clone(),
+            kind: child_kind.to_string(),
+            generated_at,
+            metadata: playlist_metadata(&track_ids, &all_tracks, 0),
+            track_ids,
+            children: Vec::new(),
+        };
+        write_json_cache(&cache_path, &playlist, &format!("{aggregate_name}细分歌单缓存"))?;
+        children.push(playlist_summary_from_cache(&playlist, &cache_path));
+    }
+
+    let all_ids = track_ids_from_tracks(tracks);
+    let aggregate = PlaylistCache {
+        id: aggregate_id.to_string(),
+        name: aggregate_name.to_string(),
+        kind: aggregate_id.to_string(),
+        generated_at,
+        metadata: playlist_metadata(&all_ids, &all_tracks, children.len()),
+        track_ids: all_ids,
+        children,
+    };
+
+    write_json_cache(
+        &playlist_cache_path(config, &format!("{aggregate_id}_playlist.json")),
+        &aggregate,
+        &format!("{aggregate_name}汇总歌单缓存"),
+    )?;
+
+    Ok(aggregate)
+}
+
+fn existing_playlist_or_default(
+    path: &Path,
+    id: &str,
+    name: &str,
+    kind: &str,
+    generated_at: u64,
+    all_tracks: &BTreeMap<String, Track>,
+) -> PlaylistCache {
+    let mut playlist = read_playlist_cache(path)
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| empty_playlist(id, name, kind));
+
+    playlist.id = id.to_string();
+    playlist.name = name.to_string();
+    playlist.kind = kind.to_string();
+    playlist.generated_at = generated_at;
+    playlist.track_ids.retain(|track_id| all_tracks.contains_key(track_id));
+    playlist.children.clear();
+    playlist.metadata = playlist_metadata(&playlist.track_ids, all_tracks, 0);
+    playlist
+}
+
+fn empty_playlist(id: &str, name: &str, kind: &str) -> PlaylistCache {
+    PlaylistCache {
+        id: id.to_string(),
+        name: name.to_string(),
+        kind: kind.to_string(),
+        generated_at: unix_timestamp(),
+        metadata: PlaylistMetadata {
+            track_count: 0,
+            total_duration: 0,
+            item_count: 0,
+            cover_cache_path: None,
+        },
+        track_ids: Vec::new(),
+        children: Vec::new(),
+    }
+}
+
+fn playlist_metadata(
+    track_ids: &[String],
+    all_tracks: &BTreeMap<String, Track>,
+    item_count: usize,
+) -> PlaylistMetadata {
+    let mut total_duration = 0;
+    let mut cover_cache_path = None;
+
+    for track_id in track_ids {
+        let Some(track) = all_tracks.get(track_id) else {
+            continue;
+        };
+        total_duration += track.duration.unwrap_or(0);
+        if cover_cache_path.is_none() && track.cover_cache_path.is_some() {
+            cover_cache_path = track.cover_cache_path.clone();
+        }
+    }
+
+    PlaylistMetadata {
+        track_count: track_ids.len(),
+        total_duration,
+        item_count,
+        cover_cache_path,
+    }
+}
+
+fn playlist_summary_from_cache(playlist: &PlaylistCache, cache_path: &Path) -> PlaylistSummary {
+    PlaylistSummary {
+        id: playlist.id.clone(),
+        name: playlist.name.clone(),
+        kind: playlist.kind.clone(),
+        cache_path: cache_path.to_string_lossy().to_string(),
+        track_count: playlist.metadata.track_count,
+        total_duration: playlist.metadata.total_duration,
+        cover_cache_path: playlist.metadata.cover_cache_path.clone(),
+    }
+}
+
+fn read_playlist_cache(path: &Path) -> Result<Option<PlaylistCache>, String> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    let content = fs::read_to_string(path).map_err(|err| format!("无法读取歌单缓存: {err}"))?;
+    let playlist =
+        serde_json::from_str(&content).map_err(|err| format!("无法解析歌单缓存: {err}"))?;
+    Ok(Some(playlist))
+}
+
+fn load_my_playlist_cache(config: &AppConfig) -> Result<Option<PlaylistCache>, String> {
+    let primary_path = my_playlist_cache_path(config, "my_playlist.json");
+    let fallback_path = playlist_cache_path(config, "my_playlist.json");
+    let mut playlist = match read_playlist_cache(&primary_path)? {
+        Some(playlist) => Some(playlist),
+        None => read_playlist_cache(&fallback_path)?,
+    };
+
+    if let Some(playlist) = playlist.as_mut() {
+        playlist.id = "my_playlist".to_string();
+        playlist.name = "我的歌单".to_string();
+        playlist.kind = "user".to_string();
+        playlist.metadata.track_count = playlist.track_ids.len();
+        playlist.metadata.item_count = 0;
+    }
+
+    Ok(playlist)
+}
+
+fn record_recent_track(config: &AppConfig, path: &str) -> Result<(), String> {
+    if path.is_empty() {
+        return Ok(());
+    }
+
+    let all_playlist_path = playlist_cache_path(config, "all_playlist.json");
+    if !all_playlist_path.exists() {
+        return Ok(());
+    }
+
+    let content =
+        fs::read_to_string(&all_playlist_path).map_err(|err| format!("无法读取全部歌单缓存: {err}"))?;
+    let all_playlist: AllPlaylistCache =
+        serde_json::from_str(&content).map_err(|err| format!("无法解析全部歌单缓存: {err}"))?;
+
+    let track_id = if all_playlist.tracks.contains_key(path) {
+        path.to_string()
+    } else {
+        all_playlist
+            .tracks
+            .values()
+            .find(|track| track.path == path)
+            .map(|track| track.id.clone())
+            .unwrap_or_default()
+    };
+
+    if track_id.is_empty() {
+        return Ok(());
+    }
+
+    let recent_path = playlist_cache_path(config, "recent_playlist.json");
+    let mut recent = read_playlist_cache(&recent_path)?
+        .unwrap_or_else(|| empty_playlist("recent", "最近播放", "recent"));
+    recent.track_ids.retain(|current| current != &track_id);
+    recent.track_ids.insert(0, track_id);
+    recent.track_ids.retain(|track_id| all_playlist.tracks.contains_key(track_id));
+    recent.track_ids.truncate(100);
+    recent.generated_at = unix_timestamp();
+    recent.metadata = playlist_metadata(&recent.track_ids, &all_playlist.tracks, 0);
+
+    write_json_cache(&recent_path, &recent, "最近播放缓存")
+}
+
+fn write_json_cache<T: Serialize>(path: &Path, value: &T, label: &str) -> Result<(), String> {
+    let content = serde_json::to_string_pretty(value)
+        .map_err(|err| format!("无法序列化{label}: {err}"))?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|err| format!("无法创建{label}目录: {err}"))?;
+    }
+    fs::write(path, content).map_err(|err| format!("无法写入{label}: {err}"))
+}
+
+fn track_map_from_tracks(tracks: &[Track]) -> BTreeMap<String, Track> {
+    tracks
+        .iter()
+        .map(|track| (track.id.clone(), track.clone()))
+        .collect()
+}
+
+fn track_ids_from_tracks(tracks: &[Track]) -> Vec<String> {
+    tracks.iter().map(|track| track.id.clone()).collect()
+}
+
+fn playlist_cache_path(config: &AppConfig, file_name: &str) -> PathBuf {
+    PathBuf::from(&config.library_cache_dir).join(file_name)
+}
+
+fn my_playlist_cache_path(config: &AppConfig, file_name: &str) -> PathBuf {
+    PathBuf::from(&config.my_playlist_cache_dir).join(file_name)
+}
+
+fn normalized_group_name(value: &str, fallback: &str) -> String {
+    let value = value.trim();
+    if value.is_empty() {
+        fallback.to_string()
+    } else {
+        value.to_string()
+    }
+}
+
 #[tauri::command]
-fn play_track(engine: tauri::State<'_, AudioEngine>, path: String) -> Result<PlaybackStatus, String> {
+fn play_track(
+    engine: tauri::State<'_, AudioEngine>,
+    config_manager: tauri::State<'_, ConfigManager>,
+    path: String,
+) -> Result<PlaybackStatus, String> {
     engine.send(|reply| AudioCommand::Play { path, reply })?;
+    if let Ok(config) = config_manager.get() {
+        let _ = record_recent_track(&config, &engine.status()?.path.unwrap_or_default());
+    }
     engine.status()
 }
 
@@ -836,6 +1290,26 @@ fn safe_file_name(name: &str) -> String {
         "music-library".to_string()
     } else {
         safe
+    }
+}
+
+fn safe_cache_name(name: &str) -> String {
+    let safe: String = name
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '_' {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect();
+
+    let safe = safe.trim_matches('_');
+    if safe.is_empty() {
+        "playlist".to_string()
+    } else {
+        safe.to_string()
     }
 }
 

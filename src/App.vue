@@ -1,94 +1,39 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { storeToRefs } from "pinia";
+import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import album_icon from "./assets/icons/album.svg";
-import artist_icon from "./assets/icons/artist.svg";
-import clock_fill_icon from "./assets/icons/clock-fill.svg";
-import lyrics_copy_icon from "./assets/icons/lyrics-copy.svg";
-import maximize_icon from "./assets/icons/maximize.svg";
-import minimize_icon from "./assets/icons/minimize.svg";
-import music_note_icon from "./assets/icons/music-note.svg";
-import next_icon from "./assets/icons/next.svg";
-import pause_icon from "./assets/icons/pause.svg";
-import play_icon from "./assets/icons/play.svg";
-import playlist_grid_icon from "./assets/icons/playlist-grid.svg";
-import playlist_icon from "./assets/icons/playlist.svg";
-import plus_icon from "./assets/icons/plus.svg";
-import previous_icon from "./assets/icons/previous.svg";
-import refresh_icon from "./assets/icons/refresh.svg";
 import repeat_one_icon from "./assets/icons/repeat-one.svg";
 import repeat_icon from "./assets/icons/repeat.svg";
-import search_icon from "./assets/icons/search.svg";
-import settings_icon from "./assets/icons/settings.svg";
 import shuffle_icon from "./assets/icons/shuffle.svg";
-import statistics_icon from "./assets/icons/statistics.svg";
-import volume_icon from "./assets/icons/volume.svg";
-import x_icon from "./assets/icons/x.svg";
+import ContentArea from "./components/ContentArea.vue";
+import LibrarySidebar from "./components/LibrarySidebar.vue";
+import PlayerBar from "./components/PlayerBar.vue";
+import PlaybackQueuePanel from "./components/PlaybackQueuePanel.vue";
+import SettingsPanel from "./components/SettingsPanel.vue";
+import TopBar from "./components/TopBar.vue";
+import { use_player_queue_store } from "./stores/player_queue";
+import type {
+  AppConfig,
+  AppStartup,
+  AlbumItem,
+  ArtistItem,
+  PlaybackModeItem,
+  PlaybackStatus,
+  PlaylistBundle,
+  QueueSource,
+  Track,
+  ViewKey,
+} from "./types/music";
+import { display_album, display_artist } from "./utils/track";
 
-type Track = {
-  id: string;
-  title: string;
-  artist: string;
-  album: string;
-  path: string;
-  duration?: number | null;
-  cover_cache_path?: string | null;
-  lyrics_cache_path: string;
-  metadata: TrackMetadata;
+type PlayerBarExpose = {
+  render_progress: (percent: number, seconds: number) => void;
 };
 
-type TrackMetadata = {
-  title: string;
-  artist: string;
-  album: string;
-  duration?: number | null;
-  bitrate?: number | null;
-  sample_rate?: number | null;
-  year?: number | null;
-  genre: string[];
-  track_number?: number | null;
-  disk_number?: number | null;
-  cover_cache_path?: string | null;
-  lyrics_cache_path: string;
-  metadata_source: "embedded" | "embedded_with_filename_fallback" | "filename";
-};
-
-type AppConfig = {
-  music_directory: string[];
-  library_cache_dir: string;
-  cover_cache_dir: string;
-  lyrics_cache_dir: string;
-};
-
-type AppStartup = {
-  config: AppConfig;
-  tracks: Track[];
-};
-
-type PlaybackStatus = {
-  path?: string | null;
-  playing: boolean;
-  volume: number;
-  elapsed: number;
-};
-
-type ViewKey = "all" | "artists" | "albums" | "stats" | "recent" | "playlist_1";
-type PlaybackMode = "shuffle" | "repeat" | "repeat_one";
-type PlaybackModeItem = {
-  mode: PlaybackMode;
-  icon: string;
-  label: string;
-};
-type ArtistItem = {
-  name: string;
-  track_count: number;
-  total_duration: number;
-  cover_track?: Track;
-};
-
-const tracks = ref<Track[]>([]);
+const player_queue = use_player_queue_store();
+const { library_tracks: tracks, current_queue, playback_mode, queue_source } = storeToRefs(player_queue);
 const status = ref<PlaybackStatus>({
   path: null,
   playing: false,
@@ -100,13 +45,14 @@ const loading = ref(false);
 const error_message = ref("");
 const query = ref("");
 const app_config = ref<AppConfig | null>(null);
+const playlists = ref<PlaylistBundle>(empty_playlist_bundle());
 const active_view = ref<ViewKey>("all");
+const selected_artist = ref("");
+const selected_album = ref("");
 const settings_open = ref(false);
-const playback_mode = ref<PlaybackMode>("repeat");
+const playback_queue_open = ref(false);
 const progress_dragging = ref(false);
-const progress_fill_element = ref<HTMLElement | null>(null);
-const progress_handle_element = ref<HTMLElement | null>(null);
-const progress_tooltip_element = ref<HTMLElement | null>(null);
+const player_bar = ref<PlayerBarExpose | null>(null);
 const sidebar_width = ref(250);
 const sidebar_resizing = ref(false);
 
@@ -139,9 +85,11 @@ const current_track = computed(() =>
   tracks.value.find((track) => track.path === status.value.path),
 );
 
+const tracks_by_id = computed(() => new Map(tracks.value.map((track) => [track.id, track])));
+
 const display_tracks = computed(() => {
   const keyword = query.value.trim().toLowerCase();
-  if (!keyword) return tracks.value;
+  if (!keyword) return queue_tracks_for_view(active_view.value);
 
   return tracks.value.filter((track) =>
     `${track.title} ${track.artist} ${track.album}`.toLowerCase().includes(keyword),
@@ -234,7 +182,8 @@ async function scan_directory(directories: string[]) {
   error_message.value = "";
 
   try {
-    tracks.value = await invoke<Track[]>("scan_music_dir", { dirs: directories });
+    const scanned_tracks = await invoke<Track[]>("scan_music_dir", { dirs: directories });
+    player_queue.set_library_tracks(scanned_tracks);
     await load_startup_state();
   } catch (error) {
     error_message.value = String(error);
@@ -259,7 +208,9 @@ async function load_startup_state() {
   try {
     const startup = await invoke<AppStartup>("get_startup_state");
     app_config.value = startup.config;
-    tracks.value = startup.tracks;
+    playlists.value = startup.playlists;
+    player_queue.set_library_tracks(startup.tracks);
+    set_queue_for_current_view();
     selected_directories.value = startup.config.music_directory;
   } catch (error) {
     error_message.value = String(error);
@@ -273,6 +224,7 @@ async function play(track: Track) {
     handled_completion_path = "";
     clear_pending_seek();
     apply_playback_status(await invoke<PlaybackStatus>("play_track", { path: track.path }));
+    add_recent_track(track);
     start_status_polling();
   } catch (error) {
     error_message.value = String(error);
@@ -280,8 +232,12 @@ async function play(track: Track) {
 }
 
 async function toggle_playback() {
-  if (!status.value.path && display_tracks.value[0]) {
-    await play(display_tracks.value[0]);
+  if (!status.value.path) {
+    set_queue_for_current_view();
+  }
+  const first_track = current_queue.value[0] ?? display_tracks.value[0];
+  if (!status.value.path && first_track) {
+    await play(first_track);
     return;
   }
 
@@ -292,7 +248,7 @@ async function toggle_playback() {
 }
 
 async function previous_track() {
-  const queue = current_queue();
+  const queue = playback_queue();
   if (!queue.length) return;
   const index = queue_index(queue);
   const previous_index = index <= 0 ? queue.length - 1 : index - 1;
@@ -412,6 +368,7 @@ function start_status_polling() {
 
 function apply_playback_status(next_status: PlaybackStatus) {
   status.value = next_status;
+  player_queue.set_current_track_path(next_status.path);
   if (hold_pending_seek_progress(next_status)) {
     if (next_status.playing) request_progress_frame();
     return;
@@ -515,21 +472,11 @@ function progress_percent_for(seconds: number) {
 }
 
 function render_progress(percent: number, seconds: number) {
-  const safe_percent = Math.min(Math.max(percent, 0), 100);
-  if (progress_fill_element.value) {
-    progress_fill_element.value.style.transform = `scaleX(${safe_percent / 100})`;
-  }
-  if (progress_handle_element.value) {
-    progress_handle_element.value.style.left = `${safe_percent}%`;
-  }
-  if (progress_tooltip_element.value) {
-    progress_tooltip_element.value.style.left = `${safe_percent}%`;
-    progress_tooltip_element.value.textContent = format_duration(seconds);
-  }
+  player_bar.value?.render_progress(percent, seconds);
 }
 
-function current_queue() {
-  return display_tracks.value.length ? display_tracks.value : tracks.value;
+function playback_queue() {
+  return current_queue.value.length ? current_queue.value : display_tracks.value;
 }
 
 function queue_index(queue: Track[]) {
@@ -539,7 +486,7 @@ function queue_index(queue: Track[]) {
 
 function cycle_playback_mode() {
   const index = playback_modes.findIndex((item) => item.mode === playback_mode.value);
-  playback_mode.value = playback_modes[(index + 1) % playback_modes.length].mode;
+  player_queue.set_playback_mode(playback_modes[(index + 1) % playback_modes.length].mode);
 }
 
 function random_queue_index(queue: Track[], current_index: number) {
@@ -552,7 +499,7 @@ function random_queue_index(queue: Track[], current_index: number) {
 }
 
 async function play_next_track(from_completion: boolean) {
-  const queue = current_queue();
+  const queue = playback_queue();
   if (!queue.length) return false;
 
   const current_index = queue_index(queue);
@@ -597,33 +544,162 @@ async function handle_playback_completion(next_status: PlaybackStatus) {
 function show_view(view: ViewKey) {
   active_view.value = view;
   if (view !== "all") query.value = "";
+  selected_artist.value = "";
+  selected_album.value = "";
 }
 
-function display_title(track?: Track | null) {
-  return track?.title?.trim() || "未知歌曲";
+function queue_source_for_view(view: ViewKey): QueueSource {
+  if (view === "artists" && selected_artist.value) {
+    return { type: "artist", id: selected_artist.value, label: selected_artist.value };
+  }
+  if (view === "albums" && selected_album.value) {
+    return { type: "album", id: selected_album.value, label: selected_album.value };
+  }
+
+  const labels: Record<ViewKey, string> = {
+    all: "全部",
+    artists: "歌手",
+    albums: "专辑",
+    stats: "统计",
+    recent: "最近播放",
+    playlist_1: "我的歌单",
+  };
+  return { type: view, id: view, label: labels[view] };
 }
 
-function display_artist(track?: Track | null) {
-  return track?.artist?.trim() || "未知歌手";
+function queue_tracks_for_view(view: ViewKey) {
+  if (view === "artists" && selected_artist.value) {
+    return tracks.value.filter((track) => display_artist(track) === selected_artist.value);
+  }
+  if (view === "albums" && selected_album.value) {
+    return tracks.value.filter((track) => display_album(track) === selected_album.value);
+  }
+  if (view === "recent") return tracks_from_ids(playlists.value.recent.track_ids);
+  if (view === "playlist_1") return tracks_from_ids(playlists.value.my_playlist.track_ids);
+  return tracks.value;
 }
 
-function display_album(track?: Track | null) {
-  return track?.album?.trim() || "未知专辑";
+function tracks_from_ids(track_ids: string[]) {
+  return track_ids
+    .map((track_id) => tracks_by_id.value.get(track_id))
+    .filter((track): track is Track => Boolean(track));
 }
 
-function format_duration(seconds?: number | null) {
-  if (!seconds) return "--:--";
-  const minutes = Math.floor(seconds / 60);
-  const rest = Math.floor(seconds % 60);
-  return `${minutes}:${String(rest).padStart(2, "0")}`;
+function add_recent_track(track: Track) {
+  const track_ids = playlists.value.recent.track_ids.filter((track_id) => track_id !== track.id);
+  track_ids.unshift(track.id);
+  playlists.value.recent = {
+    ...playlists.value.recent,
+    track_ids: track_ids.slice(0, 100),
+    metadata: {
+      ...playlists.value.recent.metadata,
+      track_count: Math.min(track_ids.length, 100),
+    },
+  };
 }
 
-function cover_src(track?: Track | null) {
-  return track?.cover_cache_path ? convertFileSrc(track.cover_cache_path) : "";
+function empty_playlist_bundle(): PlaylistBundle {
+  const empty_playlist = (id: string, name: string, kind: string) => ({
+    id,
+    name,
+    kind,
+    generated_at: 0,
+    metadata: {
+      track_count: 0,
+      total_duration: 0,
+      item_count: 0,
+      cover_cache_path: null,
+    },
+    track_ids: [],
+    children: [],
+  });
+
+  return {
+    recent: empty_playlist("recent", "最近播放", "recent"),
+    my_playlist: empty_playlist("my_playlist", "我的歌单", "user"),
+    artists: empty_playlist("artists", "歌手", "artists"),
+    albums: empty_playlist("albums", "专辑", "albums"),
+  };
 }
 
-function icon_style(icon: string) {
-  return { "--icon": `url("${icon}")` };
+function set_queue_for_current_view() {
+  if (query.value.trim()) {
+    player_queue.set_current_queue(
+      {
+        type: "search",
+        id: query.value.trim(),
+        label: "搜索结果",
+      },
+      display_tracks.value,
+    );
+    return;
+  }
+
+  player_queue.set_current_queue(queue_source_for_view(active_view.value), queue_tracks_for_view(active_view.value));
+}
+
+function open_artist_playlist(name: string) {
+  active_view.value = "artists";
+  selected_artist.value = name;
+  selected_album.value = "";
+  query.value = "";
+}
+
+function open_album_playlist(name: string) {
+  active_view.value = "albums";
+  selected_album.value = name;
+  selected_artist.value = "";
+  query.value = "";
+}
+
+function close_detail_playlist() {
+  selected_artist.value = "";
+  selected_album.value = "";
+}
+
+function update_query(value: string) {
+  query.value = value;
+  active_view.value = "all";
+  selected_artist.value = "";
+  selected_album.value = "";
+}
+
+function focus_search() {
+  active_view.value = "all";
+}
+
+async function play_track_from_view(track: Track) {
+  set_queue_for_current_view();
+  await play(track);
+}
+
+async function play_track_from_queue(track: Track) {
+  await play(track);
+}
+
+function open_queue_source() {
+  const source = queue_source.value;
+  playback_queue_open.value = false;
+
+  if (source.type === "artist") {
+    open_artist_playlist(source.id);
+    return;
+  }
+  if (source.type === "album") {
+    open_album_playlist(source.id);
+    return;
+  }
+  if (source.type === "search") {
+    update_query(source.id);
+    return;
+  }
+  if (source.type === "recent" || source.type === "playlist_1" || source.type === "all") {
+    show_view(source.type);
+    return;
+  }
+  if (source.type === "playlist") {
+    show_view("playlist_1");
+  }
 }
 
 function clamp_sidebar_width(width: number) {
@@ -679,267 +755,130 @@ onMounted(() => {
   load_sidebar_width();
   void load_startup_state();
 });
+
+const album_items = computed<AlbumItem[]>(() => {
+  const albums = new Map<string, AlbumItem>();
+
+  for (const track of tracks.value) {
+    const name = display_album(track);
+    if (name === "未知专辑") continue;
+
+    const item =
+      albums.get(name) ??
+      ({
+        name,
+        artist: display_artist(track),
+        track_count: 0,
+        total_duration: 0,
+        cover_track: undefined,
+      } satisfies AlbumItem);
+
+    item.track_count += 1;
+    item.total_duration += track.duration ?? 0;
+    if (!item.cover_track || (!item.cover_track.cover_cache_path && track.cover_cache_path)) {
+      item.cover_track = track;
+    }
+
+    albums.set(name, item);
+  }
+
+  return Array.from(albums.values()).sort((left, right) =>
+    left.name.localeCompare(right.name, "zh-Hans-CN"),
+  );
+});
+
+watch(display_tracks, () => {
+  if (query.value.trim() && queue_source.value.type === "search") set_queue_for_current_view();
+});
 </script>
 
 <template>
   <main class="app_shell" :class="{ sidebar_compact, sidebar_resizing }" :style="app_shell_style">
-    <aside class="sidebar">
-      <nav class="sidebar_nav" aria-label="主导航">
-        <section class="nav_group">
-          <h2>音乐曲库</h2>
-          <button class="nav_item" :class="{ active: active_view === 'all' && !query }" type="button"
-            :title="String(tracks.length)"
-            @click="show_view('all')">
-            <span class="nav_icon svg_icon" :style="icon_style(music_note_icon)" />
-            <span>全部</span>
-          </button>
-          <button class="nav_item" :class="{ active: active_view === 'artists' }" type="button"
-            :title="String(artist_count)"
-            @click="show_view('artists')">
-            <span class="nav_icon svg_icon" :style="icon_style(artist_icon)" />
-            <span>歌手</span>
-          </button>
-          <button class="nav_item" :class="{ active: active_view === 'albums' }" type="button"
-            :title="String(album_count)"
-            @click="show_view('albums')">
-            <span class="nav_icon svg_icon" :style="icon_style(album_icon)" />
-            <span>专辑</span>
-          </button>
-          <button class="nav_item" :class="{ active: active_view === 'stats' }" type="button"
-            @click="show_view('stats')">
-            <span class="nav_icon svg_icon" :style="icon_style(statistics_icon)" />
-            <span>统计</span>
-          </button>
-        </section>
-
-        <section class="nav_group playlist_group">
-          <h2>播放列表</h2>
-          <button class="nav_item" :class="{ active: active_view === 'recent' }" type="button" title="0"
-            @click="show_view('recent')">
-            <span class="nav_icon svg_icon" :style="icon_style(clock_fill_icon)" />
-            <span>最近播放</span>
-          </button>
-          <button class="nav_item" :class="{ active: active_view === 'playlist_1' }" type="button" title="0"
-            @click="show_view('playlist_1')">
-            <span class="nav_icon svg_icon" :style="icon_style(playlist_grid_icon)" />
-            <span>我的歌单</span>
-          </button>
-          <button class="nav_item create_playlist" type="button">
-            <span class="nav_icon svg_icon" :style="icon_style(plus_icon)" />
-            <span>新建歌单</span>
-          </button>
-        </section>
-      </nav>
-      <div class="sidebar_resize_handle" role="separator" aria-orientation="vertical" aria-label="调整侧边栏宽度"
-        @pointerdown="begin_sidebar_resize" />
-    </aside>
+    <LibrarySidebar
+      :active_view="active_view"
+      :has_query="Boolean(query.trim())"
+      :track_count="tracks.length"
+      :artist_count="artist_count"
+      :album_count="album_count"
+      :recent_count="playlists.recent.metadata.track_count"
+      :playlist_count="playlists.my_playlist.metadata.track_count"
+      @show_view="show_view"
+      @begin_resize="begin_sidebar_resize"
+    />
 
     <section class="workspace">
-      <header class="top_bar" @mousedown="start_window_drag">
-        <label class="search_box">
-          <span class="svg_icon" :style="icon_style(search_icon)" />
-          <input v-model="query" type="search" placeholder="搜索歌曲、歌手、专辑" @focus="active_view = 'all'" />
-        </label>
+      <TopBar
+        :query="query"
+        @update:query="update_query"
+        @focus_search="focus_search"
+        @reload_library="reload_library"
+        @open_settings="settings_open = true"
+        @minimize_window="minimize_window"
+        @toggle_maximize_window="toggle_maximize_window"
+        @close_window="close_window"
+        @start_window_drag="start_window_drag"
+      />
 
-        <div class="toolbar">
-          <button class="tool_button" type="button" title="重新加载曲库" @click="reload_library">
-            <span class="svg_icon" :style="icon_style(refresh_icon)" />
-          </button>
-          <button class="tool_button" type="button" title="设置" @click="settings_open = true">
-            <span class="svg_icon" :style="icon_style(settings_icon)" />
-          </button>
-          <button class="window_button" type="button" title="最小化" @click="minimize_window">
-            <span class="svg_icon" :style="icon_style(minimize_icon)" />
-          </button>
-          <button class="window_button" type="button" title="最大化" @click="toggle_maximize_window">
-            <span class="svg_icon" :style="icon_style(maximize_icon)" />
-          </button>
-          <button class="window_button close" type="button" title="关闭" @click="close_window">
-            <span class="svg_icon" :style="icon_style(x_icon)" />
-          </button>
-        </div>
-      </header>
-
-      <section class="content_area">
-        <p v-if="loading" class="status_line">正在加载曲库...</p>
-        <p v-if="error_message" class="error_line">{{ error_message }}</p>
-
-        <section v-if="active_view === 'all' || query.trim()" class="track_table" aria-label="歌曲列表">
-          <div class="table_head">
-            <span class="index_cell">#</span>
-            <span>歌曲</span>
-            <span>专辑</span>
-            <span class="duration_cell">时长</span>
-          </div>
-
-          <button v-for="(track, index) in display_tracks" :key="track.id" class="table_row"
-            :class="{ active: track.path === status.path }" type="button" @click="play(track)">
-            <span class="index_cell">{{ index + 1 }}</span>
-            <span class="song_cell">
-              <span class="cover_thumb">
-                <img v-if="track.cover_cache_path" :src="cover_src(track)" alt="" />
-                <span v-else>♪</span>
-              </span>
-              <span class="song_text">
-                <strong>{{ display_title(track) }}</strong>
-                <small>{{ display_artist(track) }}</small>
-              </span>
-            </span>
-            <span class="album_cell">{{ display_album(track) }}</span>
-            <span class="duration_cell">{{ format_duration(track.duration) }}</span>
-          </button>
-
-          <p v-if="!loading && !display_tracks.length" class="empty_state">
-            没有找到歌曲，先添加音乐目录或调整搜索内容。
-          </p>
-        </section>
-
-        <section v-else-if="active_view === 'albums'" class="placeholder_view">
-          <div class="placeholder_grid">
-            <article v-for="track in tracks.slice(0, 8)" :key="track.id" class="album_tile">
-              <span class="album_art">
-                <img v-if="track.cover_cache_path" :src="cover_src(track)" alt="" />
-                <span v-else>♪</span>
-              </span>
-              <strong>{{ display_album(track) }}</strong>
-              <small>{{ display_artist(track) }}</small>
-            </article>
-          </div>
-          <p v-if="!tracks.length" class="empty_state">添加音乐目录后会在这里展示专辑。</p>
-        </section>
-
-        <section v-else-if="active_view === 'artists'" class="placeholder_view">
-          <div class="artist_grid">
-            <article v-for="artist in artist_items" :key="artist.name" class="artist_tile">
-              <span class="artist_art">
-                <img v-if="artist.cover_track?.cover_cache_path" :src="cover_src(artist.cover_track)" alt="" />
-                <span v-else>♪</span>
-              </span>
-              <strong :title="artist.name">{{ artist.name }}</strong>
-              <small>{{ artist.track_count }} 首歌曲 {{ format_duration(artist.total_duration) }}</small>
-            </article>
-          </div>
-          <p v-if="!tracks.length" class="empty_state">添加音乐目录后会在这里展示歌手。</p>
-        </section>
-
-        <section v-else-if="active_view === 'stats'" class="stats_view">
-          <article>
-            <strong>{{ tracks.length }}</strong>
-            <span>歌曲</span>
-          </article>
-          <article>
-            <strong>{{ album_count }}</strong>
-            <span>专辑</span>
-          </article>
-          <article>
-            <strong>{{ artist_count }}</strong>
-            <span>歌手</span>
-          </article>
-          <article>
-            <strong>{{ format_duration(total_duration) }}</strong>
-            <span>总时长</span>
-          </article>
-        </section>
-
-        <section v-else class="placeholder_view">
-          <p class="empty_state">这个播放列表界面已经预留，后续会接入播放记录和自定义歌单。</p>
-        </section>
-      </section>
+      <ContentArea
+        :active_view="active_view"
+        :query="query"
+        :loading="loading"
+        :error_message="error_message"
+        :tracks="tracks"
+        :display_tracks="display_tracks"
+        :status_path="status.path"
+        :is_playing="status.playing"
+        :selected_artist="selected_artist"
+        :selected_album="selected_album"
+        :playback_queue_source="queue_source"
+        :artist_items="artist_items"
+        :album_items="album_items"
+        :album_count="album_count"
+        :artist_count="artist_count"
+        :total_duration="total_duration"
+        @play_track="play_track_from_view"
+        @open_artist="open_artist_playlist"
+        @open_album="open_album_playlist"
+        @close_detail="close_detail_playlist"
+      />
     </section>
 
-    <footer class="player_bar">
-      <div class="player_progress" :class="{ dragging: progress_dragging }" role="slider" :aria-valuemin="0"
-        :aria-valuemax="current_track?.duration ?? 0" :aria-valuenow="status.elapsed" aria-label="播放进度"
-        @pointerdown="begin_progress_drag" @pointermove="drag_progress" @pointerup="end_progress_drag"
-        @pointercancel="cancel_progress_drag">
-        <div class="progress_bar_container">
-          <div class="progress_track">
-            <div ref="progress_fill_element" class="progress_fill" />
-            <div ref="progress_handle_element" class="progress_handle" />
-            <div ref="progress_tooltip_element" class="progress_tooltip">0:00</div>
-          </div>
-        </div>
-      </div>
+    <PlayerBar
+      ref="player_bar"
+      :current_track="current_track"
+      :status="status"
+      :progress_dragging="progress_dragging"
+      :playback_mode_button="playback_mode_button"
+      @begin_progress_drag="begin_progress_drag"
+      @drag_progress="drag_progress"
+      @end_progress_drag="end_progress_drag"
+      @cancel_progress_drag="cancel_progress_drag"
+      @previous_track="previous_track"
+      @toggle_playback="toggle_playback"
+      @next_track="next_track"
+      @open_queue="playback_queue_open = true"
+      @cycle_playback_mode="cycle_playback_mode"
+      @change_volume="change_volume"
+    />
 
-      <div class="now_track">
-        <span class="player_cover">
-          <img v-if="current_track?.cover_cache_path" :src="cover_src(current_track)" alt="" />
-          <span v-else>♪</span>
-        </span>
-        <span class="now_text">
-          <strong>{{ display_title(current_track) }}</strong>
-          <small>{{ display_artist(current_track) }}</small>
-        </span>
-      </div>
+    <PlaybackQueuePanel
+      v-if="playback_queue_open"
+      :queue_source="queue_source"
+      :tracks="current_queue"
+      :active_track_id="current_track?.id"
+      :status_path="status.path"
+      :is_playing="status.playing"
+      @close="playback_queue_open = false"
+      @open_source="open_queue_source"
+      @play_track="play_track_from_queue"
+    />
 
-      <div class="player_center">
-        <div class="control_row">
-          <button type="button" title="上一首" @click="previous_track">
-            <span class="svg_icon" :style="icon_style(previous_icon)" />
-          </button>
-          <button class="play_button" type="button" title="播放或暂停" @click="toggle_playback">
-            <span class="svg_icon" :style="icon_style(status.playing ? pause_icon : play_icon)" />
-          </button>
-          <button type="button" title="下一首" @click="next_track">
-            <span class="svg_icon" :style="icon_style(next_icon)" />
-          </button>
-        </div>
-      </div>
-
-      <div class="player_tools">
-        <button type="button" title="播放队列">
-          <span class="svg_icon" :style="icon_style(playlist_icon)" />
-        </button>
-        <button type="button" :title="playback_mode_button.label" :aria-label="playback_mode_button.label"
-          @click="cycle_playback_mode">
-          <span class="svg_icon" :style="icon_style(playback_mode_button.icon)" />
-        </button>
-        <button type="button" title="桌面歌词">
-          <span class="svg_icon" :style="icon_style(lyrics_copy_icon)" />
-        </button>
-        <span class="volume_icon svg_icon" :style="icon_style(volume_icon)" />
-        <input type="range" min="0" max="1.5" step="0.01" :value="status.volume" @input="change_volume" />
-      </div>
-    </footer>
-
-    <div v-if="settings_open" class="settings_overlay" @click.self="settings_open = false">
-      <aside class="settings_panel" aria-label="设置">
-        <header>
-          <div>
-            <h2>设置</h2>
-            <p>配置文件内容</p>
-          </div>
-          <button class="tool_button" type="button" title="关闭设置" @click="settings_open = false">
-            <span class="svg_icon" :style="icon_style(x_icon)" />
-          </button>
-        </header>
-
-        <section class="settings_section">
-          <h3>音乐目录</h3>
-          <div v-if="app_config?.music_directory.length" class="path_list">
-            <p v-for="directory in app_config.music_directory" :key="directory">{{ directory }}</p>
-          </div>
-          <p v-else class="muted">尚未选择音乐目录。</p>
-          <button class="primary_button" type="button" @click="choose_music_directory">添加音乐目录</button>
-        </section>
-
-        <section class="settings_section">
-          <h3>缓存位置</h3>
-          <label>
-            <span>library_cache_dir</span>
-            <input :value="app_config?.library_cache_dir ?? ''" readonly />
-          </label>
-          <label>
-            <span>cover_cache_dir</span>
-            <input :value="app_config?.cover_cache_dir ?? ''" readonly />
-          </label>
-          <label>
-            <span>lyrics_cache_dir</span>
-            <input :value="app_config?.lyrics_cache_dir ?? ''" readonly />
-          </label>
-        </section>
-      </aside>
-    </div>
+    <SettingsPanel
+      v-if="settings_open"
+      :app_config="app_config"
+      @close="settings_open = false"
+      @choose_music_directory="choose_music_directory"
+    />
   </main>
 </template>
 
@@ -1186,6 +1125,8 @@ p {
   color: #1e2026;
   background: transparent;
   font-size: 1rem;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .search_box .svg_icon {
@@ -1374,7 +1315,8 @@ p {
 .placeholder_view {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   padding: 18px 8px;
 }
 
@@ -1388,6 +1330,58 @@ p {
   display: grid;
   gap: 8px;
   min-width: 0;
+}
+
+.media_tile {
+  border: 0;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+}
+
+.media_tile:hover strong {
+  color: #426dff;
+}
+
+.detail_header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  min-height: 44px;
+  padding: 0 0 12px;
+}
+
+.detail_header button {
+  min-height: 32px;
+  border-radius: 8px;
+  padding: 0 12px;
+  color: #426dff;
+  background: #eaf0ff;
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.detail_title {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.detail_title strong,
+.detail_meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail_meta {
+  justify-self: end;
+  color: #8b919c;
+  font-size: 0.88rem;
+  font-weight: 700;
+  text-align: right;
 }
 
 .album_art,
@@ -1463,6 +1457,22 @@ p {
 
 .stats_view span {
   color: #8b919c;
+}
+
+.spinning_cover {
+  border-radius: 50%;
+  animation: cover_spin 16s linear infinite;
+  will-change: transform;
+}
+
+@keyframes cover_spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .player_bar {
@@ -1662,6 +1672,15 @@ p {
   background: rgba(18, 21, 28, 0.22);
 }
 
+.queue_overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(18, 21, 28, 0.16);
+}
+
 .settings_panel {
   display: flex;
   flex-direction: column;
@@ -1673,6 +1692,16 @@ p {
   box-shadow: -20px 0 60px rgba(19, 24, 34, 0.16);
 }
 
+.queue_panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: min(420px, 100vw);
+  height: 100%;
+  padding: 24px;
+  background: #ffffff;
+  box-shadow: -20px 0 60px rgba(19, 24, 34, 0.14);
+}
+
 .settings_panel header {
   display: flex;
   align-items: center;
@@ -1680,12 +1709,141 @@ p {
   gap: 16px;
 }
 
+.queue_panel header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  padding-bottom: 18px;
+}
+
 .settings_panel h2 {
   font-size: 1.45rem;
 }
 
+.queue_title_button {
+  overflow: hidden;
+  margin: 0;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  color: #1e2026;
+  background: transparent;
+  font-size: 1.24rem;
+  font-weight: 800;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queue_title_button:hover {
+  color: #426dff;
+}
+
 .settings_panel header p {
   color: #8b919c;
+}
+
+.queue_panel header p {
+  justify-self: end;
+  overflow: hidden;
+  margin: 0;
+  color: #8b919c;
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queue_panel header > div {
+  min-width: 0;
+}
+
+.queue_list {
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 6px;
+}
+
+.queue_item {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 58px;
+  border-radius: 8px;
+  padding: 8px;
+  color: #1e2026;
+  background: transparent;
+  text-align: left;
+}
+
+.queue_item:hover,
+.queue_item.active {
+  background: #f5f7ff;
+}
+
+.queue_cover {
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  color: #ffffff;
+  background:
+    linear-gradient(145deg, #21242b, #426dff),
+    #21242b;
+  font-weight: 900;
+}
+
+.queue_cover.spinning_cover {
+  border-radius: 50%;
+  animation: cover_spin 16s linear infinite;
+  will-change: transform;
+}
+
+.queue_panel.playing .queue_item.active .queue_cover {
+  border-radius: 50%;
+  animation: cover_spin 16s linear infinite;
+  will-change: transform;
+}
+
+.queue_cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.queue_text {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.queue_text strong,
+.queue_text small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queue_text strong {
+  font-size: 0.94rem;
+}
+
+.queue_text small,
+.queue_duration {
+  color: #8b919c;
+  font-size: 0.84rem;
+}
+
+.queue_duration {
+  justify-self: end;
 }
 
 .settings_section {

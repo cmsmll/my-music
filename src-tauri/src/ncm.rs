@@ -251,7 +251,7 @@ fn decrypt_audio_chunk(key_box: &[u8; 256], pos: u64, audio: &mut [u8]) {
 }
 
 fn aes_128_ecb_decrypt(data: &[u8], key: &[u8; 16]) -> Result<Vec<u8>, NcmError> {
-    if data.is_empty() || data.len() % 16 != 0 {
+    if data.is_empty() || !data.len().is_multiple_of(16) {
         return Err(NcmError::InvalidKey);
     }
 

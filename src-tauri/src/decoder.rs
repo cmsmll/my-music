@@ -120,7 +120,7 @@ pub(crate) fn run_decoder(config: &AppConfig) -> DecoderRunSummary {
                     report.scanned, report.processed, report.skipped, report.failed,
                 ),
             );
-            return DecoderRunSummary {
+            DecoderRunSummary {
                 executed: true,
                 scanned: report.scanned,
                 processed: report.processed,
@@ -129,18 +129,18 @@ pub(crate) fn run_decoder(config: &AppConfig) -> DecoderRunSummary {
                 output_dir: output_dir.to_string_lossy().to_string(),
                 scan_directory_count,
                 message,
-            };
+            }
         }
         Err(err) => {
             write_decoder_error_log(config, None, "scan", &err.to_string());
-            return DecoderRunSummary {
+            DecoderRunSummary {
                 executed: true,
                 failed: 1,
                 output_dir: output_dir.to_string_lossy().to_string(),
                 scan_directory_count,
                 message: format!("解码扫描失败: {err}"),
                 ..DecoderRunSummary::default()
-            };
+            }
         }
     }
 }

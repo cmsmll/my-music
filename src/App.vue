@@ -1,26 +1,29 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { storeToRefs } from "pinia";
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getCurrentWindow, PhysicalSize } from "@tauri-apps/api/window";
 import repeat_one_icon from "./assets/icons/repeat-one.svg";
 import repeat_icon from "./assets/icons/repeat.svg";
 import shuffle_icon from "./assets/icons/shuffle.svg";
 import ConfirmDialog from "./components/ConfirmDialog.vue";
 import ContentArea from "./components/ContentArea.vue";
 import LibrarySidebar from "./components/LibrarySidebar.vue";
+import LibraryScanDialog from "./components/LibraryScanDialog.vue";
 import PlayerBar from "./components/PlayerBar.vue";
 import PlaybackQueuePanel from "./components/PlaybackQueuePanel.vue";
 import SettingsPanel from "./components/SettingsPanel.vue";
 import TopBar from "./components/TopBar.vue";
+import { use_app_config_store } from "./stores/app_config";
 import { use_player_queue_store } from "./stores/player_queue";
 import type {
   AppConfig,
   AppStartup,
   AlbumItem,
   ArtistItem,
+  DecoderRunSummary,
   PlaybackMode,
   PlaybackModeItem,
   PlayStatistics,
@@ -61,8 +64,18 @@ type PlaylistContextMenu = {
   y: number;
 };
 
+type LibraryScanDialogState = {
+  visible: boolean;
+  status: "loading" | "success" | "error";
+  title: string;
+  message: string;
+  detail: string;
+};
+
 const player_queue = use_player_queue_store();
+const app_config_store = use_app_config_store();
 const { library_tracks: tracks, current_queue, playback_mode, queue_source } = storeToRefs(player_queue);
+const { config: app_config } = storeToRefs(app_config_store);
 const status = ref<PlaybackStatus>({
   path: null,
   playing: false,
@@ -73,7 +86,6 @@ const selected_directories = ref<string[]>([]);
 const loading = ref(false);
 const error_message = ref("");
 const query = ref("");
-const app_config = ref<AppConfig | null>(null);
 const playlists = ref<PlaylistBundle>(empty_playlist_bundle());
 const play_statistics = ref<PlayStatistics>(empty_play_statistics());
 const active_view = ref<ViewKey>("all");
@@ -85,6 +97,13 @@ const playback_queue_open = ref(false);
 const track_context_menu = ref<TrackContextMenu | null>(null);
 const playlist_context_menu = ref<PlaylistContextMenu | null>(null);
 const pending_delete_playlist = ref<PlaylistCache | null>(null);
+const library_scan_dialog = ref<LibraryScanDialogState>({
+  visible: false,
+  status: "loading",
+  title: "加载曲库",
+  message: "正在扫描音乐目录...",
+  detail: "",
+});
 const progress_dragging = ref(false);
 const player_bar = ref<PlayerBarExpose | null>(null);
 const sidebar_width = ref(250);
@@ -104,16 +123,19 @@ let handled_completion_path = "";
 let sidebar_resize_start_x = 0;
 let sidebar_resize_start_width = 250;
 let media_shortcut_unlisteners: UnlistenFn[] = [];
+let window_resize_unlisten: UnlistenFn | null = null;
+let window_close_unlisten: UnlistenFn | null = null;
 let media_shortcut_listeners_disposed = false;
 let restored_playback_pending = false;
 let restoring_player_cache = false;
 let listening_track_id: string | null = null;
 let listening_started_at = 0;
+let closing_window = false;
+let error_message_timer: number | undefined;
 
 const sidebar_min_width = 72;
 const sidebar_max_width = 420;
 const sidebar_compact_width = 100;
-const sidebar_width_storage_key = "music_box_sidebar_width";
 const player_cache_storage_key = "music_box_player_cache";
 const app_window = getCurrentWindow();
 const playback_modes: PlaybackModeItem[] = [
@@ -195,8 +217,19 @@ const total_size = computed(() =>
 
 const sidebar_compact = computed(() => sidebar_width.value < sidebar_compact_width);
 
+const app_background_color = computed(
+  () => app_config.value?.style.background_color?.trim() || "#ffffff",
+);
+
+const app_background_image = computed(() => {
+  const image_path = app_config.value?.style.background_image?.trim();
+  return image_path ? `url("${convertFileSrc(image_path)}")` : "none";
+});
+
 const app_shell_style = computed(() => ({
   "--sidebar_width": `${sidebar_width.value}px`,
+  "--app_background_color": app_background_color.value,
+  "--app_background_image": app_background_image.value,
 }));
 
 const playback_mode_button = computed(() => {
@@ -224,8 +257,27 @@ const selected_user_playlist = computed(() => {
   );
 });
 
-async function choose_music_directory() {
+function clear_error_message() {
+  if (error_message_timer) {
+    window.clearTimeout(error_message_timer);
+    error_message_timer = undefined;
+  }
   error_message.value = "";
+}
+
+function show_error_message(error: unknown) {
+  if (error_message_timer) {
+    window.clearTimeout(error_message_timer);
+  }
+  error_message.value = String(error);
+  error_message_timer = window.setTimeout(() => {
+    error_message.value = "";
+    error_message_timer = undefined;
+  }, 5000);
+}
+
+async function choose_music_directory() {
+  clear_error_message();
   const selected = await open({
     directory: true,
     multiple: true,
@@ -240,22 +292,54 @@ async function choose_music_directory() {
   if (!directories.length) return;
 
   selected_directories.value = directories;
-  await scan_directory(directories);
+  try {
+    const next_config = await invoke<AppConfig>("add_music_dirs", { dirs: directories });
+    app_config_store.hydrate_config(next_config, app_config_store.default_config ?? undefined);
+    selected_directories.value = next_config.music_directory;
+  } catch (error) {
+    show_error_message(error);
+  }
 }
 
 async function scan_directory(directories: string[]) {
   loading.value = true;
-  error_message.value = "";
+  clear_error_message();
+  library_scan_dialog.value = {
+    visible: true,
+    status: "loading",
+    title: "加载曲库",
+    message: "正在扫描音乐目录...",
+    detail: `共 ${directories.length} 个目录`,
+  };
 
   try {
     const scanned_tracks = await invoke<Track[]>("scan_music_dir", { dirs: directories });
     player_queue.set_library_tracks(scanned_tracks);
     await load_startup_state();
+    library_scan_dialog.value = {
+      visible: true,
+      status: "success",
+      title: "曲库加载完成",
+      message: `成功加载 ${scanned_tracks.length} 首歌曲`,
+      detail: `已扫描 ${directories.length} 个目录`,
+    };
   } catch (error) {
-    error_message.value = String(error);
+    show_error_message(error);
+    library_scan_dialog.value = {
+      visible: true,
+      status: "error",
+      title: "曲库加载失败",
+      message: "扫描音乐目录时发生错误",
+      detail: String(error),
+    };
   } finally {
     loading.value = false;
   }
+}
+
+function close_library_scan_dialog() {
+  if (library_scan_dialog.value.status === "loading") return;
+  library_scan_dialog.value.visible = false;
 }
 
 async function reload_library() {
@@ -267,13 +351,57 @@ async function reload_library() {
   await scan_directory(directories);
 }
 
+async function decode_music_files() {
+  loading.value = true;
+  clear_error_message();
+  const decoder_config = app_config.value?.decoder;
+  const scan_directory_count = decoder_config?.scan_directory.filter((directory) => directory.trim()).length ?? 0;
+  library_scan_dialog.value = {
+    visible: true,
+    status: "loading",
+    title: "解码",
+    message: "正在处理解码目录...",
+    detail: `共 ${scan_directory_count} 个目录`,
+  };
+
+  try {
+    const summary = await invoke<DecoderRunSummary>("run_decoder");
+    const status = !summary.executed || summary.failed > 0 ? "error" : "success";
+    library_scan_dialog.value = {
+      visible: true,
+      status,
+      title: summary.executed
+        ? summary.failed > 0
+          ? "解码完成但有失败"
+          : "解码完成"
+        : "解码未执行",
+      message: summary.message,
+      detail: summary.output_dir
+        ? `输出目录：${summary.output_dir}`
+        : "请在配置中填写解码输出目录和扫描目录",
+    };
+  } catch (error) {
+    show_error_message(error);
+    library_scan_dialog.value = {
+      visible: true,
+      status: "error",
+      title: "解码失败",
+      message: "执行解码时发生错误",
+      detail: String(error),
+    };
+  } finally {
+    loading.value = false;
+  }
+}
+
 async function load_startup_state() {
   loading.value = true;
-  error_message.value = "";
+  clear_error_message();
 
   try {
     const startup = await invoke<AppStartup>("get_startup_state");
-    app_config.value = startup.config;
+    app_config_store.hydrate_config(startup.config, startup.default_config);
+    await apply_config_state(startup.config);
     playlists.value = startup.playlists;
     await load_play_statistics();
     ensure_selected_playlist();
@@ -287,9 +415,33 @@ async function load_startup_state() {
     }
   } catch (error) {
     restoring_player_cache = false;
-    error_message.value = String(error);
+    show_error_message(error);
   } finally {
     loading.value = false;
+  }
+}
+
+async function apply_config_state(config: AppConfig) {
+  sidebar_width.value = clamp_sidebar_width(config.state.sidebar_width);
+  status.value = {
+    ...status.value,
+    volume: config.state.volume,
+  };
+
+  try {
+    const next_status = await invoke<PlaybackStatus>("set_volume", {
+      volume: config.state.volume,
+    });
+    status.value = {
+      ...status.value,
+      volume: next_status.volume,
+    };
+  } catch (error) {
+    console.warn("无法同步配置音量", error);
+  }
+
+  if (config.state.width > 0 && config.state.height > 0) {
+    void app_window.setSize(new PhysicalSize(config.state.width, config.state.height));
   }
 }
 
@@ -305,7 +457,7 @@ async function play(track: Track) {
     start_listening_session(track);
     start_status_polling();
   } catch (error) {
-    error_message.value = String(error);
+    show_error_message(error);
   }
 }
 
@@ -358,7 +510,7 @@ async function stop_playback() {
     clear_pending_seek();
     apply_playback_status(await invoke<PlaybackStatus>("stop_track"));
   } catch (error) {
-    error_message.value = String(error);
+    show_error_message(error);
   }
 }
 
@@ -400,8 +552,8 @@ function toggle_maximize_window() {
   void app_window.toggleMaximize();
 }
 
-function close_window() {
-  void app_window.close();
+async function close_window() {
+  await close_window_after_config_save();
 }
 
 function start_window_drag(event: MouseEvent) {
@@ -415,13 +567,47 @@ function start_window_drag(event: MouseEvent) {
   void app_window.startDragging();
 }
 
+async function capture_app_state() {
+  const current_state = {
+    volume: status.value.volume,
+    sidebar_width: Math.round(sidebar_width.value),
+  };
+
+  try {
+    const size = await app_window.innerSize();
+    app_config_store.update_state({
+      ...current_state,
+      width: Math.round(size.width),
+      height: Math.round(size.height),
+    });
+  } catch {
+    app_config_store.update_state(current_state);
+  }
+}
+
+async function flush_app_config() {
+  await capture_app_state();
+  await app_config_store.flush_config_save();
+}
+
+async function close_window_after_config_save() {
+  if (closing_window) return;
+
+  closing_window = true;
+  try {
+    await flush_app_config();
+  } finally {
+    await app_window.destroy();
+  }
+}
+
 async function change_volume(event: Event) {
   const target = event.target as HTMLInputElement;
-  apply_playback_status(
-    await invoke<PlaybackStatus>("set_volume", {
-      volume: Number(target.value),
-    }),
-  );
+  const next_status = await invoke<PlaybackStatus>("set_volume", {
+    volume: Number(target.value),
+  });
+  apply_playback_status(next_status);
+  app_config_store.update_state({ volume: next_status.volume });
 }
 
 function update_progress_preview(event: PointerEvent) {
@@ -457,7 +643,7 @@ async function commit_progress_seek(seconds = progress_preview_seconds) {
     apply_playback_status(await invoke<PlaybackStatus>("seek_track", { seconds: target_seconds }));
   } catch (error) {
     clear_pending_seek();
-    error_message.value = String(error);
+    show_error_message(error);
   }
 }
 
@@ -1066,7 +1252,7 @@ async function reorder_playlists(playlist_ids: string[]) {
       }),
     );
   } catch (error) {
-    error_message.value = String(error);
+    show_error_message(error);
   }
 }
 
@@ -1086,7 +1272,7 @@ async function create_playlist(name: string) {
       next_playlists.my_playlists.find((playlist) => playlist.name === trimmed_name);
     if (created_playlist) show_playlist(created_playlist.id);
   } catch (error) {
-    error_message.value = String(error);
+    show_error_message(error);
   }
 }
 
@@ -1112,7 +1298,7 @@ async function rename_context_playlist() {
       refresh_current_queue_source();
     }
   } catch (error) {
-    error_message.value = String(error);
+    show_error_message(error);
   }
 }
 
@@ -1161,7 +1347,7 @@ async function confirm_delete_playlist() {
       set_queue_for_current_view();
     }
   } catch (error) {
-    error_message.value = String(error);
+    show_error_message(error);
   }
 }
 
@@ -1184,7 +1370,7 @@ async function add_context_track_to_playlist(playlist: PlaylistCache) {
       refresh_current_queue_source();
     }
   } catch (error) {
-    error_message.value = String(error);
+    show_error_message(error);
   }
 }
 
@@ -1211,7 +1397,7 @@ async function remove_context_track_record() {
       refresh_current_queue_source();
     }
   } catch (error) {
-    error_message.value = String(error);
+    show_error_message(error);
   }
 }
 
@@ -1249,20 +1435,16 @@ function clamp_sidebar_width(width: number) {
   return Math.min(Math.max(width, sidebar_min_width), sidebar_max_width);
 }
 
-function load_sidebar_width() {
-  const saved_width = Number(localStorage.getItem(sidebar_width_storage_key));
-  if (Number.isFinite(saved_width)) {
-    sidebar_width.value = clamp_sidebar_width(saved_width);
-  }
-}
-
 function save_sidebar_width() {
-  localStorage.setItem(sidebar_width_storage_key, String(Math.round(sidebar_width.value)));
+  app_config_store.update_state({
+    sidebar_width: Math.round(sidebar_width.value),
+  });
 }
 
 function resize_sidebar(event: PointerEvent) {
   const offset = event.clientX - sidebar_resize_start_x;
   sidebar_width.value = clamp_sidebar_width(sidebar_resize_start_width + offset);
+  save_sidebar_width();
 }
 
 function end_sidebar_resize() {
@@ -1310,9 +1492,34 @@ async function listen_media_shortcuts() {
   }
 }
 
+async function listen_window_resize() {
+  try {
+    window_resize_unlisten = await app_window.onResized(({ payload }) => {
+      app_config_store.update_state({
+        width: Math.round(payload.width),
+        height: Math.round(payload.height),
+      });
+    });
+  } catch (error) {
+    console.warn("无法监听窗口尺寸变化", error);
+  }
+}
+
+async function listen_window_close() {
+  try {
+    window_close_unlisten = await app_window.onCloseRequested((event) => {
+      event.preventDefault();
+      void close_window_after_config_save();
+    });
+  } catch (error) {
+    console.warn("无法监听窗口关闭事件", error);
+  }
+}
+
 function handle_before_unload() {
   save_player_cache();
   void flush_listening_time();
+  void flush_app_config();
 }
 
 function close_track_context_menu_on_pointer(event: PointerEvent) {
@@ -1333,11 +1540,17 @@ function close_track_context_menu_on_key(event: KeyboardEvent) {
 onBeforeUnmount(() => {
   save_player_cache();
   void flush_listening_time();
+  void flush_app_config();
   if (status_timer) window.clearInterval(status_timer);
   if (progress_frame) window.cancelAnimationFrame(progress_frame);
+  if (error_message_timer) window.clearTimeout(error_message_timer);
   media_shortcut_listeners_disposed = true;
   media_shortcut_unlisteners.forEach((unlisten) => unlisten());
   media_shortcut_unlisteners = [];
+  window_resize_unlisten?.();
+  window_resize_unlisten = null;
+  window_close_unlisten?.();
+  window_close_unlisten = null;
   window.removeEventListener("pointermove", resize_sidebar);
   window.removeEventListener("pointerup", end_sidebar_resize);
   window.removeEventListener("pointercancel", end_sidebar_resize);
@@ -1349,11 +1562,12 @@ onBeforeUnmount(() => {
 
 onMounted(() => {
   media_shortcut_listeners_disposed = false;
-  load_sidebar_width();
   window.addEventListener("beforeunload", handle_before_unload);
   window.addEventListener("pointerdown", close_track_context_menu_on_pointer);
   window.addEventListener("keydown", close_track_context_menu_on_key);
   void listen_media_shortcuts();
+  void listen_window_resize();
+  void listen_window_close();
   void load_startup_state();
 });
 
@@ -1421,6 +1635,7 @@ watch([current_queue, queue_source, playback_mode], () => {
         :query="query"
         @update:query="update_query"
         @focus_search="focus_search"
+        @open_tools="decode_music_files"
         @reload_library="reload_library"
         @open_settings="settings_open = true"
         @minimize_window="minimize_window"
@@ -1546,6 +1761,15 @@ watch([current_queue, queue_source, playback_mode], () => {
       @choose_music_directory="choose_music_directory"
     />
 
+    <LibraryScanDialog
+      v-if="library_scan_dialog.visible"
+      :status="library_scan_dialog.status"
+      :title="library_scan_dialog.title"
+      :message="library_scan_dialog.message"
+      :detail="library_scan_dialog.detail"
+      @confirm="close_library_scan_dialog"
+    />
+
     <ConfirmDialog
       v-if="pending_delete_playlist"
       title="删除歌单"
@@ -1612,7 +1836,11 @@ button {
   grid-template-rows: minmax(0, 1fr) 86px;
   height: 100vh;
   color: #1e2026;
-  background: #ffffff;
+  background-color: var(--app_background_color, #ffffff);
+  background-image: var(--app_background_image, none);
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
 }
 
 .sidebar {
@@ -1622,7 +1850,7 @@ button {
   position: relative;
   min-height: 0;
   border-right: 1px solid #ebedf2;
-  background: #fbfcfe;
+  background: transparent;
 }
 
 .sidebar_resize_handle {
@@ -1812,14 +2040,14 @@ p {
   grid-template-rows: 78px minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
-  background: #ffffff;
+  background: transparent;
 }
 
 .top_bar {
   display: grid;
   justify-content: center;
   align-items: center;
-  grid-template-columns: 1fr 220px;
+  grid-template-columns: 1fr 260px;
   border-bottom: 1px solid #eef0f4;
   padding-right: 28px;
   cursor: move;
@@ -1915,8 +2143,12 @@ p {
 }
 
 .error_line {
+  margin-bottom: 8px;
+  border-radius: 6px;
   padding: 4px;
-  color: #c33131;
+  color: #b42318;
+  background: #fff1f0;
+  font-size: 0.92rem;
 }
 
 .track_table {
@@ -1942,7 +2174,7 @@ p {
   z-index: 1;
   height: 36px;
   color: #a0a5af;
-  background: #ffffff;
+  background: var(--app_background_color, #ffffff);
   font-size: 0.82rem;
   font-weight: 800;
 }
@@ -2422,7 +2654,7 @@ p {
   row-gap: 0;
   min-width: 0;
   padding: 0 38px;
-  background: #ffffff;
+  background: transparent;
 }
 
 .player_bar button {
@@ -2923,69 +3155,22 @@ p {
   min-width: 0;
 }
 
-.settings_window_size_group {
-  display: grid;
-  gap: 10px;
-  min-width: 0;
-}
-
-.settings_window_size_group strong {
-  color: #1e2026;
-  font-size: 0.98rem;
-  font-weight: 900;
-}
-
-.settings_window_size_row {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  align-items: center;
-  gap: 24px;
-  min-width: 0;
-}
-
-.settings_window_size_set {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 30px minmax(0, 1fr);
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-}
-
-.settings_inline_field {
-  display: flex !important;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px !important;
-  min-width: 0;
-  color: #1e2026 !important;
-  font-size: 0.96rem !important;
-  font-weight: 800 !important;
-  white-space: nowrap;
-}
-
-.settings_inline_field input {
-  width: 104px;
+.settings_section .settings_color_picker {
+  width: 40px;
+  height: 40px;
   min-height: 40px;
   border-radius: 8px;
-  padding: 10px 12px;
-  background: #f8f9fb;
+  padding: 4px;
+  cursor: pointer;
 }
 
-.settings_mode_radio {
-  display: grid !important;
-  place-items: center;
-  width: 30px;
-  min-width: 30px !important;
-}
-
-.settings_mode_radio input {
-  width: 20px;
-  height: 20px;
-  min-height: 20px;
-  border: 0;
+.settings_color_picker::-webkit-color-swatch-wrapper {
   padding: 0;
-  background: transparent;
-  accent-color: #426dff;
+}
+
+.settings_color_picker::-webkit-color-swatch {
+  border: 0;
+  border-radius: 6px;
 }
 
 .settings_default_button,

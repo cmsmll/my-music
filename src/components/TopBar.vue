@@ -4,6 +4,7 @@ import minimize_icon from "../assets/icons/minimize.svg";
 import refresh_icon from "../assets/icons/refresh.svg";
 import search_icon from "../assets/icons/search.svg";
 import settings_icon from "../assets/icons/settings.svg";
+import tools_icon from "../assets/icons/tools.svg";
 import x_icon from "../assets/icons/x.svg";
 import { icon_style } from "../utils/track";
 
@@ -14,6 +15,7 @@ defineProps<{
 const emit = defineEmits<{
   "update:query": [value: string];
   focus_search: [];
+  open_tools: [];
   reload_library: [];
   open_settings: [];
   minimize_window: [];
@@ -37,7 +39,10 @@ const emit = defineEmits<{
     </label>
 
     <div class="toolbar">
-      <button class="tool_button" type="button" title="重新加载曲库" @click="emit('reload_library')">
+      <button class="tool_button" type="button" title="解码" @click="emit('open_tools')">
+        <span class="svg_icon" :style="icon_style(tools_icon)" />
+      </button>
+      <button class="tool_button" type="button" title="重载" @click="emit('reload_library')">
         <span class="svg_icon" :style="icon_style(refresh_icon)" />
       </button>
       <button class="tool_button" type="button" title="设置" @click="emit('open_settings')">

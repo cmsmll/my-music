@@ -23,7 +23,7 @@
       "assetProtocol": {
         "enable": true,
         "scope": {
-          "allow": ["**/cover-cache/**/*"],
+          "allow": ["**/cover-cache/**/*", "**/*"],
           "requireLiteralLeadingDot": false
         }
       }

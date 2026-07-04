@@ -93,8 +93,8 @@ pub(crate) fn write_library_cache(
 ) -> Result<(), String> {
     let cache = LibraryCache {
         music_directory: music_directory.to_string(),
-        cover_cache_dir: config.cover_cache_dir.clone(),
-        lyrics_cache_dir: config.lyrics_cache_dir.clone(),
+        cover_cache_dir: config.cache.cover_cache_dir.clone(),
+        lyrics_cache_dir: config.cache.lyrics_cache_dir.clone(),
         generated_at: unix_timestamp(),
         tracks: TrackCacheEntries::ById(track_map_from_tracks(tracks)),
     };
@@ -241,7 +241,7 @@ pub(crate) fn cache_cover(
         .map(mime_type_to_string)
         .unwrap_or("image/jpeg");
     let extension = extension_for_mime(mime);
-    let cache_path = PathBuf::from(&config.cover_cache_dir).join(format!(
+    let cache_path = PathBuf::from(&config.cache.cover_cache_dir).join(format!(
         "{}.{}",
         short_hash(&audio_path.to_string_lossy()),
         extension
@@ -301,7 +301,7 @@ pub(crate) fn extension_for_mime(mime: &str) -> &'static str {
 }
 
 pub(crate) fn lyrics_cache_path(path: &Path, config: &AppConfig) -> String {
-    PathBuf::from(&config.lyrics_cache_dir)
+    PathBuf::from(&config.cache.lyrics_cache_dir)
         .join(format!("{}.lrc", short_hash(&path.to_string_lossy())))
         .to_string_lossy()
         .to_string()

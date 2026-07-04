@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, ref } from "vue";
 import { open } from "@tauri-apps/plugin-dialog";
 import delete_icon from "../assets/icons/delete.svg";
 import folder_open_icon from "../assets/icons/folder-open.svg";
 import system_icon from "../assets/icons/system.svg";
 import x_icon from "../assets/icons/x.svg";
+import { use_app_config_store } from "../stores/app_config";
 import type { AppConfig } from "../types/music";
 import { icon_style } from "../utils/track";
 
@@ -17,7 +18,7 @@ const emit = defineEmits<{
   choose_music_directory: [];
 }>();
 
-type SettingsSectionKey = "library" | "decoder" | "cache" | "state" | "about";
+type SettingsSectionKey = "library" | "decoder" | "cache" | "style" | "about";
 type CacheEntryKey =
   | "library_cache_dir"
   | "cover_cache_dir"
@@ -37,84 +38,177 @@ const settings_sections: { key: SettingsSectionKey; title: string }[] = [
   { key: "library", title: "音乐库" },
   { key: "decoder", title: "解码器" },
   { key: "cache", title: "缓存" },
-  { key: "state", title: "状态" },
+  { key: "style", title: "样式" },
   { key: "about", title: "关于" },
 ];
 
+const app_config_store = use_app_config_store();
 const active_section = ref<SettingsSectionKey>("library");
-const music_directory_overrides = ref<string[] | null>(null);
-const default_window_width = ref("");
-const default_window_height = ref("");
-const dynamic_window_width = ref("");
-const dynamic_window_height = ref("");
-const window_size_mode = ref<"default" | "dynamic">("default");
-const background_image = ref("");
+
+const current_config = computed(
+  () => app_config_store.config ?? props.app_config ?? null,
+);
+
+const default_config = computed(() => app_config_store.default_config);
+
+const decoder_output_directory = computed(
+  () => current_config.value?.decoder.output_dir ?? "",
+);
+
+const decoder_process_formats = computed({
+  get: () => current_config.value?.decoder.process_formats ?? "mp3,flac,kgm,kgma,ncm",
+  set: (value: string) => {
+    app_config_store.update_decoder({ process_formats: value });
+  },
+});
+
+const decoder_directories = computed(
+  () => current_config.value?.decoder.scan_directory ?? [],
+);
+
+const background_color = computed({
+  get: () => current_config.value?.style.background_color ?? "#ffffff",
+  set: (value: string) => {
+    app_config_store.update_style({ background_color: value });
+  },
+});
+
+const background_image = computed(
+  () => current_config.value?.style.background_image ?? "",
+);
 
 const active_section_title = computed(
-  () => settings_sections.find((section) => section.key === active_section.value)?.title ?? "音乐库",
+  () =>
+    settings_sections.find((section) => section.key === active_section.value)
+      ?.title ?? "音乐库",
 );
 
 const music_directories = computed(
-  () => music_directory_overrides.value ?? props.app_config?.music_directory ?? [],
+  () => current_config.value?.music_directory ?? [],
 );
-
-const cache_path_overrides = ref<Partial<Record<CacheEntryKey, string>>>({});
 
 const cache_entries = computed<CacheEntry[]>(() => [
   {
     key: "library_cache_dir",
     title: "曲库缓存目录",
-    value: props.app_config?.library_cache_dir ?? "",
+    value: current_config.value?.cache.library_cache_dir ?? "",
     directory: true,
   },
   {
     key: "cover_cache_dir",
     title: "封面缓存目录",
-    value: props.app_config?.cover_cache_dir ?? "",
+    value: current_config.value?.cache.cover_cache_dir ?? "",
     directory: true,
   },
   {
     key: "lyrics_cache_dir",
     title: "歌词缓存目录",
-    value: props.app_config?.lyrics_cache_dir ?? "",
+    value: current_config.value?.cache.lyrics_cache_dir ?? "",
     directory: true,
   },
   {
     key: "my_playlist_cache_dir",
     title: "我的歌单缓存目录",
-    value: props.app_config?.my_playlist_cache_dir ?? "",
+    value: current_config.value?.cache.my_playlist_cache_dir ?? "",
     directory: true,
   },
   {
     key: "play_statistics_cache_path",
     title: "播放统计缓存文件",
-    value: props.app_config?.play_statistics_cache_path ?? "",
+    value: current_config.value?.cache.play_statistics_cache_path ?? "",
     directory: false,
   },
   {
     key: "log_dir",
     title: "日志目录",
-    value: props.app_config?.log_dir ?? "",
+    value: current_config.value?.cache.log_dir ?? "",
     directory: true,
   },
 ]);
 
 function cache_entry_value(entry: CacheEntry) {
-  return cache_path_overrides.value[entry.key] ?? entry.value;
+  return entry.value;
 }
 
 function reset_cache_entry(entry: CacheEntry) {
-  const next_overrides = { ...cache_path_overrides.value };
-  delete next_overrides[entry.key];
-  cache_path_overrides.value = next_overrides;
+  const default_value = default_config.value?.cache[entry.key] ?? "";
+  app_config_store.update_config((config) => {
+    return {
+      ...config,
+      cache: {
+        ...config.cache,
+        [entry.key]: default_value,
+      },
+    };
+  });
 }
 
 function remove_music_directory(directory: string) {
-  music_directory_overrides.value = music_directories.value.filter((current) => current !== directory);
+  app_config_store.update_config({
+    music_directory: music_directories.value.filter(
+      (current) => current !== directory,
+    ),
+  });
+}
+
+function reset_decoder_output_directory() {
+  app_config_store.update_decoder({
+    output_dir: default_config.value?.decoder.output_dir ?? "",
+  });
+}
+
+function remove_decoder_directory(directory: string) {
+  app_config_store.update_decoder({
+    scan_directory: decoder_directories.value.filter(
+      (current) => current !== directory,
+    ),
+  });
+}
+
+async function choose_decoder_output_directory() {
+  const selected = await open({
+    directory: true,
+    multiple: false,
+    title: "选择解码输出目录",
+  });
+
+  const selected_path = Array.isArray(selected) ? selected[0] : selected;
+  if (typeof selected_path !== "string" || !selected_path) return;
+
+  app_config_store.update_decoder({ output_dir: selected_path });
+}
+
+async function choose_decoder_directory() {
+  const selected = await open({
+    directory: true,
+    multiple: true,
+    title: "选择加密音频目录",
+  });
+
+  const selected_paths = Array.isArray(selected) ? selected : [selected];
+  const directories = selected_paths.filter(
+    (selected_path): selected_path is string =>
+      typeof selected_path === "string" && Boolean(selected_path),
+  );
+  if (!directories.length) return;
+
+  app_config_store.update_decoder({
+    scan_directory: Array.from(
+      new Set([...decoder_directories.value, ...directories]),
+    ),
+  });
+}
+
+function reset_background_color() {
+  app_config_store.update_style({
+    background_color: default_config.value?.style.background_color ?? "#ffffff",
+  });
 }
 
 function reset_background_image() {
-  background_image.value = "";
+  app_config_store.update_style({
+    background_image: default_config.value?.style.background_image ?? "",
+  });
 }
 
 async function choose_background_image() {
@@ -133,7 +227,7 @@ async function choose_background_image() {
   const selected_path = Array.isArray(selected) ? selected[0] : selected;
   if (typeof selected_path !== "string" || !selected_path) return;
 
-  background_image.value = selected_path;
+  app_config_store.update_style({ background_image: selected_path });
 }
 
 async function choose_cache_path(entry: CacheEntry) {
@@ -146,18 +240,16 @@ async function choose_cache_path(entry: CacheEntry) {
   const selected_path = Array.isArray(selected) ? selected[0] : selected;
   if (typeof selected_path !== "string" || !selected_path) return;
 
-  cache_path_overrides.value = {
-    ...cache_path_overrides.value,
-    [entry.key]: selected_path,
-  };
+  app_config_store.update_config((config) => {
+    return {
+      ...config,
+      cache: {
+        ...config.cache,
+        [entry.key]: selected_path,
+      },
+    };
+  });
 }
-
-watch(
-  () => props.app_config?.music_directory,
-  () => {
-    music_directory_overrides.value = null;
-  },
-);
 </script>
 
 <template>
@@ -168,7 +260,12 @@ watch(
           <h2>设置</h2>
           <p>配置文件内容</p>
         </div>
-        <button class="tool_button" type="button" title="关闭设置" @click="emit('close')">
+        <button
+          class="tool_button"
+          type="button"
+          title="关闭设置"
+          @click="emit('close')"
+        >
           <span class="svg_icon" :style="icon_style(x_icon)" />
         </button>
       </header>
@@ -196,10 +293,20 @@ watch(
                   <strong>扫描目录</strong>
                   <span>用于扫描本地音乐文件夹</span>
                 </div>
-                <button class="primary_button" type="button" @click="emit('choose_music_directory')">添加目录</button>
+                <button
+                  class="primary_button"
+                  type="button"
+                  @click="emit('choose_music_directory')"
+                >
+                  添加目录
+                </button>
               </div>
               <div v-if="music_directories.length" class="path_list">
-                <div v-for="directory in music_directories" :key="directory" class="path_list_row">
+                <div
+                  v-for="directory in music_directories"
+                  :key="directory"
+                  class="path_list_row"
+                >
                   <p>{{ directory }}</p>
                   <button
                     class="settings_delete_button"
@@ -215,25 +322,86 @@ watch(
             </div>
           </section>
 
-          <section v-else-if="active_section === 'decoder'" class="settings_section">
+          <section
+            v-else-if="active_section === 'decoder'"
+            class="settings_section"
+          >
             <h3>解码器</h3>
             <div class="settings_field_group">
               <label>
-                <span>音频后端</span>
-                <input value="rodio 0.22.2" readonly />
+                <span>输出目录</span>
+                <div class="settings_input_row">
+                  <input
+                    :value="decoder_output_directory"
+                    placeholder="默认输出目录"
+                    readonly
+                  />
+                  <button
+                    class="settings_default_button"
+                    type="button"
+                    title="恢复默认输出目录"
+                    @click="reset_decoder_output_directory"
+                  >
+                    <span class="svg_icon" :style="icon_style(system_icon)" />
+                  </button>
+                  <button
+                    class="settings_file_button"
+                    type="button"
+                    title="选择输出目录"
+                    @click="choose_decoder_output_directory"
+                  >
+                    <span
+                      class="svg_icon"
+                      :style="icon_style(folder_open_icon)"
+                    />
+                  </button>
+                </div>
               </label>
               <label>
-                <span>解码特性</span>
-                <input value="symphonia-all" readonly />
+                <span>处理格式</span>
+                <input
+                  v-model="decoder_process_formats"
+                  placeholder="mp3,flac,kgm,kgma,ncm"
+                />
               </label>
-              <div class="settings_placeholder">
-                <strong>解码参数</strong>
-                <span>预留配置区域</span>
+              <div class="settings_row">
+                <div>
+                  <strong>扫描目录</strong>
+                  <span>用于扫描并解锁加密格式的音频文件夹</span>
+                </div>
+                <button
+                  class="primary_button"
+                  type="button"
+                  @click="choose_decoder_directory"
+                >
+                  添加目录
+                </button>
               </div>
+              <div v-if="decoder_directories.length" class="path_list">
+                <div
+                  v-for="directory in decoder_directories"
+                  :key="directory"
+                  class="path_list_row"
+                >
+                  <p>{{ directory }}</p>
+                  <button
+                    class="settings_delete_button"
+                    type="button"
+                    title="删除加密音频目录"
+                    @click="remove_decoder_directory(directory)"
+                  >
+                    <span class="svg_icon" :style="icon_style(delete_icon)" />
+                  </button>
+                </div>
+              </div>
+              <p v-else class="muted">尚未选择加密音频目录。</p>
             </div>
           </section>
 
-          <section v-else-if="active_section === 'cache'" class="settings_section">
+          <section
+            v-else-if="active_section === 'cache'"
+            class="settings_section"
+          >
             <h3>缓存</h3>
             <div class="settings_field_group">
               <label v-for="entry in cache_entries" :key="entry.key">
@@ -254,63 +422,50 @@ watch(
                     :title="`选择${entry.title}`"
                     @click="choose_cache_path(entry)"
                   >
-                    <span class="svg_icon" :style="icon_style(folder_open_icon)" />
+                    <span
+                      class="svg_icon"
+                      :style="icon_style(folder_open_icon)"
+                    />
                   </button>
                 </div>
               </label>
             </div>
           </section>
 
-          <section v-else-if="active_section === 'state'" class="settings_section">
-            <h3>状态</h3>
+          <section
+            v-else-if="active_section === 'style'"
+            class="settings_section"
+          >
+            <h3>样式</h3>
             <div class="settings_field_group">
               <label>
-                <span>音量等级</span>
-                <input value="播放器状态缓存" readonly />
-              </label>
-              <div class="settings_window_size_group">
-                <strong>窗口大小</strong>
-                <div class="settings_window_size_row">
-                  <div class="settings_window_size_set">
-                    <label class="settings_inline_field">
-                      <span>默认宽度：</span>
-                      <input v-model="default_window_width" inputmode="numeric" />
-                    </label>
-                    <label class="settings_mode_radio" title="使用默认宽高">
-                      <input v-model="window_size_mode" type="radio" value="default" />
-                    </label>
-                    <label class="settings_inline_field">
-                      <span>默认高度：</span>
-                      <input v-model="default_window_height" inputmode="numeric" />
-                    </label>
-                  </div>
-                  <div class="settings_window_size_set">
-                    <label class="settings_inline_field">
-                      <span>动态宽度：</span>
-                      <input v-model="dynamic_window_width" inputmode="numeric" />
-                    </label>
-                    <label class="settings_mode_radio" title="使用动态宽高">
-                      <input v-model="window_size_mode" type="radio" value="dynamic" />
-                    </label>
-                    <label class="settings_inline_field">
-                      <span>动态高度：</span>
-                      <input v-model="dynamic_window_height" inputmode="numeric" />
-                    </label>
-                  </div>
-                </div>
-              </div>
-              <label>
-                <span>侧边栏宽度</span>
-                <input value="本地界面状态" readonly />
-              </label>
-              <label>
                 <span>背景颜色</span>
-                <input value="#ffffff" readonly />
+                <div class="settings_input_row">
+                  <input :value="background_color" readonly />
+                  <button
+                    class="settings_default_button"
+                    type="button"
+                    title="恢复默认背景颜色"
+                    @click="reset_background_color"
+                  >
+                    <span class="svg_icon" :style="icon_style(system_icon)" />
+                  </button>
+                  <input
+                    v-model="background_color"
+                    class="settings_color_picker"
+                    type="color"
+                    title="选择背景颜色"
+                  />
+                </div>
               </label>
               <label>
                 <span>背景图片</span>
                 <div class="settings_input_row">
-                  <input v-model="background_image" placeholder="默认空" readonly />
+                  <input
+                    :value="background_image"
+                    placeholder="默认空"
+                    readonly
+                  />
                   <button
                     class="settings_default_button"
                     type="button"
@@ -325,7 +480,10 @@ watch(
                     title="选择背景图片"
                     @click="choose_background_image"
                   >
-                    <span class="svg_icon" :style="icon_style(folder_open_icon)" />
+                    <span
+                      class="svg_icon"
+                      :style="icon_style(folder_open_icon)"
+                    />
                   </button>
                 </div>
               </label>

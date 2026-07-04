@@ -3,7 +3,7 @@ use crate::utils::{unix_timestamp, write_json_cache};
 use std::{fs, path::Path};
 
 pub(crate) fn read_play_statistics(config: &AppConfig) -> Result<PlayStatistics, String> {
-    let path = Path::new(&config.play_statistics_cache_path);
+    let path = Path::new(&config.cache.play_statistics_cache_path);
     if !path.exists() {
         return Ok(PlayStatistics::default());
     }
@@ -17,7 +17,7 @@ pub(crate) fn write_play_statistics(
     statistics: &PlayStatistics,
 ) -> Result<(), String> {
     write_json_cache(
-        Path::new(&config.play_statistics_cache_path),
+        Path::new(&config.cache.play_statistics_cache_path),
         statistics,
         "播放统计缓存",
     )

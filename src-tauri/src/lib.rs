@@ -1,10 +1,14 @@
 mod audio;
 mod commands;
 mod config;
+mod decoder;
+mod kgm;
 mod library;
 mod media_shortcuts;
 mod models;
+mod ncm;
 mod playlist;
+mod scanner;
 mod statistics;
 mod utils;
 
@@ -17,7 +21,7 @@ pub fn run() {
     let config_manager = ConfigManager::new();
     let log_dir = config_manager
         .get()
-        .map(|config| config.log_dir)
+        .map(|config| config.cache.log_dir)
         .unwrap_or_else(|_| {
             utils::current_app_dir()
                 .join("logs")
@@ -37,7 +41,10 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_startup_state,
+            commands::update_app_config,
+            commands::add_music_dirs,
             commands::scan_music_dir,
+            commands::run_decoder,
             commands::add_track_to_playlist,
             commands::remove_track_from_playlist,
             commands::create_user_playlist,

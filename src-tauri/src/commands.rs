@@ -1,7 +1,8 @@
 use crate::audio::{AudioCommand, AudioEngine};
 use crate::config::ConfigManager;
+use crate::decoder::{run_decoder as run_config_decoder, DecoderRunSummary};
 use crate::library::{load_or_scan_all_directories, scan_tracks, write_library_cache};
-use crate::models::{AppStartup, PlayStatistics, PlaybackStatus, PlaylistBundle, Track};
+use crate::models::{AppConfig, AppStartup, PlayStatistics, PlaybackStatus, PlaylistBundle, Track};
 use crate::playlist::{
     empty_playlist, ensure_unique_playlist_name, load_my_playlist_caches, load_playlist_bundle,
     my_playlist_cache_path, next_user_playlist_index, playlist_cache_path, read_all_playlist_cache,
@@ -26,9 +27,19 @@ pub(crate) fn get_startup_state(
 
     Ok(AppStartup {
         config,
+        default_config: config_manager.get_default(),
         tracks,
         playlists,
     })
+}
+
+/// 保存前端修改后的应用配置，并确保相关缓存、日志和解码输出目录存在。
+#[tauri::command]
+pub(crate) fn update_app_config(
+    config_manager: tauri::State<'_, ConfigManager>,
+    config: AppConfig,
+) -> Result<AppConfig, String> {
+    config_manager.update_config(config)
 }
 
 /// 添加并扫描音乐目录，刷新对应目录的曲库缓存后返回完整歌曲列表。
@@ -55,6 +66,33 @@ pub(crate) fn scan_music_dir(
     }
 
     load_or_scan_all_directories(&config_manager, &config)
+}
+
+/// 只保存新的音乐目录配置，不扫描曲库、不刷新歌曲缓存。
+#[tauri::command]
+pub(crate) fn add_music_dirs(
+    config_manager: tauri::State<'_, ConfigManager>,
+    dirs: Vec<String>,
+) -> Result<AppConfig, String> {
+    let mut valid_dirs = Vec::new();
+    for dir in dirs {
+        let root = PathBuf::from(&dir);
+        if !root.is_dir() {
+            return Err(format!("请选择有效的音乐文件夹: {dir}"));
+        }
+        valid_dirs.push(root.to_string_lossy().to_string());
+    }
+
+    config_manager.add_music_directories(valid_dirs)
+}
+
+/// 按配置中的解码器扫描目录和输出目录执行解码，并返回本次处理统计。
+#[tauri::command]
+pub(crate) fn run_decoder(
+    config_manager: tauri::State<'_, ConfigManager>,
+) -> Result<DecoderRunSummary, String> {
+    let config = config_manager.get()?;
+    Ok(run_config_decoder(&config))
 }
 
 /// 将指定歌曲添加到用户歌单，并刷新返回所有歌单数据。

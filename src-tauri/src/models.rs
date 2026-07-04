@@ -44,6 +44,14 @@ pub(crate) enum MetadataSource {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct AppConfig {
     pub(crate) music_directory: Vec<String>,
+    pub(crate) decoder: DecoderConfig,
+    pub(crate) cache: CacheConfig,
+    pub(crate) style: StyleConfig,
+    pub(crate) state: AppStateConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct CacheConfig {
     pub(crate) library_cache_dir: String,
     pub(crate) cover_cache_dir: String,
     pub(crate) lyrics_cache_dir: String,
@@ -52,15 +60,72 @@ pub(crate) struct AppConfig {
     pub(crate) play_statistics_cache_path: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct DecoderConfig {
+    pub(crate) output_dir: String,
+    pub(crate) process_formats: String,
+    pub(crate) scan_directory: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct StyleConfig {
+    pub(crate) background_color: String,
+    pub(crate) background_image: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct AppStateConfig {
+    pub(crate) width: u32,
+    pub(crate) height: u32,
+    pub(crate) volume: f32,
+    pub(crate) sidebar_width: u32,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct ConfigFile {
     pub(crate) music_directory: Option<MusicDirectoryConfig>,
+    pub(crate) decoder: Option<DecoderConfigFile>,
+    pub(crate) cache: Option<CacheConfigFile>,
+    // 兼容旧版扁平配置，保存后会迁移到 [cache]。
     pub(crate) library_cache_dir: Option<String>,
     pub(crate) cover_cache_dir: Option<String>,
     pub(crate) lyrics_cache_dir: Option<String>,
     pub(crate) my_playlist_cache_dir: Option<String>,
     pub(crate) log_dir: Option<String>,
     pub(crate) play_statistics_cache_path: Option<String>,
+    pub(crate) style: Option<StyleConfigFile>,
+    pub(crate) state: Option<AppStateConfigFile>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct CacheConfigFile {
+    pub(crate) library_cache_dir: Option<String>,
+    pub(crate) cover_cache_dir: Option<String>,
+    pub(crate) lyrics_cache_dir: Option<String>,
+    pub(crate) my_playlist_cache_dir: Option<String>,
+    pub(crate) log_dir: Option<String>,
+    pub(crate) play_statistics_cache_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct DecoderConfigFile {
+    pub(crate) output_dir: Option<String>,
+    pub(crate) process_formats: Option<String>,
+    pub(crate) scan_directory: Option<MusicDirectoryConfig>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct StyleConfigFile {
+    pub(crate) background_color: Option<String>,
+    pub(crate) background_image: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct AppStateConfigFile {
+    pub(crate) width: Option<u32>,
+    pub(crate) height: Option<u32>,
+    pub(crate) volume: Option<f32>,
+    pub(crate) sidebar_width: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -163,6 +228,7 @@ pub(crate) struct PlaylistBundle {
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct AppStartup {
     pub(crate) config: AppConfig,
+    pub(crate) default_config: AppConfig,
     pub(crate) tracks: Vec<Track>,
     pub(crate) playlists: PlaylistBundle,
 }

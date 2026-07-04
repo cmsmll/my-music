@@ -30,6 +30,13 @@ export type TrackMetadata = {
 
 export type AppConfig = {
   music_directory: string[];
+  decoder: DecoderConfig;
+  cache: CacheConfig;
+  style: StyleConfig;
+  state: AppStateConfig;
+};
+
+export type CacheConfig = {
   library_cache_dir: string;
   cover_cache_dir: string;
   lyrics_cache_dir: string;
@@ -38,8 +45,38 @@ export type AppConfig = {
   play_statistics_cache_path: string;
 };
 
+export type DecoderConfig = {
+  output_dir: string;
+  process_formats: string;
+  scan_directory: string[];
+};
+
+export type DecoderRunSummary = {
+  executed: boolean;
+  scanned: number;
+  processed: number;
+  skipped: number;
+  failed: number;
+  output_dir: string;
+  scan_directory_count: number;
+  message: string;
+};
+
+export type StyleConfig = {
+  background_color: string;
+  background_image: string;
+};
+
+export type AppStateConfig = {
+  width: number;
+  height: number;
+  volume: number;
+  sidebar_width: number;
+};
+
 export type AppStartup = {
   config: AppConfig;
+  default_config: AppConfig;
   tracks: Track[];
   playlists: PlaylistBundle;
 };

@@ -56,8 +56,8 @@ pub(crate) fn write_playlist_caches(config: &AppConfig, tracks: &[Track]) -> Res
         name: "全部".to_string(),
         kind: "all".to_string(),
         music_directory: config.music_directory.clone(),
-        cover_cache_dir: config.cover_cache_dir.clone(),
-        lyrics_cache_dir: config.lyrics_cache_dir.clone(),
+        cover_cache_dir: config.cache.cover_cache_dir.clone(),
+        lyrics_cache_dir: config.cache.lyrics_cache_dir.clone(),
         generated_at,
         tracks: all_tracks.clone(),
         playlists: vec![
@@ -131,7 +131,7 @@ pub(crate) fn write_group_playlists(
 
     let mut children = Vec::new();
     let aggregate_path = playlist_cache_path(config, &format!("{aggregate_id}_playlist.json"));
-    let group_root = PathBuf::from(&config.library_cache_dir).join(group_dir);
+    let group_root = PathBuf::from(&config.cache.library_cache_dir).join(group_dir);
     if group_root.is_dir() {
         fs::remove_dir_all(&group_root)
             .map_err(|err| format!("无法清理旧版{aggregate_name}细分缓存目录: {err}"))?;
@@ -299,7 +299,7 @@ pub(crate) fn load_my_playlist_caches(config: &AppConfig) -> Result<Vec<Playlist
         playlists.push(playlist);
     }
 
-    let root = PathBuf::from(&config.my_playlist_cache_dir);
+    let root = PathBuf::from(&config.cache.my_playlist_cache_dir);
     if root.is_dir() {
         let entries =
             fs::read_dir(&root).map_err(|err| format!("无法读取我的歌单缓存目录: {err}"))?;
@@ -339,7 +339,7 @@ pub(crate) fn user_playlist_cache_path(
         return Ok(my_playlist_cache_path(config, "my_playlist.json"));
     }
 
-    let root = PathBuf::from(&config.my_playlist_cache_dir);
+    let root = PathBuf::from(&config.cache.my_playlist_cache_dir);
     if root.is_dir() {
         let entries =
             fs::read_dir(&root).map_err(|err| format!("无法读取我的歌单缓存目录: {err}"))?;
@@ -489,11 +489,11 @@ pub(crate) fn track_ids_from_tracks(tracks: &[Track]) -> Vec<String> {
 }
 
 pub(crate) fn playlist_cache_path(config: &AppConfig, file_name: &str) -> PathBuf {
-    PathBuf::from(&config.library_cache_dir).join(file_name)
+    PathBuf::from(&config.cache.library_cache_dir).join(file_name)
 }
 
 pub(crate) fn my_playlist_cache_path(config: &AppConfig, file_name: &str) -> PathBuf {
-    PathBuf::from(&config.my_playlist_cache_dir).join(file_name)
+    PathBuf::from(&config.cache.my_playlist_cache_dir).join(file_name)
 }
 
 pub(crate) fn normalized_group_name(value: &str, fallback: &str) -> String {

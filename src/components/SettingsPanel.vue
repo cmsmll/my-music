@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed, ref } from "vue";
 import x_icon from "../assets/icons/x.svg";
 import type { AppConfig } from "../types/music";
 import { icon_style } from "../utils/track";
@@ -11,6 +12,22 @@ const emit = defineEmits<{
   close: [];
   choose_music_directory: [];
 }>();
+
+type SettingsSectionKey = "library" | "decoder" | "cache" | "state" | "about";
+
+const settings_sections: { key: SettingsSectionKey; title: string }[] = [
+  { key: "library", title: "音乐库" },
+  { key: "decoder", title: "解码器" },
+  { key: "cache", title: "缓存" },
+  { key: "state", title: "状态" },
+  { key: "about", title: "关于" },
+];
+
+const active_section = ref<SettingsSectionKey>("library");
+
+const active_section_title = computed(
+  () => settings_sections.find((section) => section.key === active_section.value)?.title ?? "音乐库",
+);
 </script>
 
 <template>
@@ -26,42 +43,127 @@ const emit = defineEmits<{
         </button>
       </header>
 
-      <section class="settings_section">
-        <h3>音乐目录</h3>
-        <div v-if="app_config?.music_directory.length" class="path_list">
-          <p v-for="directory in app_config.music_directory" :key="directory">{{ directory }}</p>
-        </div>
-        <p v-else class="muted">尚未选择音乐目录。</p>
-        <button class="primary_button" type="button" @click="emit('choose_music_directory')">添加音乐目录</button>
-      </section>
+      <div class="settings_body">
+        <nav class="settings_nav" aria-label="设置分类">
+          <button
+            v-for="section in settings_sections"
+            :key="section.key"
+            class="settings_nav_item"
+            :class="{ active: active_section === section.key }"
+            type="button"
+            @click="active_section = section.key"
+          >
+            {{ section.title }}
+          </button>
+        </nav>
 
-      <section class="settings_section">
-        <h3>缓存位置</h3>
-        <label>
-          <span>library_cache_dir</span>
-          <input :value="app_config?.library_cache_dir ?? ''" readonly />
-        </label>
-        <label>
-          <span>cover_cache_dir</span>
-          <input :value="app_config?.cover_cache_dir ?? ''" readonly />
-        </label>
-        <label>
-          <span>lyrics_cache_dir</span>
-          <input :value="app_config?.lyrics_cache_dir ?? ''" readonly />
-        </label>
-        <label>
-          <span>my_playlist_cache_dir</span>
-          <input :value="app_config?.my_playlist_cache_dir ?? ''" readonly />
-        </label>
-        <label>
-          <span>log_dir</span>
-          <input :value="app_config?.log_dir ?? ''" readonly />
-        </label>
-        <label>
-          <span>play_statistics_cache_path</span>
-          <input :value="app_config?.play_statistics_cache_path ?? ''" readonly />
-        </label>
-      </section>
+        <section class="settings_content" :aria-label="active_section_title">
+          <section v-if="active_section === 'library'" class="settings_section">
+            <h3>音乐库</h3>
+            <div class="settings_field_group">
+              <div class="settings_row">
+                <div>
+                  <strong>扫描目录</strong>
+                  <span>music_directory</span>
+                </div>
+                <button class="primary_button" type="button" @click="emit('choose_music_directory')">添加目录</button>
+              </div>
+              <div v-if="app_config?.music_directory.length" class="path_list">
+                <p v-for="directory in app_config.music_directory" :key="directory">{{ directory }}</p>
+              </div>
+              <p v-else class="muted">尚未选择音乐目录。</p>
+            </div>
+          </section>
+
+          <section v-else-if="active_section === 'decoder'" class="settings_section">
+            <h3>解码器</h3>
+            <div class="settings_field_group">
+              <label>
+                <span>audio_backend</span>
+                <input value="rodio 0.22.2" readonly />
+              </label>
+              <label>
+                <span>decoder_features</span>
+                <input value="symphonia-all" readonly />
+              </label>
+              <div class="settings_placeholder">
+                <strong>解码参数</strong>
+                <span>预留配置区域</span>
+              </div>
+            </div>
+          </section>
+
+          <section v-else-if="active_section === 'cache'" class="settings_section">
+            <h3>缓存</h3>
+            <div class="settings_field_group">
+              <label>
+                <span>library_cache_dir</span>
+                <input :value="app_config?.library_cache_dir ?? ''" readonly />
+              </label>
+              <label>
+                <span>cover_cache_dir</span>
+                <input :value="app_config?.cover_cache_dir ?? ''" readonly />
+              </label>
+              <label>
+                <span>lyrics_cache_dir</span>
+                <input :value="app_config?.lyrics_cache_dir ?? ''" readonly />
+              </label>
+              <label>
+                <span>my_playlist_cache_dir</span>
+                <input :value="app_config?.my_playlist_cache_dir ?? ''" readonly />
+              </label>
+              <label>
+                <span>play_statistics_cache_path</span>
+                <input :value="app_config?.play_statistics_cache_path ?? ''" readonly />
+              </label>
+              <label>
+                <span>log_dir</span>
+                <input :value="app_config?.log_dir ?? ''" readonly />
+              </label>
+            </div>
+          </section>
+
+          <section v-else-if="active_section === 'state'" class="settings_section">
+            <h3>状态</h3>
+            <div class="settings_field_group">
+              <label>
+                <span>volume_level</span>
+                <input value="播放器状态缓存" readonly />
+              </label>
+              <label>
+                <span>window_size</span>
+                <input value="系统窗口状态" readonly />
+              </label>
+              <label>
+                <span>sidebar_width</span>
+                <input value="本地界面状态" readonly />
+              </label>
+              <label>
+                <span>background_color</span>
+                <input value="#ffffff" readonly />
+              </label>
+            </div>
+          </section>
+
+          <section v-else class="settings_section">
+            <h3>关于</h3>
+            <div class="settings_field_group">
+              <label>
+                <span>name</span>
+                <input value="my-music" readonly />
+              </label>
+              <label>
+                <span>runtime</span>
+                <input value="Tauri 2 + Vue 3 + Rust" readonly />
+              </label>
+              <label>
+                <span>description</span>
+                <input value="本地音乐播放器" readonly />
+              </label>
+            </div>
+          </section>
+        </section>
+      </div>
     </aside>
   </div>
 </template>

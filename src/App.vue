@@ -2634,10 +2634,10 @@ p {
 }
 
 .settings_panel {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-  width: min(440px, 100vw);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 22px;
+  width: min(820px, 100vw);
   height: 100%;
   padding: 28px;
   background: #ffffff;
@@ -2672,6 +2672,51 @@ p {
 
 .settings_panel h2 {
   font-size: 1.45rem;
+}
+
+.settings_body {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 28px;
+  min-height: 0;
+}
+
+.settings_nav {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.settings_nav::-webkit-scrollbar {
+  display: none;
+}
+
+.settings_nav_item {
+  min-height: 48px;
+  border-radius: 8px;
+  padding: 0 16px;
+  color: #5f6570;
+  background: transparent;
+  font-size: 1.08rem;
+  font-weight: 900;
+  text-align: left;
+}
+
+.settings_nav_item:hover,
+.settings_nav_item.active {
+  color: #426dff;
+  background: #eaf0ff;
+}
+
+.settings_content {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
 }
 
 .queue_title_button {
@@ -2800,11 +2845,55 @@ p {
 
 .settings_section {
   display: grid;
-  gap: 12px;
+  align-content: start;
+  gap: 16px;
 }
 
 .settings_section h3 {
-  font-size: 1rem;
+  font-size: 1.25rem;
+  font-weight: 900;
+}
+
+.settings_field_group {
+  display: grid;
+  gap: 14px;
+}
+
+.settings_row,
+.settings_placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+  border: 1px solid #e5e8ef;
+  border-radius: 8px;
+  padding: 14px;
+  background: #fbfcfe;
+}
+
+.settings_row > div,
+.settings_placeholder {
+  min-width: 0;
+}
+
+.settings_row strong,
+.settings_placeholder strong {
+  display: block;
+  color: #1e2026;
+  font-size: 0.96rem;
+}
+
+.settings_row span,
+.settings_placeholder span {
+  display: block;
+  overflow: hidden;
+  margin-top: 2px;
+  color: #8b919c;
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .path_list {

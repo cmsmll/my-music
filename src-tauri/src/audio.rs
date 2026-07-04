@@ -45,6 +45,7 @@ pub(crate) struct Playback {
 pub(crate) struct AudioEngine {
     tx: Sender<AudioCommand>,
     snapshot: Arc<Mutex<PlaybackSnapshot>>,
+    log_dir: PathBuf,
 }
 
 pub(crate) enum AudioCommand {
@@ -77,14 +78,26 @@ impl AudioEngine {
         let snapshot = Arc::new(Mutex::new(PlaybackSnapshot::default()));
         let thread_snapshot = Arc::clone(&snapshot);
         let log_dir = PathBuf::from(log_dir);
+        let thread_log_dir = log_dir.clone();
 
         thread::spawn(move || {
-            let stream_handle = DeviceSinkBuilder::open_default_sink();
-            let Ok(stream_handle) = stream_handle else {
-                while let Ok(command) = rx.recv() {
-                    respond(command, Err("无法打开默认音频输出设备".to_string()));
+            let stream_handle = match DeviceSinkBuilder::open_default_sink() {
+                Ok(stream_handle) => stream_handle,
+                Err(err) => {
+                    let reason = format!("无法打开默认音频输出设备: {err}");
+                    while let Ok(command) = rx.recv() {
+                        write_audio_error_log(
+                            &thread_log_dir,
+                            "音频输出设备失败",
+                            command_track_path(&command),
+                            Some("open_default_sink"),
+                            None,
+                            &reason,
+                        );
+                        respond(command, Err(reason.clone()));
+                    }
+                    return;
                 }
-                return;
             };
 
             let mut playback: Option<Playback> = None;
@@ -93,10 +106,30 @@ impl AudioEngine {
                 match command {
                     AudioCommand::Play { path, reply } => {
                         let result = (|| {
-                            let file = File::open(&path)
-                                .map_err(|err| format!("无法打开音频文件: {err}"))?;
-                            let source = Decoder::try_from(file)
-                                .map_err(|err| format!("无法解码音频文件: {err}"))?;
+                            let file = File::open(&path).map_err(|err| {
+                                let reason = format!("无法打开音频文件: {err}");
+                                write_audio_error_log(
+                                    &thread_log_dir,
+                                    "音频播放失败",
+                                    Some(&path),
+                                    Some("open_file"),
+                                    None,
+                                    &reason,
+                                );
+                                reason
+                            })?;
+                            let source = Decoder::try_from(file).map_err(|err| {
+                                let reason = format!("无法解码音频文件: {err}");
+                                write_audio_error_log(
+                                    &thread_log_dir,
+                                    "音频播放失败",
+                                    Some(&path),
+                                    Some("decode_file"),
+                                    None,
+                                    &reason,
+                                );
+                                reason
+                            })?;
                             let player = Player::connect_new(stream_handle.mixer());
 
                             if let Some(current) = playback.take() {
@@ -181,24 +214,44 @@ impl AudioEngine {
                                     return Ok(());
                                 };
                                 write_seek_error_log(
-                                    &log_dir,
+                                    &thread_log_dir,
                                     &path,
                                     "current_player",
                                     seconds,
                                     &err.to_string(),
                                 );
 
-                                let file = File::open(&path)
-                                    .map_err(|err| format!("无法打开音频文件: {err}"))?;
-                                let source = Decoder::try_from(file)
-                                    .map_err(|err| format!("无法解码音频文件: {err}"))?;
+                                let file = File::open(&path).map_err(|err| {
+                                    let reason = format!("无法打开音频文件: {err}");
+                                    write_audio_error_log(
+                                        &thread_log_dir,
+                                        "音频跳转失败",
+                                        Some(&path),
+                                        Some("rebuilt_open_file"),
+                                        Some(seconds),
+                                        &reason,
+                                    );
+                                    reason
+                                })?;
+                                let source = Decoder::try_from(file).map_err(|err| {
+                                    let reason = format!("无法解码音频文件: {err}");
+                                    write_audio_error_log(
+                                        &thread_log_dir,
+                                        "音频跳转失败",
+                                        Some(&path),
+                                        Some("rebuilt_decode_file"),
+                                        Some(seconds),
+                                        &reason,
+                                    );
+                                    reason
+                                })?;
                                 let player = Player::connect_new(stream_handle.mixer());
 
                                 player.append(source);
                                 player.set_volume(snapshot.volume);
                                 if let Err(err) = player.try_seek(Duration::from_secs(seconds)) {
                                     write_seek_error_log(
-                                        &log_dir,
+                                        &thread_log_dir,
                                         &path,
                                         "rebuilt_player",
                                         seconds,
@@ -236,7 +289,11 @@ impl AudioEngine {
             }
         });
 
-        Self { tx, snapshot }
+        Self {
+            tx,
+            snapshot,
+            log_dir,
+        }
     }
 
     pub(crate) fn send(
@@ -244,20 +301,46 @@ impl AudioEngine {
         command: impl FnOnce(Sender<Result<(), String>>) -> AudioCommand,
     ) -> Result<(), String> {
         let (reply_tx, reply_rx) = mpsc::channel();
-        self.tx
-            .send(command(reply_tx))
-            .map_err(|_| "音频线程已停止".to_string())?;
-        reply_rx
-            .recv()
-            .map_err(|_| "音频线程没有返回结果".to_string())?
+        self.tx.send(command(reply_tx)).map_err(|_| {
+            let reason = "音频线程已停止".to_string();
+            write_audio_error_log(
+                &self.log_dir,
+                "音频命令失败",
+                None,
+                Some("send_command"),
+                None,
+                &reason,
+            );
+            reason
+        })?;
+        reply_rx.recv().map_err(|_| {
+            let reason = "音频线程没有返回结果".to_string();
+            write_audio_error_log(
+                &self.log_dir,
+                "音频命令失败",
+                None,
+                Some("receive_command_result"),
+                None,
+                &reason,
+            );
+            reason
+        })?
     }
 
     pub(crate) fn status(&self) -> Result<PlaybackStatus, String> {
-        let snapshot = self
-            .snapshot
-            .lock()
-            .map_err(|_| "audio engine state is unavailable".to_string())?
-            .clone();
+        let snapshot = self.snapshot.lock().map_err(|_| {
+            let reason = "audio engine state is unavailable".to_string();
+            write_audio_error_log(
+                &self.log_dir,
+                "音频状态失败",
+                None,
+                Some("read_playback_status"),
+                None,
+                &reason,
+            );
+            reason
+        })?;
+        let snapshot = snapshot.clone();
 
         let elapsed = elapsed_seconds(&snapshot);
 
@@ -280,6 +363,13 @@ pub(crate) fn respond(command: AudioCommand, result: Result<(), String>) {
         | AudioCommand::Seek { reply, .. } => {
             let _ = reply.send(result);
         }
+    }
+}
+
+fn command_track_path(command: &AudioCommand) -> Option<&str> {
+    match command {
+        AudioCommand::Play { path, .. } => Some(path.as_str()),
+        _ => None,
     }
 }
 
@@ -308,19 +398,44 @@ pub(crate) fn elapsed_seconds(snapshot: &PlaybackSnapshot) -> u64 {
 }
 
 fn write_seek_error_log(log_dir: &Path, path: &str, stage: &str, seconds: u64, reason: &str) {
+    write_audio_error_log(
+        log_dir,
+        "音频跳转失败",
+        Some(path),
+        Some(stage),
+        Some(seconds),
+        reason,
+    );
+}
+
+fn write_audio_error_log(
+    log_dir: &Path,
+    event: &str,
+    path: Option<&str>,
+    stage: Option<&str>,
+    target_seconds: Option<u64>,
+    reason: &str,
+) {
     let _ = std::fs::create_dir_all(log_dir);
     let log_path = log_dir.join("audio.log");
     let Ok(mut file) = OpenOptions::new().create(true).append(true).open(log_path) else {
         return;
     };
 
+    let song = path.map(log_value).unwrap_or_else(|| "无".to_string());
+    let stage = stage.unwrap_or("unknown");
+    let target_seconds = target_seconds
+        .map(|seconds| seconds.to_string())
+        .unwrap_or_else(|| "无".to_string());
+
     let _ = writeln!(
         file,
-        "[{}] 音频跳转失败 | 歌曲=\"{}\" | 阶段={} | 目标秒数={} | 原因=\"{}\"",
+        "[{}] {} | 歌曲=\"{}\" | 阶段={} | 目标秒数={} | 原因=\"{}\"",
         unix_timestamp(),
-        log_value(path),
+        event,
+        song,
         stage,
-        seconds,
+        target_seconds,
         log_value(reason)
     );
 }

@@ -20,6 +20,7 @@ import type {
   AppStartup,
   AlbumItem,
   ArtistItem,
+  PlaybackMode,
   PlaybackModeItem,
   PlaybackStatus,
   PlaylistBundle,
@@ -31,6 +32,17 @@ import { display_album, display_artist } from "./utils/track";
 
 type PlayerBarExpose = {
   render_progress: (percent: number, seconds: number) => void;
+};
+
+type PlayerCache = {
+  version: 1;
+  queue_source: QueueSource;
+  track_ids: string[];
+  current_track_id: string | null;
+  current_track_path: string | null;
+  elapsed: number;
+  playback_mode: PlaybackMode;
+  updated_at: number;
 };
 
 const player_queue = use_player_queue_store();
@@ -72,11 +84,14 @@ let sidebar_resize_start_x = 0;
 let sidebar_resize_start_width = 250;
 let media_shortcut_unlisteners: UnlistenFn[] = [];
 let media_shortcut_listeners_disposed = false;
+let restored_playback_pending = false;
+let restoring_player_cache = false;
 
 const sidebar_min_width = 72;
 const sidebar_max_width = 420;
 const sidebar_compact_width = 100;
 const sidebar_width_storage_key = "music_box_sidebar_width";
+const player_cache_storage_key = "music_box_player_cache";
 const app_window = getCurrentWindow();
 const playback_modes: PlaybackModeItem[] = [
   { mode: "shuffle", icon: shuffle_icon, label: "随机播放" },
@@ -212,10 +227,16 @@ async function load_startup_state() {
     const startup = await invoke<AppStartup>("get_startup_state");
     app_config.value = startup.config;
     playlists.value = startup.playlists;
+    restoring_player_cache = true;
     player_queue.set_library_tracks(startup.tracks);
-    set_queue_for_current_view();
     selected_directories.value = startup.config.music_directory;
+    const restored_player_cache = restore_player_cache();
+    restoring_player_cache = false;
+    if (!restored_player_cache) {
+      set_queue_for_current_view();
+    }
   } catch (error) {
+    restoring_player_cache = false;
     error_message.value = String(error);
   } finally {
     loading.value = false;
@@ -224,6 +245,7 @@ async function load_startup_state() {
 
 async function play(track: Track) {
   try {
+    restored_playback_pending = false;
     handled_completion_path = "";
     clear_pending_seek();
     apply_playback_status(await invoke<PlaybackStatus>("play_track", { path: track.path }));
@@ -242,6 +264,14 @@ async function toggle_playback() {
   if (!status.value.path && first_track) {
     await play(first_track);
     return;
+  }
+
+  if (restored_playback_pending && !status.value.playing) {
+    const track = current_track.value ?? first_track;
+    if (track) {
+      await play_from_cached_position(track, status.value.elapsed);
+      return;
+    }
   }
 
   apply_playback_status(
@@ -264,6 +294,7 @@ async function next_track() {
 
 async function stop_playback() {
   try {
+    restored_playback_pending = false;
     clear_pending_seek();
     apply_playback_status(await invoke<PlaybackStatus>("stop_track"));
   } catch (error) {
@@ -320,6 +351,16 @@ async function commit_progress_seek(seconds = progress_preview_seconds) {
   if (!duration || !status.value.path) return;
 
   const target_seconds = Math.min(Math.max(seconds, 0), duration);
+  if (restored_playback_pending && !status.value.playing) {
+    status.value = {
+      ...status.value,
+      elapsed: target_seconds,
+    };
+    sync_visual_elapsed(status.value);
+    save_player_cache();
+    return;
+  }
+
   try {
     handled_completion_path = "";
     hold_progress_at_seek_target(target_seconds);
@@ -373,10 +414,12 @@ function apply_playback_status(next_status: PlaybackStatus) {
   status.value = next_status;
   player_queue.set_current_track_path(next_status.path);
   if (hold_pending_seek_progress(next_status)) {
+    save_player_cache();
     if (next_status.playing) request_progress_frame();
     return;
   }
   sync_visual_elapsed(next_status);
+  save_player_cache();
   if (next_status.playing) request_progress_frame();
 }
 
@@ -476,6 +519,103 @@ function progress_percent_for(seconds: number) {
 
 function render_progress(percent: number, seconds: number) {
   player_bar.value?.render_progress(percent, seconds);
+}
+
+function cache_elapsed_seconds() {
+  const duration = current_track.value?.duration ?? Number.POSITIVE_INFINITY;
+  const seconds =
+    pending_seek_seconds !== null
+      ? playback_elapsed_from_pending_seek()
+      : status.value.playing
+        ? visual_elapsed
+        : status.value.elapsed;
+
+  return Math.max(0, Math.floor(Math.min(seconds, duration)));
+}
+
+function save_player_cache() {
+  if (restoring_player_cache) return;
+
+  const cache: PlayerCache = {
+    version: 1,
+    queue_source: queue_source.value,
+    track_ids: current_queue.value.map((track) => track.id),
+    current_track_id: current_track.value?.id ?? null,
+    current_track_path: status.value.path ?? null,
+    elapsed: cache_elapsed_seconds(),
+    playback_mode: playback_mode.value,
+    updated_at: Date.now(),
+  };
+
+  localStorage.setItem(player_cache_storage_key, JSON.stringify(cache));
+}
+
+function read_player_cache() {
+  try {
+    const raw_cache = localStorage.getItem(player_cache_storage_key);
+    if (!raw_cache) return null;
+
+    const cache = JSON.parse(raw_cache) as Partial<PlayerCache>;
+    if (cache.version !== 1 || !Array.isArray(cache.track_ids) || !cache.queue_source) {
+      return null;
+    }
+
+    return cache as PlayerCache;
+  } catch (error) {
+    console.warn("无法读取播放缓存", error);
+    return null;
+  }
+}
+
+function restore_player_cache() {
+  const cache = read_player_cache();
+  if (!cache) return false;
+
+  const was_restoring_player_cache = restoring_player_cache;
+  restoring_player_cache = true;
+  try {
+    player_queue.set_playback_mode(cache.playback_mode);
+
+    const track_by_id = new Map(tracks.value.map((track) => [track.id, track]));
+    const restored_queue = cache.track_ids
+      .map((track_id) => track_by_id.get(track_id))
+      .filter((track): track is Track => Boolean(track));
+
+    if (!restored_queue.length) return false;
+
+    player_queue.set_current_queue(cache.queue_source, restored_queue);
+
+    const restored_track =
+      (cache.current_track_id ? track_by_id.get(cache.current_track_id) : undefined) ??
+      tracks.value.find((track) => track.path === cache.current_track_path) ??
+      restored_queue[0];
+
+    if (!restored_track) return true;
+
+    const elapsed = Math.min(Math.max(cache.elapsed ?? 0, 0), restored_track.duration ?? cache.elapsed ?? 0);
+    restored_playback_pending = true;
+    status.value = {
+      path: restored_track.path,
+      playing: false,
+      volume: status.value.volume,
+      elapsed,
+    };
+    player_queue.set_current_track_path(restored_track.path);
+    sync_visual_elapsed(status.value);
+    return true;
+  } finally {
+    restoring_player_cache = was_restoring_player_cache;
+  }
+}
+
+async function play_from_cached_position(track: Track, seconds: number) {
+  const target_seconds = Math.min(Math.max(Math.floor(seconds), 0), track.duration ?? seconds);
+  await play(track);
+
+  if (target_seconds > 0 && status.value.path === track.path) {
+    hold_progress_at_seek_target(target_seconds);
+    apply_playback_status(await invoke<PlaybackStatus>("seek_track", { seconds: target_seconds }));
+  }
 }
 
 function playback_queue() {
@@ -770,7 +910,12 @@ async function listen_media_shortcuts() {
   }
 }
 
+function handle_before_unload() {
+  save_player_cache();
+}
+
 onBeforeUnmount(() => {
+  save_player_cache();
   if (status_timer) window.clearInterval(status_timer);
   if (progress_frame) window.cancelAnimationFrame(progress_frame);
   media_shortcut_listeners_disposed = true;
@@ -779,12 +924,14 @@ onBeforeUnmount(() => {
   window.removeEventListener("pointermove", resize_sidebar);
   window.removeEventListener("pointerup", end_sidebar_resize);
   window.removeEventListener("pointercancel", end_sidebar_resize);
+  window.removeEventListener("beforeunload", handle_before_unload);
   document.body.classList.remove("resizing_sidebar");
 });
 
 onMounted(() => {
   media_shortcut_listeners_disposed = false;
   load_sidebar_width();
+  window.addEventListener("beforeunload", handle_before_unload);
   void listen_media_shortcuts();
   void load_startup_state();
 });
@@ -823,6 +970,10 @@ const album_items = computed<AlbumItem[]>(() => {
 watch(display_tracks, () => {
   if (query.value.trim() && queue_source.value.type === "search") set_queue_for_current_view();
 });
+
+watch([current_queue, queue_source, playback_mode], () => {
+  save_player_cache();
+}, { deep: true });
 </script>
 
 <template>

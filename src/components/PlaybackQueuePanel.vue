@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { onBeforeUnmount, onMounted } from "vue";
 import type { QueueSource, Track } from "../types/music";
 import { cover_src, display_artist, display_title, format_duration } from "../utils/track";
 
@@ -34,6 +35,18 @@ function track_is_active(track: Track) {
 function track_should_spin(track: Track) {
   return props.is_playing && track_is_active(track);
 }
+
+function close_on_escape(event: KeyboardEvent) {
+  if (event.key === "Escape") emit("close");
+}
+
+onMounted(() => {
+  window.addEventListener("keydown", close_on_escape);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("keydown", close_on_escape);
+});
 </script>
 
 <template>

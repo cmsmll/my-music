@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { open } from "@tauri-apps/plugin-dialog";
+import delete_icon from "../assets/icons/delete.svg";
 import folder_open_icon from "../assets/icons/folder-open.svg";
 import system_icon from "../assets/icons/system.svg";
 import x_icon from "../assets/icons/x.svg";
@@ -14,6 +15,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: [];
   choose_music_directory: [];
+  remove_music_directory: [directory: string];
 }>();
 
 type SettingsSectionKey = "library" | "decoder" | "cache" | "state" | "about";
@@ -153,7 +155,17 @@ async function choose_cache_path(entry: CacheEntry) {
                 <button class="primary_button" type="button" @click="emit('choose_music_directory')">添加目录</button>
               </div>
               <div v-if="app_config?.music_directory.length" class="path_list">
-                <p v-for="directory in app_config.music_directory" :key="directory">{{ directory }}</p>
+                <div v-for="directory in app_config.music_directory" :key="directory" class="path_list_row">
+                  <p>{{ directory }}</p>
+                  <button
+                    class="settings_delete_button"
+                    type="button"
+                    title="删除音乐目录"
+                    @click="emit('remove_music_directory', directory)"
+                  >
+                    <span class="svg_icon" :style="icon_style(delete_icon)" />
+                  </button>
+                </div>
               </div>
               <p v-else class="muted">尚未选择音乐目录。</p>
             </div>

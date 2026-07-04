@@ -267,6 +267,25 @@ async function reload_library() {
   await scan_directory(directories);
 }
 
+async function remove_music_directory(directory: string) {
+  loading.value = true;
+  error_message.value = "";
+
+  try {
+    const startup = await invoke<AppStartup>("remove_music_dir", { dir: directory });
+    app_config.value = startup.config;
+    playlists.value = startup.playlists;
+    ensure_selected_playlist();
+    player_queue.set_library_tracks(startup.tracks);
+    selected_directories.value = startup.config.music_directory;
+    set_queue_for_current_view();
+  } catch (error) {
+    error_message.value = String(error);
+  } finally {
+    loading.value = false;
+  }
+}
+
 async function load_startup_state() {
   loading.value = true;
   error_message.value = "";
@@ -1544,6 +1563,7 @@ watch([current_queue, queue_source, playback_mode], () => {
       :app_config="app_config"
       @close="settings_open = false"
       @choose_music_directory="choose_music_directory"
+      @remove_music_directory="remove_music_directory"
     />
 
     <ConfirmDialog
@@ -2899,6 +2919,13 @@ p {
   gap: 8px;
 }
 
+.path_list_row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 40px;
+  gap: 8px;
+  min-width: 0;
+}
+
 .path_list p,
 .settings_section input {
   width: 100%;
@@ -2917,7 +2944,8 @@ p {
 }
 
 .settings_default_button,
-.settings_file_button {
+.settings_file_button,
+.settings_delete_button {
   min-height: 40px;
   border-radius: 8px;
   color: #505763;
@@ -2930,16 +2958,15 @@ p {
   display: grid;
   width: 40px;
   place-items: center;
-  color: #ffffff;
-  background: #426dff;
 }
 
 .settings_default_button:hover {
-  color: #ffffff;
-  background: #3158dc;
+  color: #426dff;
+  background: #eaf0ff;
 }
 
-.settings_file_button {
+.settings_file_button,
+.settings_delete_button {
   display: grid;
   width: 40px;
   place-items: center;
@@ -2950,8 +2977,14 @@ p {
   background: #eaf0ff;
 }
 
+.settings_delete_button:hover {
+  color: #c33131;
+  background: #fff0f0;
+}
+
 .settings_default_button .svg_icon,
-.settings_file_button .svg_icon {
+.settings_file_button .svg_icon,
+.settings_delete_button .svg_icon {
   width: 18px;
   height: 18px;
 }

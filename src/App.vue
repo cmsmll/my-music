@@ -2335,7 +2335,7 @@ p {
 
 .stats_card_grid strong {
   overflow: hidden;
-  color: #1e2026;
+  color: #426dff;
   font-size: 1.55rem;
   font-weight: 900;
   text-overflow: ellipsis;

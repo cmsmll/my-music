@@ -23,6 +23,7 @@ impl ConfigManager {
                 .join("my-playlist-cache")
                 .to_string_lossy()
                 .to_string(),
+            log_dir: app_dir.join("logs").to_string_lossy().to_string(),
         };
 
         let config = fs::read_to_string(&config_path)
@@ -81,6 +82,7 @@ impl ConfigManager {
             .map_err(|err| format!("无法创建歌词缓存目录: {err}"))?;
         fs::create_dir_all(&config.my_playlist_cache_dir)
             .map_err(|err| format!("无法创建我的歌单缓存目录: {err}"))?;
+        fs::create_dir_all(&config.log_dir).map_err(|err| format!("无法创建日志目录: {err}"))?;
         Ok(())
     }
 
@@ -117,5 +119,8 @@ pub(crate) fn parse_config(content: &str, default_config: &AppConfig) -> Option<
             my_playlist_cache_dir: config
                 .my_playlist_cache_dir
                 .unwrap_or_else(|| default_config.my_playlist_cache_dir.clone()),
+            log_dir: config
+                .log_dir
+                .unwrap_or_else(|| default_config.log_dir.clone()),
         })
 }

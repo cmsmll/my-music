@@ -1,7 +1,10 @@
 use crate::models::PlaybackStatus;
+use crate::utils::unix_timestamp;
 use rodio::{Decoder, DeviceSinkBuilder, Player};
 use std::{
-    fs::File,
+    fs::{File, OpenOptions},
+    io::Write,
+    path::{Path, PathBuf},
     sync::{
         mpsc::{self, Sender},
         Arc, Mutex,
@@ -69,10 +72,11 @@ pub(crate) enum AudioCommand {
 }
 
 impl AudioEngine {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(log_dir: String) -> Self {
         let (tx, rx) = mpsc::channel();
         let snapshot = Arc::new(Mutex::new(PlaybackSnapshot::default()));
         let thread_snapshot = Arc::clone(&snapshot);
+        let log_dir = PathBuf::from(log_dir);
 
         thread::spawn(move || {
             let stream_handle = DeviceSinkBuilder::open_default_sink();
@@ -167,9 +171,8 @@ impl AudioEngine {
                                 return Ok(());
                             };
 
-                            if let Err(err) = &current.player.try_seek(Duration::from_secs(seconds))
+                            if let Err(err) = current.player.try_seek(Duration::from_secs(seconds))
                             {
-                                eprintln!("音频跳转失败:{err}");
                                 let snapshot = thread_snapshot
                                     .lock()
                                     .map_err(|_| "audio engine state is unavailable".to_string())?
@@ -177,6 +180,13 @@ impl AudioEngine {
                                 let Some(path) = snapshot.path.clone() else {
                                     return Ok(());
                                 };
+                                write_seek_error_log(
+                                    &log_dir,
+                                    &path,
+                                    "current_player",
+                                    seconds,
+                                    &err.to_string(),
+                                );
 
                                 let file = File::open(&path)
                                     .map_err(|err| format!("无法打开音频文件: {err}"))?;
@@ -186,9 +196,16 @@ impl AudioEngine {
 
                                 player.append(source);
                                 player.set_volume(snapshot.volume);
-                                player
-                                    .try_seek(Duration::from_secs(seconds))
-                                    .map_err(|err| format!("无法跳转播放进度: {err}"))?;
+                                if let Err(err) = player.try_seek(Duration::from_secs(seconds)) {
+                                    write_seek_error_log(
+                                        &log_dir,
+                                        &path,
+                                        "rebuilt_player",
+                                        seconds,
+                                        &err.to_string(),
+                                    );
+                                    return Err(format!("无法跳转播放进度: {err}"));
+                                }
                                 if snapshot.playing {
                                     player.play();
                                 } else {
@@ -288,4 +305,26 @@ pub(crate) fn elapsed_seconds(snapshot: &PlaybackSnapshot) -> u64 {
     };
 
     (snapshot.elapsed_offset + active_elapsed.saturating_sub(snapshot.paused_total)).as_secs()
+}
+
+fn write_seek_error_log(log_dir: &Path, path: &str, stage: &str, seconds: u64, reason: &str) {
+    let _ = std::fs::create_dir_all(log_dir);
+    let log_path = log_dir.join("audio.log");
+    let Ok(mut file) = OpenOptions::new().create(true).append(true).open(log_path) else {
+        return;
+    };
+
+    let _ = writeln!(
+        file,
+        "[{}] 音频跳转失败 | 歌曲=\"{}\" | 阶段={} | 目标秒数={} | 原因=\"{}\"",
+        unix_timestamp(),
+        log_value(path),
+        stage,
+        seconds,
+        log_value(reason)
+    );
+}
+
+fn log_value(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"")
 }

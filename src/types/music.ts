@@ -32,6 +32,7 @@ export type AppConfig = {
   cover_cache_dir: string;
   lyrics_cache_dir: string;
   my_playlist_cache_dir: string;
+  log_dir: string;
 };
 
 export type AppStartup = {

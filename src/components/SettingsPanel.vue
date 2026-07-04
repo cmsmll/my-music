@@ -53,6 +53,10 @@ const emit = defineEmits<{
           <span>my_playlist_cache_dir</span>
           <input :value="app_config?.my_playlist_cache_dir ?? ''" readonly />
         </label>
+        <label>
+          <span>log_dir</span>
+          <input :value="app_config?.log_dir ?? ''" readonly />
+        </label>
       </section>
     </aside>
   </div>

@@ -13,12 +13,23 @@ use media_shortcuts::{media_shortcut_plugin, register_media_shortcuts};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let config_manager = ConfigManager::new();
+    let log_dir = config_manager
+        .get()
+        .map(|config| config.log_dir)
+        .unwrap_or_else(|_| {
+            utils::current_app_dir()
+                .join("logs")
+                .to_string_lossy()
+                .to_string()
+        });
+
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(media_shortcut_plugin())
         .plugin(tauri_plugin_opener::init())
-        .manage(AudioEngine::new())
-        .manage(ConfigManager::new())
+        .manage(AudioEngine::new(log_dir))
+        .manage(config_manager)
         .setup(|app| {
             register_media_shortcuts(app.handle());
             Ok(())

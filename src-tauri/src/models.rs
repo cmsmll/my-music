@@ -46,6 +46,7 @@ pub(crate) struct AppConfig {
     pub(crate) cover_cache_dir: String,
     pub(crate) lyrics_cache_dir: String,
     pub(crate) my_playlist_cache_dir: String,
+    pub(crate) log_dir: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -55,6 +56,7 @@ pub(crate) struct ConfigFile {
     pub(crate) cover_cache_dir: Option<String>,
     pub(crate) lyrics_cache_dir: Option<String>,
     pub(crate) my_playlist_cache_dir: Option<String>,
+    pub(crate) log_dir: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

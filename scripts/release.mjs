@@ -53,9 +53,9 @@ function replace_required(content, pattern, replacement, label) {
 }
 
 function run(command, args, cwd) {
-  const result = spawnSync(command, args, {
+  const executable = process.platform === "win32" ? `${command}.cmd` : command;
+  const result = spawnSync(executable, args, {
     cwd,
-    shell: process.platform === "win32",
     stdio: "inherit",
   });
 

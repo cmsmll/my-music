@@ -2618,7 +2618,7 @@ p {
 .settings_overlay {
   position: fixed;
   inset: 0;
-  z-index: 5;
+  z-index: 999;
   display: flex;
   background: #ffffff;
 }

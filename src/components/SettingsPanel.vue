@@ -64,7 +64,7 @@ const active_section_title = computed(
               <div class="settings_row">
                 <div>
                   <strong>扫描目录</strong>
-                  <span>music_directory</span>
+                  <span>用于扫描本地音乐文件夹</span>
                 </div>
                 <button class="primary_button" type="button" @click="emit('choose_music_directory')">添加目录</button>
               </div>
@@ -79,11 +79,11 @@ const active_section_title = computed(
             <h3>解码器</h3>
             <div class="settings_field_group">
               <label>
-                <span>audio_backend</span>
+                <span>音频后端</span>
                 <input value="rodio 0.22.2" readonly />
               </label>
               <label>
-                <span>decoder_features</span>
+                <span>解码特性</span>
                 <input value="symphonia-all" readonly />
               </label>
               <div class="settings_placeholder">
@@ -97,27 +97,27 @@ const active_section_title = computed(
             <h3>缓存</h3>
             <div class="settings_field_group">
               <label>
-                <span>library_cache_dir</span>
+                <span>曲库缓存目录</span>
                 <input :value="app_config?.library_cache_dir ?? ''" readonly />
               </label>
               <label>
-                <span>cover_cache_dir</span>
+                <span>封面缓存目录</span>
                 <input :value="app_config?.cover_cache_dir ?? ''" readonly />
               </label>
               <label>
-                <span>lyrics_cache_dir</span>
+                <span>歌词缓存目录</span>
                 <input :value="app_config?.lyrics_cache_dir ?? ''" readonly />
               </label>
               <label>
-                <span>my_playlist_cache_dir</span>
+                <span>我的歌单缓存目录</span>
                 <input :value="app_config?.my_playlist_cache_dir ?? ''" readonly />
               </label>
               <label>
-                <span>play_statistics_cache_path</span>
+                <span>播放统计缓存文件</span>
                 <input :value="app_config?.play_statistics_cache_path ?? ''" readonly />
               </label>
               <label>
-                <span>log_dir</span>
+                <span>日志目录</span>
                 <input :value="app_config?.log_dir ?? ''" readonly />
               </label>
             </div>
@@ -127,19 +127,19 @@ const active_section_title = computed(
             <h3>状态</h3>
             <div class="settings_field_group">
               <label>
-                <span>volume_level</span>
+                <span>音量等级</span>
                 <input value="播放器状态缓存" readonly />
               </label>
               <label>
-                <span>window_size</span>
+                <span>页面大小</span>
                 <input value="系统窗口状态" readonly />
               </label>
               <label>
-                <span>sidebar_width</span>
+                <span>侧边栏宽度</span>
                 <input value="本地界面状态" readonly />
               </label>
               <label>
-                <span>background_color</span>
+                <span>背景颜色</span>
                 <input value="#ffffff" readonly />
               </label>
             </div>
@@ -149,15 +149,15 @@ const active_section_title = computed(
             <h3>关于</h3>
             <div class="settings_field_group">
               <label>
-                <span>name</span>
+                <span>软件名称</span>
                 <input value="my-music" readonly />
               </label>
               <label>
-                <span>runtime</span>
+                <span>运行环境</span>
                 <input value="Tauri 2 + Vue 3 + Rust" readonly />
               </label>
               <label>
-                <span>description</span>
+                <span>软件描述</span>
                 <input value="本地音乐播放器" readonly />
               </label>
             </div>

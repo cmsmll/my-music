@@ -2956,11 +2956,11 @@ p {
 }
 
 .settings_inline_field input {
-  width: 96px;
-  min-height: 28px;
-  border-radius: 2px;
-  padding: 4px 8px;
-  background: #b7b9bd;
+  width: 110px;
+  min-height: 40px;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #f8f9fb;
 }
 
 .settings_mode_radio {
@@ -2977,7 +2977,7 @@ p {
   border: 0;
   padding: 0;
   background: transparent;
-  accent-color: #aeb1b6;
+  accent-color: #426dff;
 }
 
 .settings_default_button,

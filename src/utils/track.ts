@@ -31,6 +31,10 @@ export function cover_src(track?: Track | null) {
   return track?.cover_cache_path ? convertFileSrc(track.cover_cache_path) : "";
 }
 
+export function is_missing_track(track?: Track | null) {
+  return Boolean(track?.missing);
+}
+
 export function icon_style(icon: string) {
   return { "--icon": `url("${icon}")` };
 }

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { AlbumItem, ArtistItem, QueueSource, Track, ViewKey } from "../types/music";
-import { cover_src, display_album, display_artist, display_title, format_duration } from "../utils/track";
+import { cover_src, display_album, display_artist, display_title, format_duration, is_missing_track } from "../utils/track";
 
 const props = defineProps<{
   active_view: ViewKey;
@@ -86,6 +86,11 @@ function album_card_should_spin(name: string) {
       props.playback_queue_source.id === name,
   );
 }
+
+function play_track(track: Track) {
+  if (is_missing_track(track)) return;
+  emit("play_track", track);
+}
 </script>
 
 <template>
@@ -126,9 +131,9 @@ function album_card_should_spin(name: string) {
         v-for="(track, index) in display_tracks"
         :key="track.id"
         class="table_row"
-        :class="{ active: track.path === status_path }"
+        :class="{ active: track.path === status_path, missing: is_missing_track(track) }"
         type="button"
-        @click="emit('play_track', track)"
+        @click="play_track(track)"
         @contextmenu.prevent="emit('open_track_menu', track, $event)"
       >
         <span class="index_cell">{{ index + 1 }}</span>

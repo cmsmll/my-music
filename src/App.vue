@@ -30,7 +30,7 @@ import type {
   Track,
   ViewKey,
 } from "./types/music";
-import { display_album, display_artist } from "./utils/track";
+import { display_album, display_artist, is_missing_track } from "./utils/track";
 
 type PlayerBarExpose = {
   render_progress: (percent: number, seconds: number) => void;
@@ -126,7 +126,7 @@ const tracks_by_id = computed(() => new Map(tracks.value.map((track) => [track.i
 
 const display_tracks = computed(() => {
   const keyword = query.value.trim().toLowerCase();
-  if (!keyword) return queue_tracks_for_view(active_view.value);
+  if (!keyword) return display_tracks_for_view(active_view.value);
 
   return tracks.value.filter((track) =>
     `${track.title} ${track.artist} ${track.album}`.toLowerCase().includes(keyword),
@@ -301,7 +301,7 @@ async function toggle_playback() {
   if (!status.value.path) {
     set_queue_for_current_view();
   }
-  const first_track = current_queue.value[0] ?? display_tracks.value[0];
+  const first_track = current_queue.value[0] ?? display_tracks.value.find((track) => !is_missing_track(track));
   if (!status.value.path && first_track) {
     await play(first_track);
     return;
@@ -776,6 +776,11 @@ function queue_tracks_for_view(view: ViewKey) {
   return tracks.value;
 }
 
+function display_tracks_for_view(view: ViewKey) {
+  if (view === "playlist_1") return tracks_from_ids(selected_user_playlist.value.track_ids, true);
+  return queue_tracks_for_view(view);
+}
+
 function playlist_track_ids_for_source(source: QueueSource) {
   if (source.type === "recent") return playlists.value.recent.track_ids;
   if (source.type !== "playlist") return [];
@@ -820,10 +825,39 @@ function refresh_current_queue_source() {
   );
 }
 
-function tracks_from_ids(track_ids: string[]) {
+function tracks_from_ids(track_ids: string[], include_missing = false) {
   return track_ids
-    .map((track_id) => tracks_by_id.value.get(track_id))
+    .map((track_id) => tracks_by_id.value.get(track_id) ?? (include_missing ? missing_track_from_id(track_id) : null))
     .filter((track): track is Track => Boolean(track));
+}
+
+function missing_track_from_id(track_id: string): Track {
+  return {
+    id: track_id,
+    title: track_id,
+    artist: "",
+    album: "",
+    path: "",
+    duration: null,
+    cover_cache_path: null,
+    lyrics_cache_path: "",
+    missing: true,
+    metadata: {
+      title: track_id,
+      artist: "",
+      album: "",
+      duration: null,
+      bitrate: null,
+      sample_rate: null,
+      year: null,
+      genre: [],
+      track_number: null,
+      disk_number: null,
+      cover_cache_path: null,
+      lyrics_cache_path: "",
+      metadata_source: "filename",
+    },
+  };
 }
 
 function add_recent_track(track: Track) {
@@ -920,6 +954,7 @@ function focus_search() {
 }
 
 async function play_track_from_view(track: Track) {
+  if (is_missing_track(track)) return;
   set_queue_for_current_view();
   await play(track);
 }
@@ -1079,7 +1114,7 @@ function context_track_in_playlist(playlist: PlaylistCache) {
 
 async function add_context_track_to_playlist(playlist: PlaylistCache) {
   const track = track_context_menu.value?.track;
-  if (!track || context_track_in_playlist(playlist)) return;
+  if (!track || is_missing_track(track) || context_track_in_playlist(playlist)) return;
 
   try {
     playlists.value = await invoke<PlaylistBundle>("add_track_to_playlist", {
@@ -1123,6 +1158,7 @@ async function remove_context_track_record() {
 }
 
 async function play_track_from_queue(track: Track) {
+  if (is_missing_track(track)) return;
   await play(track);
 }
 
@@ -1384,7 +1420,7 @@ watch([current_queue, queue_source, playback_mode], () => {
         :key="playlist.id"
         type="button"
         :title="playlist.name"
-        :disabled="context_track_in_playlist(playlist)"
+        :disabled="is_missing_track(track_context_menu.track) || context_track_in_playlist(playlist)"
         @click="add_context_track_to_playlist(playlist)"
       >
         {{ playlist.name }}
@@ -1861,6 +1897,19 @@ p {
 .table_row:hover,
 .table_row.active {
   background: #f5f7ff;
+}
+
+.table_row.missing,
+.table_row.missing:hover {
+  background: #fff1f1;
+}
+
+.table_row.missing {
+  cursor: default;
+}
+
+.table_row.missing .song_text strong {
+  color: #a43838;
 }
 
 .track_context_menu,

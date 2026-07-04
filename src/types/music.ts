@@ -8,6 +8,7 @@ export type Track = {
   cover_cache_path?: string | null;
   lyrics_cache_path: string;
   metadata: TrackMetadata;
+  missing?: boolean;
 };
 
 export type TrackMetadata = {

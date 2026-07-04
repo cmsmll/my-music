@@ -1663,6 +1663,14 @@ p {
   opacity: 0.45;
 }
 
+.nav_item[draggable="true"] {
+  cursor: grab;
+}
+
+.nav_item[draggable="true"]:active {
+  cursor: grabbing;
+}
+
 .nav_item.drag_over {
   color: #426dff;
   background: #f1f5ff;

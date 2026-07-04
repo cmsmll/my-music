@@ -56,18 +56,26 @@ function submit_create_playlist() {
   cancel_create_playlist();
 }
 
-function drag_playlist(playlist_id: string) {
+function drag_playlist(playlist_id: string, event: DragEvent) {
   dragging_playlist_id.value = playlist_id;
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", playlist_id);
+  }
 }
 
 function drag_over_playlist(playlist_id: string, event: DragEvent) {
-  if (!dragging_playlist_id.value || dragging_playlist_id.value === playlist_id) return;
   event.preventDefault();
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = "move";
+  }
+  if (!dragging_playlist_id.value || dragging_playlist_id.value === playlist_id) return;
   drag_over_playlist_id.value = playlist_id;
 }
 
-function drop_playlist(target_playlist_id: string) {
-  const dragged_playlist_id = dragging_playlist_id.value;
+function drop_playlist(target_playlist_id: string, event: DragEvent) {
+  event.preventDefault();
+  const dragged_playlist_id = dragging_playlist_id.value || event.dataTransfer?.getData("text/plain") || "";
   dragging_playlist_id.value = "";
   drag_over_playlist_id.value = "";
 
@@ -161,10 +169,11 @@ function end_drag_playlist() {
           :title="String(playlist.metadata.track_count)"
           @click="emit('show_playlist', playlist.id)"
           @contextmenu.prevent="emit('open_playlist_menu', playlist, $event)"
-          @dragstart="drag_playlist(playlist.id)"
+          @dragstart="drag_playlist(playlist.id, $event)"
+          @dragenter.prevent="drag_over_playlist(playlist.id, $event)"
           @dragover="drag_over_playlist(playlist.id, $event)"
           @dragleave="drag_over_playlist_id = ''"
-          @drop.prevent="drop_playlist(playlist.id)"
+          @drop="drop_playlist(playlist.id, $event)"
           @dragend="end_drag_playlist"
         >
           <span class="nav_icon svg_icon" :style="icon_style(playlist_grid_icon)" />

@@ -50,6 +50,7 @@ type TrackContextMenu = {
   track: Track;
   x: number;
   y: number;
+  remove_playlist_id: string | null;
 };
 
 const player_queue = use_player_queue_store();
@@ -712,6 +713,13 @@ function queue_source_for_view(view: ViewKey): QueueSource {
   if (view === "albums" && selected_album.value) {
     return { type: "album", id: selected_album.value, label: selected_album.value };
   }
+  if (view === "playlist_1") {
+    return {
+      type: "playlist",
+      id: playlists.value.my_playlist.id,
+      label: playlists.value.my_playlist.name,
+    };
+  }
 
   const labels: Record<ViewKey, string> = {
     all: "全部",
@@ -831,6 +839,15 @@ async function play_track_from_view(track: Track) {
   await play(track);
 }
 
+function active_record_playlist_id() {
+  if (query.value.trim() || selected_artist.value || selected_album.value) return "";
+  if (active_view.value === "recent") return "recent";
+  if (active_view.value === "playlist_1") {
+    return queue_source.value.type === "playlist" ? queue_source.value.id : playlists.value.my_playlist.id;
+  }
+  return "";
+}
+
 function open_track_context_menu(track: Track, event: MouseEvent) {
   const menu_width = 220;
   const menu_min_height = 64;
@@ -838,6 +855,7 @@ function open_track_context_menu(track: Track, event: MouseEvent) {
     track,
     x: Math.min(event.clientX, Math.max(window.innerWidth - menu_width - 12, 12)),
     y: Math.min(event.clientY, Math.max(window.innerHeight - menu_min_height - 12, 12)),
+    remove_playlist_id: active_record_playlist_id(),
   };
 }
 
@@ -868,14 +886,14 @@ async function add_context_track_to_playlist(playlist: PlaylistCache) {
   }
 }
 
-function active_record_playlist_id() {
-  if (active_view.value === "recent") return "recent";
-  if (active_view.value === "playlist_1") return "my_playlist";
-  return "";
+function context_track_can_be_removed() {
+  return Boolean(track_context_menu.value?.remove_playlist_id);
 }
 
-async function remove_track_record(track: Track) {
-  const playlist_id = active_record_playlist_id();
+async function remove_context_track_record() {
+  const track = track_context_menu.value?.track;
+  const playlist_id = track_context_menu.value?.remove_playlist_id ?? "";
+  if (!track) return;
   if (!playlist_id) return;
 
   try {
@@ -883,6 +901,7 @@ async function remove_track_record(track: Track) {
       playlistId: playlist_id,
       trackId: track.id,
     });
+    close_track_context_menu();
     set_queue_for_current_view();
   } catch (error) {
     error_message.value = String(error);
@@ -1109,7 +1128,6 @@ watch([current_queue, queue_source, playback_mode], () => {
         :total_duration="total_duration"
         @play_track="play_track_from_view"
         @open_track_menu="open_track_context_menu"
-        @remove_track_record="remove_track_record"
         @open_artist="open_artist_playlist"
         @open_album="open_album_playlist"
         @close_detail="close_detail_playlist"
@@ -1123,9 +1141,21 @@ watch([current_queue, queue_source, playback_mode], () => {
       @click.stop
       @contextmenu.prevent
     >
-      <p>添加到歌单</p>
+      <div class="track_context_menu_header">
+        <p>添加到歌单</p>
+        <button
+          v-if="context_track_can_be_removed()"
+          class="track_context_delete_button"
+          type="button"
+          title="删除记录"
+          @click="remove_context_track_record"
+        >
+          删除
+        </button>
+      </div>
       <button
         v-for="playlist in user_playlist_items"
+        class="track_context_playlist_button"
         :key="playlist.id"
         type="button"
         :title="playlist.name"
@@ -1542,14 +1572,39 @@ p {
   box-shadow: 0 12px 34px rgba(19, 24, 34, 0.16);
 }
 
-.track_context_menu p {
+.track_context_menu_header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
   padding: 4px 8px 6px;
+}
+
+.track_context_menu_header p {
+  min-width: 0;
   color: #8b919c;
   font-size: 0.78rem;
   font-weight: 800;
 }
 
-.track_context_menu button {
+.track_context_delete_button {
+  flex: 0 0 auto;
+  min-height: 26px;
+  border-radius: 8px;
+  padding: 0 8px;
+  color: #b65b5b;
+  background: transparent;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.track_context_delete_button:hover {
+  color: #c33131;
+  background: #fff0f0;
+}
+
+.track_context_playlist_button {
   overflow: hidden;
   min-height: 34px;
   border-radius: 8px;
@@ -1563,18 +1618,18 @@ p {
   white-space: nowrap;
 }
 
-.track_context_menu button:hover {
+.track_context_playlist_button:hover {
   color: #426dff;
   background: #eaf0ff;
 }
 
-.track_context_menu button:disabled {
+.track_context_playlist_button:disabled {
   color: #b3b8c2;
   background: transparent;
   cursor: default;
 }
 
-.track_context_menu button:disabled:hover {
+.track_context_playlist_button:disabled:hover {
   color: #b3b8c2;
   background: transparent;
 }
@@ -1627,14 +1682,6 @@ p {
   gap: 3px;
 }
 
-.song_title_row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-width: 0;
-}
-
 .song_text strong,
 .song_text small,
 .album_cell,
@@ -1645,27 +1692,6 @@ p {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.song_title_row strong {
-  min-width: 0;
-}
-
-.record_delete_button {
-  flex: 0 0 auto;
-  border-radius: 8px;
-  padding: 2px 8px;
-  color: #b65b5b;
-  background: transparent;
-  font-size: 0.82rem;
-  font-weight: 800;
-}
-
-.record_delete_button:hover,
-.record_delete_button:focus {
-  color: #c33131;
-  background: #fff0f0;
-  outline: 0;
 }
 
 .song_text strong {

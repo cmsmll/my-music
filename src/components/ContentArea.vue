@@ -24,7 +24,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   play_track: [track: Track];
   open_track_menu: [track: Track, event: MouseEvent];
-  remove_track_record: [track: Track];
   open_artist: [name: string];
   open_album: [name: string];
   close_detail: [];
@@ -32,15 +31,6 @@ const emit = defineEmits<{
 
 function detail_total_duration() {
   return props.display_tracks.reduce((total, track) => total + (track.duration ?? 0), 0);
-}
-
-function track_records_can_be_removed() {
-  return (
-    !props.query.trim() &&
-    !props.selected_artist &&
-    !props.selected_album &&
-    (props.active_view === "recent" || props.active_view === "playlist_1")
-  );
 }
 
 function visible_list_matches_playback_source() {
@@ -56,6 +46,9 @@ function visible_list_matches_playback_source() {
   }
   if (props.selected_album) {
     return props.playback_queue_source.type === "album" && props.playback_queue_source.id === props.selected_album;
+  }
+  if (props.active_view === "playlist_1") {
+    return props.playback_queue_source.type === "playlist";
   }
   return props.playback_queue_source.type === props.active_view;
 }
@@ -141,22 +134,7 @@ function album_card_should_spin(name: string) {
             <span v-else>♪</span>
           </span>
           <span class="song_text">
-            <span class="song_title_row">
-              <strong>{{ display_title(track) }}</strong>
-              <span
-                v-if="track_records_can_be_removed()"
-                class="record_delete_button"
-                role="button"
-                tabindex="0"
-                title="删除记录"
-                @click.stop="emit('remove_track_record', track)"
-                @keydown.enter.stop.prevent="emit('remove_track_record', track)"
-                @keydown.space.stop.prevent="emit('remove_track_record', track)"
-                @contextmenu.stop.prevent
-              >
-                删除
-              </span>
-            </span>
+            <strong>{{ display_title(track) }}</strong>
             <small>{{ display_artist(track) }}</small>
           </span>
         </span>

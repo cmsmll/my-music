@@ -2927,7 +2927,14 @@ p {
 }
 
 .settings_default_button {
+  color: #ffffff;
+  background: #426dff;
   padding: 0 14px;
+}
+
+.settings_default_button:hover {
+  color: #ffffff;
+  background: #3158dc;
 }
 
 .settings_file_button {
@@ -2936,7 +2943,6 @@ p {
   place-items: center;
 }
 
-.settings_default_button:hover,
 .settings_file_button:hover {
   color: #426dff;
   background: #eaf0ff;

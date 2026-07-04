@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { open } from "@tauri-apps/plugin-dialog";
-import file_icon from "../assets/icons/file.svg";
+import folder_open_icon from "../assets/icons/folder-open.svg";
 import x_icon from "../assets/icons/x.svg";
 import type { AppConfig } from "../types/music";
 import { icon_style } from "../utils/track";
@@ -197,7 +197,7 @@ async function choose_cache_path(entry: CacheEntry) {
                     :title="`选择${entry.title}`"
                     @click="choose_cache_path(entry)"
                   >
-                    <span class="svg_icon" :style="icon_style(file_icon)" />
+                    <span class="svg_icon" :style="icon_style(folder_open_icon)" />
                   </button>
                 </div>
               </label>

@@ -110,6 +110,7 @@ export type PlaylistCache = {
 export type PlaylistBundle = {
   recent: PlaylistCache;
   my_playlist: PlaylistCache;
+  my_playlists: PlaylistCache[];
   artists: PlaylistCache;
   albums: PlaylistCache;
 };

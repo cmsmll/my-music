@@ -23,6 +23,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   play_track: [track: Track];
+  open_track_menu: [track: Track, event: MouseEvent];
   open_artist: [name: string];
   open_album: [name: string];
   close_detail: [];
@@ -121,6 +122,7 @@ function album_card_should_spin(name: string) {
         :class="{ active: track.path === status_path }"
         type="button"
         @click="emit('play_track', track)"
+        @contextmenu.prevent="emit('open_track_menu', track, $event)"
       >
         <span class="index_cell">{{ index + 1 }}</span>
         <span class="song_cell">

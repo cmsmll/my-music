@@ -24,6 +24,7 @@ import type {
   PlaybackModeItem,
   PlaybackStatus,
   PlaylistBundle,
+  PlaylistCache,
   QueueSource,
   Track,
   ViewKey,
@@ -45,6 +46,12 @@ type PlayerCache = {
   updated_at: number;
 };
 
+type TrackContextMenu = {
+  track: Track;
+  x: number;
+  y: number;
+};
+
 const player_queue = use_player_queue_store();
 const { library_tracks: tracks, current_queue, playback_mode, queue_source } = storeToRefs(player_queue);
 const status = ref<PlaybackStatus>({
@@ -64,6 +71,7 @@ const selected_artist = ref("");
 const selected_album = ref("");
 const settings_open = ref(false);
 const playback_queue_open = ref(false);
+const track_context_menu = ref<TrackContextMenu | null>(null);
 const progress_dragging = ref(false);
 const player_bar = ref<PlayerBarExpose | null>(null);
 const sidebar_width = ref(250);
@@ -174,6 +182,12 @@ const app_shell_style = computed(() => ({
 
 const playback_mode_button = computed(() => {
   return playback_modes.find((item) => item.mode === playback_mode.value) ?? playback_modes[0];
+});
+
+const user_playlist_items = computed<PlaylistCache[]>(() => {
+  return playlists.value.my_playlists?.length
+    ? playlists.value.my_playlists
+    : [playlists.value.my_playlist];
 });
 
 async function choose_music_directory() {
@@ -760,6 +774,7 @@ function empty_playlist_bundle(): PlaylistBundle {
   return {
     recent: empty_playlist("recent", "最近播放", "recent"),
     my_playlist: empty_playlist("my_playlist", "我的歌单", "user"),
+    my_playlists: [empty_playlist("my_playlist", "我的歌单", "user")],
     artists: empty_playlist("artists", "歌手", "artists"),
     albums: empty_playlist("albums", "专辑", "albums"),
   };
@@ -814,6 +829,38 @@ function focus_search() {
 async function play_track_from_view(track: Track) {
   set_queue_for_current_view();
   await play(track);
+}
+
+function open_track_context_menu(track: Track, event: MouseEvent) {
+  const menu_width = 220;
+  const menu_min_height = 64;
+  track_context_menu.value = {
+    track,
+    x: Math.min(event.clientX, Math.max(window.innerWidth - menu_width - 12, 12)),
+    y: Math.min(event.clientY, Math.max(window.innerHeight - menu_min_height - 12, 12)),
+  };
+}
+
+function close_track_context_menu() {
+  track_context_menu.value = null;
+}
+
+async function add_context_track_to_playlist(playlist: PlaylistCache) {
+  const track = track_context_menu.value?.track;
+  if (!track) return;
+
+  try {
+    playlists.value = await invoke<PlaylistBundle>("add_track_to_playlist", {
+      playlistId: playlist.id,
+      trackId: track.id,
+    });
+    close_track_context_menu();
+    if (active_view.value === "playlist_1" || queue_source.value.id === playlist.id) {
+      set_queue_for_current_view();
+    }
+  } catch (error) {
+    error_message.value = String(error);
+  }
 }
 
 async function play_track_from_queue(track: Track) {
@@ -914,6 +961,16 @@ function handle_before_unload() {
   save_player_cache();
 }
 
+function close_track_context_menu_on_pointer(event: PointerEvent) {
+  const target = event.target as HTMLElement | null;
+  if (target?.closest(".track_context_menu")) return;
+  close_track_context_menu();
+}
+
+function close_track_context_menu_on_key(event: KeyboardEvent) {
+  if (event.key === "Escape") close_track_context_menu();
+}
+
 onBeforeUnmount(() => {
   save_player_cache();
   if (status_timer) window.clearInterval(status_timer);
@@ -925,6 +982,8 @@ onBeforeUnmount(() => {
   window.removeEventListener("pointerup", end_sidebar_resize);
   window.removeEventListener("pointercancel", end_sidebar_resize);
   window.removeEventListener("beforeunload", handle_before_unload);
+  window.removeEventListener("pointerdown", close_track_context_menu_on_pointer);
+  window.removeEventListener("keydown", close_track_context_menu_on_key);
   document.body.classList.remove("resizing_sidebar");
 });
 
@@ -932,6 +991,8 @@ onMounted(() => {
   media_shortcut_listeners_disposed = false;
   load_sidebar_width();
   window.addEventListener("beforeunload", handle_before_unload);
+  window.addEventListener("pointerdown", close_track_context_menu_on_pointer);
+  window.addEventListener("keydown", close_track_context_menu_on_key);
   void listen_media_shortcuts();
   void load_startup_state();
 });
@@ -1021,11 +1082,31 @@ watch([current_queue, queue_source, playback_mode], () => {
         :artist_count="artist_count"
         :total_duration="total_duration"
         @play_track="play_track_from_view"
+        @open_track_menu="open_track_context_menu"
         @open_artist="open_artist_playlist"
         @open_album="open_album_playlist"
         @close_detail="close_detail_playlist"
       />
     </section>
+
+    <div
+      v-if="track_context_menu"
+      class="track_context_menu"
+      :style="{ left: `${track_context_menu.x}px`, top: `${track_context_menu.y}px` }"
+      @click.stop
+      @contextmenu.prevent
+    >
+      <p>添加到我的歌单</p>
+      <button
+        v-for="playlist in user_playlist_items"
+        :key="playlist.id"
+        type="button"
+        :title="playlist.name"
+        @click="add_context_track_to_playlist(playlist)"
+      >
+        {{ playlist.name }}
+      </button>
+    </div>
 
     <PlayerBar
       ref="player_bar"
@@ -1417,6 +1498,46 @@ p {
 .table_row:hover,
 .table_row.active {
   background: #f5f7ff;
+}
+
+.track_context_menu {
+  position: fixed;
+  z-index: 1000;
+  display: grid;
+  min-width: 190px;
+  max-width: 240px;
+  gap: 4px;
+  border: 1px solid #eef0f4;
+  border-radius: 8px;
+  padding: 8px;
+  background: #ffffff;
+  box-shadow: 0 12px 34px rgba(19, 24, 34, 0.16);
+}
+
+.track_context_menu p {
+  padding: 4px 8px 6px;
+  color: #8b919c;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.track_context_menu button {
+  overflow: hidden;
+  min-height: 34px;
+  border-radius: 8px;
+  padding: 0 10px;
+  color: #1e2026;
+  background: transparent;
+  font-size: 0.92rem;
+  font-weight: 800;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.track_context_menu button:hover {
+  color: #426dff;
+  background: #eaf0ff;
 }
 
 .index_cell,

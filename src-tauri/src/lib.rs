@@ -173,6 +173,7 @@ struct AllPlaylistCache {
 struct PlaylistBundle {
     recent: PlaylistCache,
     my_playlist: PlaylistCache,
+    my_playlists: Vec<PlaylistCache>,
     artists: PlaylistCache,
     albums: PlaylistCache,
 }
@@ -750,11 +751,18 @@ fn write_playlist_caches(config: &AppConfig, tracks: &[Track]) -> Result<(), Str
 }
 
 fn load_playlist_bundle(config: &AppConfig) -> Result<PlaylistBundle, String> {
+    let my_playlists = load_my_playlist_caches(config)?;
+    let my_playlist = my_playlists
+        .iter()
+        .find(|playlist| playlist.id == "my_playlist")
+        .cloned()
+        .unwrap_or_else(|| empty_playlist("my_playlist", "我的歌单", "user"));
+
     Ok(PlaylistBundle {
         recent: read_playlist_cache(&playlist_cache_path(config, "recent_playlist.json"))?
             .unwrap_or_else(|| empty_playlist("recent", "最近播放", "recent")),
-        my_playlist: load_my_playlist_cache(config)?
-            .unwrap_or_else(|| empty_playlist("my_playlist", "我的歌单", "user")),
+        my_playlist,
+        my_playlists,
         artists: read_playlist_cache(&playlist_cache_path(config, "artists_playlist.json"))?
             .unwrap_or_else(|| empty_playlist("artists", "歌手", "artists")),
         albums: read_playlist_cache(&playlist_cache_path(config, "albums_playlist.json"))?
@@ -942,6 +950,83 @@ fn load_my_playlist_cache(config: &AppConfig) -> Result<Option<PlaylistCache>, S
     Ok(playlist)
 }
 
+fn load_my_playlist_caches(config: &AppConfig) -> Result<Vec<PlaylistCache>, String> {
+    let mut playlists = Vec::new();
+    if let Some(playlist) = load_my_playlist_cache(config)? {
+        playlists.push(playlist);
+    } else {
+        playlists.push(empty_playlist("my_playlist", "我的歌单", "user"));
+    }
+
+    let root = PathBuf::from(&config.my_playlist_cache_dir);
+    if root.is_dir() {
+        let entries =
+            fs::read_dir(&root).map_err(|err| format!("无法读取我的歌单缓存目录: {err}"))?;
+        for entry in entries {
+            let entry = entry.map_err(|err| format!("无法读取我的歌单缓存文件: {err}"))?;
+            let path = entry.path();
+            if path.file_name().and_then(|name| name.to_str()) == Some("my_playlist.json") {
+                continue;
+            }
+            if path.extension().and_then(|extension| extension.to_str()) != Some("json") {
+                continue;
+            }
+            if let Some(mut playlist) = read_playlist_cache(&path)? {
+                if playlist.kind.is_empty() {
+                    playlist.kind = "user".to_string();
+                }
+                playlists.push(playlist);
+            }
+        }
+    }
+
+    playlists.sort_by(|left, right| {
+        if left.id == "my_playlist" {
+            std::cmp::Ordering::Less
+        } else if right.id == "my_playlist" {
+            std::cmp::Ordering::Greater
+        } else {
+            left.name.cmp(&right.name)
+        }
+    });
+    Ok(playlists)
+}
+
+fn user_playlist_cache_path(config: &AppConfig, playlist_id: &str) -> Result<PathBuf, String> {
+    if playlist_id == "my_playlist" {
+        return Ok(my_playlist_cache_path(config, "my_playlist.json"));
+    }
+
+    let root = PathBuf::from(&config.my_playlist_cache_dir);
+    if root.is_dir() {
+        let entries =
+            fs::read_dir(&root).map_err(|err| format!("无法读取我的歌单缓存目录: {err}"))?;
+        for entry in entries {
+            let entry = entry.map_err(|err| format!("无法读取我的歌单缓存文件: {err}"))?;
+            let path = entry.path();
+            if path.extension().and_then(|extension| extension.to_str()) != Some("json") {
+                continue;
+            }
+            let Some(playlist) = read_playlist_cache(&path)? else {
+                continue;
+            };
+            if playlist.id == playlist_id {
+                return Ok(path);
+            }
+        }
+    }
+
+    Err(format!("找不到歌单: {playlist_id}"))
+}
+
+fn update_user_playlist_metadata(
+    playlist: &mut PlaylistCache,
+    all_tracks: &BTreeMap<String, Track>,
+) {
+    playlist.generated_at = unix_timestamp();
+    playlist.metadata = playlist_metadata(&playlist.track_ids, all_tracks, 0);
+}
+
 fn record_recent_track(config: &AppConfig, path: &str) -> Result<(), String> {
     if path.is_empty() {
         return Ok(());
@@ -1022,6 +1107,34 @@ fn normalized_group_name(value: &str, fallback: &str) -> String {
     } else {
         value.to_string()
     }
+}
+
+#[tauri::command]
+fn add_track_to_playlist(
+    config_manager: tauri::State<'_, ConfigManager>,
+    playlist_id: String,
+    track_id: String,
+) -> Result<PlaylistBundle, String> {
+    let config = config_manager.get()?;
+    let all_playlist_path = playlist_cache_path(&config, "all_playlist.json");
+    let content = fs::read_to_string(&all_playlist_path)
+        .map_err(|err| format!("无法读取全部歌单缓存: {err}"))?;
+    let all_playlist: AllPlaylistCache =
+        serde_json::from_str(&content).map_err(|err| format!("无法解析全部歌单缓存: {err}"))?;
+
+    if !all_playlist.tracks.contains_key(&track_id) {
+        return Err("歌曲不存在于当前曲库缓存".to_string());
+    }
+
+    let playlist_path = user_playlist_cache_path(&config, &playlist_id)?;
+    let mut playlist = read_playlist_cache(&playlist_path)?
+        .unwrap_or_else(|| empty_playlist("my_playlist", "我的歌单", "user"));
+    playlist.track_ids.retain(|current| current != &track_id);
+    playlist.track_ids.push(track_id);
+    update_user_playlist_metadata(&mut playlist, &all_playlist.tracks);
+
+    write_json_cache(&playlist_path, &playlist, "我的歌单缓存")?;
+    load_playlist_bundle(&config)
 }
 
 #[tauri::command]
@@ -1433,6 +1546,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_startup_state,
             scan_music_dir,
+            add_track_to_playlist,
             play_track,
             pause_track,
             resume_track,

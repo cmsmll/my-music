@@ -845,9 +845,14 @@ function close_track_context_menu() {
   track_context_menu.value = null;
 }
 
+function context_track_in_playlist(playlist: PlaylistCache) {
+  const track_id = track_context_menu.value?.track.id;
+  return Boolean(track_id && playlist.track_ids.includes(track_id));
+}
+
 async function add_context_track_to_playlist(playlist: PlaylistCache) {
   const track = track_context_menu.value?.track;
-  if (!track) return;
+  if (!track || context_track_in_playlist(playlist)) return;
 
   try {
     playlists.value = await invoke<PlaylistBundle>("add_track_to_playlist", {
@@ -1102,6 +1107,7 @@ watch([current_queue, queue_source, playback_mode], () => {
         :key="playlist.id"
         type="button"
         :title="playlist.name"
+        :disabled="context_track_in_playlist(playlist)"
         @click="add_context_track_to_playlist(playlist)"
       >
         {{ playlist.name }}
@@ -1538,6 +1544,17 @@ p {
 .track_context_menu button:hover {
   color: #426dff;
   background: #eaf0ff;
+}
+
+.track_context_menu button:disabled {
+  color: #b3b8c2;
+  background: transparent;
+  cursor: default;
+}
+
+.track_context_menu button:disabled:hover {
+  color: #b3b8c2;
+  background: transparent;
 }
 
 .index_cell,

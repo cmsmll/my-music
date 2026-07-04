@@ -57,23 +57,6 @@ pub(crate) fn scan_music_dir(
     load_or_scan_all_directories(&config_manager, &config)
 }
 
-/// 从配置中移除音乐目录，并重新加载剩余目录的曲库和歌单缓存。
-#[tauri::command]
-pub(crate) fn remove_music_dir(
-    config_manager: tauri::State<'_, ConfigManager>,
-    dir: String,
-) -> Result<AppStartup, String> {
-    let config = config_manager.remove_music_directory(dir)?;
-    let tracks = load_or_scan_all_directories(&config_manager, &config)?;
-    let playlists = load_playlist_bundle(&config)?;
-
-    Ok(AppStartup {
-        config,
-        tracks,
-        playlists,
-    })
-}
-
 /// 将指定歌曲添加到用户歌单，并刷新返回所有歌单数据。
 #[tauri::command]
 pub(crate) fn add_track_to_playlist(

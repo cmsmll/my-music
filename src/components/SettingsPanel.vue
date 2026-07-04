@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { open } from "@tauri-apps/plugin-dialog";
 import delete_icon from "../assets/icons/delete.svg";
 import folder_open_icon from "../assets/icons/folder-open.svg";
@@ -15,7 +15,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: [];
   choose_music_directory: [];
-  remove_music_directory: [directory: string];
 }>();
 
 type SettingsSectionKey = "library" | "decoder" | "cache" | "state" | "about";
@@ -43,9 +42,14 @@ const settings_sections: { key: SettingsSectionKey; title: string }[] = [
 ];
 
 const active_section = ref<SettingsSectionKey>("library");
+const music_directory_overrides = ref<string[] | null>(null);
 
 const active_section_title = computed(
   () => settings_sections.find((section) => section.key === active_section.value)?.title ?? "音乐库",
+);
+
+const music_directories = computed(
+  () => music_directory_overrides.value ?? props.app_config?.music_directory ?? [],
 );
 
 const cache_path_overrides = ref<Partial<Record<CacheEntryKey, string>>>({});
@@ -99,6 +103,10 @@ function reset_cache_entry(entry: CacheEntry) {
   cache_path_overrides.value = next_overrides;
 }
 
+function remove_music_directory(directory: string) {
+  music_directory_overrides.value = music_directories.value.filter((current) => current !== directory);
+}
+
 async function choose_cache_path(entry: CacheEntry) {
   const selected = await open({
     directory: entry.directory,
@@ -114,6 +122,13 @@ async function choose_cache_path(entry: CacheEntry) {
     [entry.key]: selected_path,
   };
 }
+
+watch(
+  () => props.app_config?.music_directory,
+  () => {
+    music_directory_overrides.value = null;
+  },
+);
 </script>
 
 <template>
@@ -154,14 +169,14 @@ async function choose_cache_path(entry: CacheEntry) {
                 </div>
                 <button class="primary_button" type="button" @click="emit('choose_music_directory')">添加目录</button>
               </div>
-              <div v-if="app_config?.music_directory.length" class="path_list">
-                <div v-for="directory in app_config.music_directory" :key="directory" class="path_list_row">
+              <div v-if="music_directories.length" class="path_list">
+                <div v-for="directory in music_directories" :key="directory" class="path_list_row">
                   <p>{{ directory }}</p>
                   <button
                     class="settings_delete_button"
                     type="button"
                     title="删除音乐目录"
-                    @click="emit('remove_music_directory', directory)"
+                    @click="remove_music_directory(directory)"
                   >
                     <span class="svg_icon" :style="icon_style(delete_icon)" />
                   </button>

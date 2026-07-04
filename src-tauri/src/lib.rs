@@ -38,7 +38,6 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::get_startup_state,
             commands::scan_music_dir,
-            commands::remove_music_dir,
             commands::add_track_to_playlist,
             commands::remove_track_from_playlist,
             commands::create_user_playlist,

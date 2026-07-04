@@ -70,19 +70,6 @@ impl ConfigManager {
         self.get()
     }
 
-    pub(crate) fn remove_music_directory(&self, dir: String) -> Result<AppConfig, String> {
-        {
-            let mut config = self
-                .config
-                .lock()
-                .map_err(|_| "config state is unavailable".to_string())?;
-            config.music_directory.retain(|current| current != &dir);
-        }
-        self.ensure_layout()?;
-        self.save()?;
-        self.get()
-    }
-
     fn save(&self) -> Result<(), String> {
         let config = self.get()?;
         let content =

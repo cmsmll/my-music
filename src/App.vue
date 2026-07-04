@@ -267,25 +267,6 @@ async function reload_library() {
   await scan_directory(directories);
 }
 
-async function remove_music_directory(directory: string) {
-  loading.value = true;
-  error_message.value = "";
-
-  try {
-    const startup = await invoke<AppStartup>("remove_music_dir", { dir: directory });
-    app_config.value = startup.config;
-    playlists.value = startup.playlists;
-    ensure_selected_playlist();
-    player_queue.set_library_tracks(startup.tracks);
-    selected_directories.value = startup.config.music_directory;
-    set_queue_for_current_view();
-  } catch (error) {
-    error_message.value = String(error);
-  } finally {
-    loading.value = false;
-  }
-}
-
 async function load_startup_state() {
   loading.value = true;
   error_message.value = "";
@@ -1563,7 +1544,6 @@ watch([current_queue, queue_source, playback_mode], () => {
       :app_config="app_config"
       @close="settings_open = false"
       @choose_music_directory="choose_music_directory"
-      @remove_music_directory="remove_music_directory"
     />
 
     <ConfirmDialog

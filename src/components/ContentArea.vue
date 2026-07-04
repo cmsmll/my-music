@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { AlbumItem, ArtistItem, QueueSource, Track, ViewKey } from "../types/music";
+import type { AlbumItem, ArtistItem, QueueSource, StatRankItem, StatsOverview, Track, ViewKey } from "../types/music";
 import { cover_src, display_album, display_artist, display_title, format_duration, is_missing_track } from "../utils/track";
 
 const props = defineProps<{
@@ -20,6 +20,7 @@ const props = defineProps<{
   album_count: number;
   artist_count: number;
   total_duration: number;
+  stats_overview: StatsOverview;
 }>();
 
 const emit = defineEmits<{
@@ -90,6 +91,28 @@ function album_card_should_spin(name: string) {
 function play_track(track: Track) {
   if (is_missing_track(track)) return;
   emit("play_track", track);
+}
+
+function format_file_size(bytes: number) {
+  if (!bytes) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const unit_index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / 1024 ** unit_index;
+  return `${value.toFixed(value >= 10 || unit_index === 0 ? 0 : 1)} ${units[unit_index]}`;
+}
+
+function format_stat_duration(seconds: number) {
+  if (!seconds) return "0分钟";
+  const whole_seconds = Math.floor(seconds);
+  const hours = Math.floor(whole_seconds / 3600);
+  const minutes = Math.floor((whole_seconds % 3600) / 60);
+  if (hours <= 0) return `${Math.max(minutes, 1)}分钟`;
+  return minutes > 0 ? `${hours}小时${minutes}分钟` : `${hours}小时`;
+}
+
+function rank_percent(item: StatRankItem, items: StatRankItem[]) {
+  const max = Math.max(...items.map((rank_item) => rank_item.value), 1);
+  return `${Math.max((item.value / max) * 100, 4)}%`;
 }
 </script>
 
@@ -197,22 +220,125 @@ function play_track(track: Track) {
     </section>
 
     <section v-else-if="active_view === 'stats'" class="stats_view">
-      <article>
-        <strong>{{ tracks.length }}</strong>
-        <span>歌曲</span>
-      </article>
-      <article>
-        <strong>{{ album_count }}</strong>
-        <span>专辑</span>
-      </article>
-      <article>
-        <strong>{{ artist_count }}</strong>
-        <span>歌手</span>
-      </article>
-      <article>
-        <strong>{{ format_duration(total_duration) }}</strong>
-        <span>总时长</span>
-      </article>
+      <div class="stats_overview">
+        <article class="stat_card primary">
+          <span>音乐总数</span>
+          <strong>{{ stats_overview.total_tracks }}</strong>
+          <small>{{ stats_overview.directory_count }} 个目录</small>
+        </article>
+        <article class="stat_card">
+          <span>艺术家</span>
+          <strong>{{ stats_overview.total_artists }}</strong>
+          <small>{{ stats_overview.known_genre_count }} 个流派</small>
+        </article>
+        <article class="stat_card">
+          <span>专辑</span>
+          <strong>{{ stats_overview.total_albums }}</strong>
+          <small>{{ stats_overview.playlist_count }} 个歌单</small>
+        </article>
+        <article class="stat_card">
+          <span>总时长</span>
+          <strong>{{ format_stat_duration(stats_overview.total_duration) }}</strong>
+          <small>平均 {{ format_duration(stats_overview.average_duration) }}</small>
+        </article>
+        <article class="stat_card">
+          <span>总大小</span>
+          <strong>{{ format_file_size(stats_overview.total_size) }}</strong>
+          <small>{{ stats_overview.format_distribution.length }} 种格式</small>
+        </article>
+        <article class="stat_card">
+          <span>年份信息</span>
+          <strong>{{ stats_overview.known_year_count }}</strong>
+          <small>来自音频元数据</small>
+        </article>
+      </div>
+
+      <div class="stats_detail_grid">
+        <article class="stats_panel">
+          <header>
+            <strong>歌手排行</strong>
+            <span>按歌曲数量</span>
+          </header>
+          <div class="rank_list">
+            <div v-for="artist in stats_overview.top_artists" :key="artist.name" class="rank_item">
+              <span class="rank_name" :title="artist.name">{{ artist.name }}</span>
+              <span class="rank_value">{{ artist.value }}</span>
+              <span class="rank_bar"><i :style="{ width: rank_percent(artist, stats_overview.top_artists) }" /></span>
+              <small>{{ artist.description }}</small>
+            </div>
+            <p v-if="!stats_overview.top_artists.length" class="empty_state">暂无歌手数据。</p>
+          </div>
+        </article>
+
+        <article class="stats_panel">
+          <header>
+            <strong>专辑排行</strong>
+            <span>按歌曲数量</span>
+          </header>
+          <div class="rank_list">
+            <div v-for="album in stats_overview.top_albums" :key="album.name" class="rank_item">
+              <span class="rank_name" :title="album.name">{{ album.name }}</span>
+              <span class="rank_value">{{ album.value }}</span>
+              <span class="rank_bar"><i :style="{ width: rank_percent(album, stats_overview.top_albums) }" /></span>
+              <small>{{ album.description }}</small>
+            </div>
+            <p v-if="!stats_overview.top_albums.length" class="empty_state">暂无专辑数据。</p>
+          </div>
+        </article>
+
+        <article class="stats_panel">
+          <header>
+            <strong>格式分布</strong>
+            <span>按文件类型</span>
+          </header>
+          <div class="pill_grid">
+            <span v-for="format in stats_overview.format_distribution" :key="format.name">
+              <strong>{{ format.name }}</strong>
+              {{ format.value }}
+            </span>
+          </div>
+          <p v-if="!stats_overview.format_distribution.length" class="empty_state">暂无格式数据。</p>
+        </article>
+
+        <article class="stats_panel">
+          <header>
+            <strong>元数据覆盖</strong>
+            <span>来自标签解析</span>
+          </header>
+          <div class="pill_grid">
+            <span v-for="genre in stats_overview.top_genres" :key="genre.name">
+              <strong>{{ genre.name }}</strong>
+              {{ genre.value }}
+            </span>
+            <span v-for="year in stats_overview.top_years" :key="year.name">
+              <strong>{{ year.name }}</strong>
+              {{ year.value }}
+            </span>
+          </div>
+          <p v-if="!stats_overview.top_genres.length && !stats_overview.top_years.length" class="empty_state">
+            暂无流派或年份数据。
+          </p>
+        </article>
+
+        <article class="stats_panel wide">
+          <header>
+            <strong>时长边界</strong>
+            <span>最长与最短歌曲</span>
+          </header>
+          <div class="stats_track_pair">
+            <div>
+              <span>最长</span>
+              <strong :title="stats_overview.longest_track?.title">{{ display_title(stats_overview.longest_track) }}</strong>
+              <small>{{ display_artist(stats_overview.longest_track) }} {{ format_duration(stats_overview.longest_track?.duration) }}</small>
+            </div>
+            <div>
+              <span>最短</span>
+              <strong :title="stats_overview.shortest_track?.title">{{ display_title(stats_overview.shortest_track) }}</strong>
+              <small>{{ display_artist(stats_overview.shortest_track) }} {{ format_duration(stats_overview.shortest_track?.duration) }}</small>
+            </div>
+          </div>
+        </article>
+      </div>
     </section>
 
     <section v-else class="placeholder_view">

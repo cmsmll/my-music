@@ -122,6 +122,7 @@ pub(crate) fn track_from_path(path: &Path, config: &AppConfig) -> Track {
         album: metadata.album.clone(),
         path: path.to_string_lossy().to_string(),
         duration: metadata.duration,
+        file_size: fs::metadata(path).ok().map(|metadata| metadata.len()),
         cover_cache_path: metadata.cover_cache_path.clone(),
         lyrics_cache_path: metadata.lyrics_cache_path.clone(),
         metadata,

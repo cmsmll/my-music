@@ -27,6 +27,8 @@ import type {
   PlaylistBundle,
   PlaylistCache,
   QueueSource,
+  StatsOverview,
+  StatRankItem,
   Track,
   ViewKey,
 } from "./types/music";
@@ -184,6 +186,57 @@ const artist_items = computed<ArtistItem[]>(() => {
 const total_duration = computed(() =>
   tracks.value.reduce((total, track) => total + (track.duration ?? 0), 0),
 );
+
+const stats_overview = computed<StatsOverview>(() => {
+  const valid_tracks = tracks.value.filter((track) => !is_missing_track(track));
+  const known_duration_tracks = valid_tracks.filter((track) => (track.duration ?? 0) > 0);
+  const sorted_by_duration = [...known_duration_tracks].sort((left, right) => (left.duration ?? 0) - (right.duration ?? 0));
+  const genre_counts = new Map<string, number>();
+  const year_counts = new Map<string, number>();
+
+  for (const track of valid_tracks) {
+    for (const genre of track.metadata.genre ?? []) {
+      const name = genre.trim();
+      if (name) genre_counts.set(name, (genre_counts.get(name) ?? 0) + 1);
+    }
+    if (track.metadata.year) {
+      const year = String(track.metadata.year);
+      year_counts.set(year, (year_counts.get(year) ?? 0) + 1);
+    }
+  }
+
+  return {
+    total_tracks: valid_tracks.length,
+    total_artists: artist_count.value,
+    total_albums: album_count.value,
+    total_duration: total_duration.value,
+    total_size: valid_tracks.reduce((total, track) => total + (track.file_size ?? 0), 0),
+    average_duration: valid_tracks.length ? total_duration.value / valid_tracks.length : 0,
+    playlist_count: user_playlist_items.value.length,
+    directory_count: app_config.value?.music_directory.length ?? selected_directories.value.length,
+    known_year_count: year_counts.size,
+    known_genre_count: genre_counts.size,
+    longest_track: sorted_by_duration[sorted_by_duration.length - 1],
+    shortest_track: sorted_by_duration[0],
+    top_artists: artist_items.value
+      .map((artist) => ({
+        name: artist.name,
+        value: artist.track_count,
+        description: `${format_stat_duration(artist.total_duration)}`,
+      }))
+      .slice(0, 8),
+    top_albums: album_items.value
+      .map((album) => ({
+        name: album.name,
+        value: album.track_count,
+        description: album.artist,
+      }))
+      .slice(0, 8),
+    top_genres: rank_from_map(genre_counts, 8),
+    top_years: rank_from_map(year_counts, 8),
+    format_distribution: rank_from_map(format_counts(valid_tracks), 8),
+  };
+});
 
 const sidebar_compact = computed(() => sidebar_width.value < sidebar_compact_width);
 
@@ -839,6 +892,7 @@ function missing_track_from_id(track_id: string): Track {
     album: "",
     path: "",
     duration: null,
+    file_size: null,
     cover_cache_path: null,
     lyrics_cache_path: "",
     missing: true,
@@ -1328,6 +1382,31 @@ const album_items = computed<AlbumItem[]>(() => {
   );
 });
 
+function rank_from_map(values: Map<string, number>, limit: number): StatRankItem[] {
+  return [...values.entries()]
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0], "zh-Hans-CN"))
+    .slice(0, limit)
+    .map(([name, value]) => ({ name, value }));
+}
+
+function format_counts(items: Track[]) {
+  const counts = new Map<string, number>();
+  for (const track of items) {
+    const extension = track.path.split(".").pop()?.trim().toUpperCase() || "UNKNOWN";
+    counts.set(extension, (counts.get(extension) ?? 0) + 1);
+  }
+  return counts;
+}
+
+function format_stat_duration(seconds: number) {
+  if (!seconds) return "0分钟";
+  const whole_seconds = Math.floor(seconds);
+  const hours = Math.floor(whole_seconds / 3600);
+  const minutes = Math.floor((whole_seconds % 3600) / 60);
+  if (hours <= 0) return `${Math.max(minutes, 1)}分钟`;
+  return minutes > 0 ? `${hours}小时${minutes}分钟` : `${hours}小时`;
+}
+
 watch(display_tracks, () => {
   if (query.value.trim() && queue_source.value.type === "search") set_queue_for_current_view();
 });
@@ -1387,6 +1466,7 @@ watch([current_queue, queue_source, playback_mode], () => {
         :album_count="album_count"
         :artist_count="artist_count"
         :total_duration="total_duration"
+        :stats_overview="stats_overview"
         @play_track="play_track_from_view"
         @open_track_menu="open_track_context_menu"
         @open_artist="open_artist_playlist"
@@ -2229,27 +2309,178 @@ p {
 }
 
 .stats_view {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(120px, 1fr));
-  gap: 16px;
-  padding: 18px 8px;
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 18px 8px 28px;
 }
 
-.stats_view article {
+.stats_overview {
   display: grid;
-  gap: 8px;
+  grid-template-columns: repeat(6, minmax(120px, 1fr));
+  gap: 12px;
+}
+
+.stat_card,
+.stats_panel {
   border: 1px solid #eef0f4;
   border-radius: 8px;
-  padding: 24px;
   background: #fbfcfe;
 }
 
-.stats_view strong {
-  font-size: 1.8rem;
+.stat_card {
+  display: grid;
+  gap: 4px;
+  min-height: 112px;
+  padding: 16px;
 }
 
-.stats_view span {
+.stat_card.primary {
+  border-color: #dbe5ff;
+  background: #f6f9ff;
+}
+
+.stat_card span,
+.stat_card small,
+.stats_panel header span,
+.rank_item small {
   color: #8b919c;
+}
+
+.stat_card strong {
+  overflow: hidden;
+  font-size: 1.5rem;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stats_detail_grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(260px, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.stats_panel {
+  min-width: 0;
+  padding: 16px;
+}
+
+.stats_panel.wide {
+  grid-column: 1 / -1;
+}
+
+.stats_panel header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.stats_panel header strong {
+  font-size: 1rem;
+}
+
+.rank_list {
+  display: grid;
+  gap: 10px;
+}
+
+.rank_item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  align-items: center;
+}
+
+.rank_name {
+  overflow: hidden;
+  color: #1e2026;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rank_value {
+  color: #4d5562;
+  font-variant-numeric: tabular-nums;
+}
+
+.rank_bar {
+  grid-column: 1 / -1;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #eef1f5;
+}
+
+.rank_bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #426dff;
+}
+
+.rank_item small {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pill_grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pill_grid span {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  max-width: 100%;
+  border: 1px solid #edf0f4;
+  border-radius: 999px;
+  padding: 6px 10px;
+  color: #6c7380;
+  background: #fff;
+  white-space: nowrap;
+}
+
+.pill_grid strong {
+  overflow: hidden;
+  max-width: 160px;
+  color: #242832;
+  text-overflow: ellipsis;
+}
+
+.stats_track_pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.stats_track_pair div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  border: 1px solid #edf0f4;
+  border-radius: 8px;
+  padding: 12px;
+  background: #fff;
+}
+
+.stats_track_pair span,
+.stats_track_pair small {
+  color: #8b919c;
+}
+
+.stats_track_pair strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .spinning_cover {
@@ -2652,6 +2883,20 @@ p {
 
 .queue_duration {
   justify-self: end;
+}
+
+@media (max-width: 1180px) {
+  .stats_overview {
+    grid-template-columns: repeat(3, minmax(120px, 1fr));
+  }
+}
+
+@media (max-width: 820px) {
+  .stats_overview,
+  .stats_detail_grid,
+  .stats_track_pair {
+    grid-template-columns: 1fr;
+  }
 }
 
 .settings_section {

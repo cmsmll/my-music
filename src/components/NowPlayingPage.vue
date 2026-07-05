@@ -263,17 +263,17 @@ defineExpose({ render_progress });
   display: grid;
   justify-items: center;
   align-items: end;
-  width: min(42vw, 560px);
-  min-width: 360px;
-  height: min(58vh, 660px);
+  width: min(36vw, 480px);
+  min-width: 340px;
+  height: min(54vh, 560px);
   min-height: 0;
 }
 
 .record_disc {
   position: relative;
   display: grid;
-  width: min(100%, 540px);
-  min-width: 300px;
+  width: min(92%, 430px);
+  min-width: 280px;
   aspect-ratio: 1;
   place-items: center;
   border-radius: 50%;
@@ -321,13 +321,13 @@ defineExpose({ render_progress });
 
 .tonearm {
   position: absolute;
-  top: 0;
-  left: 43%;
+  top: -13%;
+  left: 48%;
   z-index: 2;
-  width: min(72%, 370px);
+  width: min(70%, 330px);
   aspect-ratio: 520 / 300;
   pointer-events: none;
-  transform: translate(-14%, -1%) rotate(-4deg);
+  transform: translate(-14%, 0) rotate(-4deg);
   transform-origin: 14.23% 25.33%;
   transition:
     transform 520ms cubic-bezier(0.2, 0.9, 0.28, 1),
@@ -336,7 +336,7 @@ defineExpose({ render_progress });
 }
 
 .tonearm_playing {
-  transform: translate(-14%, -1%) rotate(38deg);
+  transform: translate(-14%, 0) rotate(43deg);
   filter: drop-shadow(0 7px 9px rgba(0, 0, 0, 0.34));
 }
 
@@ -474,12 +474,13 @@ defineExpose({ render_progress });
   }
 
   .record_disc {
-    width: min(68vw, 360px);
+    width: min(64vw, 340px);
   }
 
   .tonearm {
-    left: 44%;
-    width: min(76%, 300px);
+    top: -9%;
+    left: 48%;
+    width: min(74%, 280px);
   }
 
   .track_identity p {

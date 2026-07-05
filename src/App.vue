@@ -2772,7 +2772,7 @@ p {
   border: 1px solid #e5e8ef;
   border-radius: 8px;
   padding: 14px;
-  background: #fbfcfe;
+  background: transparent;
 }
 
 .settings_row > div,

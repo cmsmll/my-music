@@ -11,6 +11,7 @@ const props = defineProps<{
   tracks: Track[];
   display_tracks: Track[];
   status_path?: string | null;
+  locate_track_request: number;
   is_playing: boolean;
   selected_artist: string;
   selected_album: string;
@@ -74,6 +75,19 @@ function update_virtual_viewport() {
 function handle_track_table_scroll() {
   if (!track_table.value) return;
   scroll_top.value = track_table.value.scrollTop;
+}
+
+async function locate_status_track() {
+  if (!props.status_path) return;
+
+  await nextTick();
+
+  const index = props.display_tracks.findIndex((track) => track.path === props.status_path);
+  if (index < 0 || !track_table.value) return;
+
+  const top = Math.max(index * track_row_height - track_table.value.clientHeight / 2 + track_row_height / 2, 0);
+  track_table.value.scrollTop = top;
+  update_virtual_viewport();
 }
 
 function detail_total_duration() {
@@ -195,6 +209,13 @@ watch(
   () => props.display_tracks.length,
   () => {
     void nextTick(update_virtual_viewport);
+  },
+);
+
+watch(
+  () => props.locate_track_request,
+  () => {
+    void locate_status_track();
   },
 );
 

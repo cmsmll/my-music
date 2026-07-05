@@ -2,6 +2,7 @@
 import {
   computed,
   defineAsyncComponent,
+  nextTick,
   onBeforeUnmount,
   onMounted,
   ref,
@@ -116,6 +117,7 @@ const selected_album = ref("");
 const selected_playlist_id = ref("my_playlist");
 const settings_open = ref(false);
 const playback_queue_open = ref(false);
+const locate_playing_track_request = ref(0);
 const track_context_menu = ref<TrackContextMenuState | null>(null);
 const track_detail_dialog = ref<Track | null>(null);
 const playlist_context_menu = ref<PlaylistContextMenu | null>(null);
@@ -1473,29 +1475,24 @@ async function play_track_from_queue(track: Track) {
   await play(track);
 }
 
-function open_queue_source() {
+async function open_queue_source() {
   const source = queue_source.value;
   playback_queue_open.value = false;
 
   if (source.type === "artist") {
     open_artist_playlist(source.id);
-    return;
-  }
-  if (source.type === "album") {
+  } else if (source.type === "album") {
     open_album_playlist(source.id);
-    return;
-  }
-  if (source.type === "search") {
+  } else if (source.type === "search") {
     update_query(source.id);
-    return;
-  }
-  if (source.type === "recent" || source.type === "user_playlist" || source.type === "all") {
+  } else if (source.type === "recent" || source.type === "user_playlist" || source.type === "all") {
     show_view(source.type);
-    return;
-  }
-  if (source.type === "playlist") {
+  } else if (source.type === "playlist") {
     show_playlist(source.id);
   }
+
+  await nextTick();
+  locate_playing_track_request.value += 1;
 }
 
 function clamp_sidebar_width(width: number) {
@@ -1719,6 +1716,7 @@ watch([current_queue, queue_source, playback_mode], () => {
         :tracks="tracks"
         :display_tracks="display_tracks"
         :status_path="status.path"
+        :locate_track_request="locate_playing_track_request"
         :is_playing="status.playing"
         :selected_artist="selected_artist"
         :selected_album="selected_album"

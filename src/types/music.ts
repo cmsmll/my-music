@@ -101,7 +101,7 @@ export type PlayTrackResult = {
   play_statistics: PlayStatistics;
 };
 
-export type ViewKey = "all" | "artists" | "albums" | "stats" | "recent" | "playlist_1";
+export type ViewKey = "all" | "artists" | "albums" | "stats" | "recent" | "user_playlist";
 
 export type PlaybackMode = "shuffle" | "repeat" | "repeat_one";
 

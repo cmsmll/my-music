@@ -239,7 +239,7 @@ function reset_playlist_drag() {
           :key="playlist.id"
           class="nav_item playlist_item"
           :class="{
-            active: active_view === 'playlist_1' && active_playlist_id === playlist.id,
+            active: active_view === 'user_playlist' && active_playlist_id === playlist.id,
             dragging: dragging_playlist_id === playlist.id,
             drag_over: drag_over_playlist_id === playlist.id,
             drag_over_after: drag_over_playlist_id === playlist.id && drag_over_after,

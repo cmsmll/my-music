@@ -1041,7 +1041,7 @@ function show_view(view: ViewKey) {
 
 function show_playlist(playlist_id: string) {
   selected_playlist_id.value = playlist_id;
-  show_view("playlist_1");
+  show_view("user_playlist");
 }
 
 function queue_source_for_view(view: ViewKey): QueueSource {
@@ -1051,7 +1051,7 @@ function queue_source_for_view(view: ViewKey): QueueSource {
   if (view === "albums" && selected_album.value) {
     return { type: "album", id: selected_album.value, label: selected_album.value };
   }
-  if (view === "playlist_1") {
+  if (view === "user_playlist") {
     const playlist = selected_user_playlist.value;
     return {
       type: "playlist",
@@ -1066,7 +1066,7 @@ function queue_source_for_view(view: ViewKey): QueueSource {
     albums: "专辑",
     stats: "统计",
     recent: "最近播放",
-    playlist_1: "我的歌单",
+    user_playlist: "我的歌单",
   };
   return { type: view, id: view, label: labels[view] };
 }
@@ -1079,12 +1079,12 @@ function queue_tracks_for_view(view: ViewKey) {
     return tracks.value.filter((track) => display_album(track) === selected_album.value);
   }
   if (view === "recent") return tracks_from_ids(playlists.value.recent.track_ids);
-  if (view === "playlist_1") return tracks_from_ids(selected_user_playlist.value.track_ids);
+  if (view === "user_playlist") return tracks_from_ids(selected_user_playlist.value.track_ids);
   return tracks.value;
 }
 
 function display_tracks_for_view(view: ViewKey) {
-  if (view === "playlist_1") return tracks_from_ids(selected_user_playlist.value.track_ids, true);
+  if (view === "user_playlist") return tracks_from_ids(selected_user_playlist.value.track_ids, true);
   return queue_tracks_for_view(view);
 }
 
@@ -1231,7 +1231,7 @@ async function play_track_from_view(track: Track) {
 function active_record_playlist_id() {
   if (query.value.trim() || selected_artist.value || selected_album.value) return "";
   if (active_view.value === "recent") return "recent";
-  if (active_view.value === "playlist_1") return selected_user_playlist.value.id;
+  if (active_view.value === "user_playlist") return selected_user_playlist.value.id;
   return "";
 }
 
@@ -1371,7 +1371,7 @@ async function confirm_delete_playlist() {
 
     if (deleted_selected_playlist) {
       ensure_selected_playlist();
-      if (active_view.value === "playlist_1") {
+      if (active_view.value === "user_playlist") {
         if (user_playlist_items.value.length) {
           show_playlist(selected_user_playlist.value.id);
         } else {
@@ -1453,7 +1453,7 @@ function open_queue_source() {
     update_query(source.id);
     return;
   }
-  if (source.type === "recent" || source.type === "playlist_1" || source.type === "all") {
+  if (source.type === "recent" || source.type === "user_playlist" || source.type === "all") {
     show_view(source.type);
     return;
   }

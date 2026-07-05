@@ -94,7 +94,7 @@ function visible_list_matches_playback_source() {
   if (props.selected_album) {
     return props.playback_queue_source.type === "album" && props.playback_queue_source.id === props.selected_album;
   }
-  if (props.active_view === "playlist_1") {
+  if (props.active_view === "user_playlist") {
     return (
       props.playback_queue_source.type === "playlist" &&
       props.playback_queue_source.id === props.selected_playlist_id
@@ -221,7 +221,7 @@ onBeforeUnmount(() => {
       v-if="
         active_view === 'all' ||
         active_view === 'recent' ||
-        active_view === 'playlist_1' ||
+        active_view === 'user_playlist' ||
         selected_artist ||
         selected_album ||
         query.trim()

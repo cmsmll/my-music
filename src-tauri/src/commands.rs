@@ -7,7 +7,7 @@ use crate::library::{
 use crate::lyrics::LyricsSearchService;
 use crate::media_shortcuts::register_media_shortcuts as register_system_media_shortcuts;
 use crate::models::{
-    AppConfig, AppStartup, LibraryRefreshResult, LyricsSearchResult, LyricsUseResult,
+    AppConfig, AppStartup, LibraryRefreshResult, LyricsSearchResponse, LyricsUseResult,
     PlayStatistics, PlayTrackResult, PlaybackStatus, PlaylistBundle, Track,
 };
 use crate::playlist::{
@@ -166,7 +166,7 @@ pub(crate) fn read_lyrics_cache(path: String) -> Result<Option<String>, String> 
         .map_err(|err| format!("无法读取歌词缓存: {err}"))
 }
 
-/// 从 Lyrix 支持的公开歌词源搜索歌词候选，并使用内存缓存避免重复请求外部接口。
+/// 从 Lyrix 支持的公开歌词源搜索歌词候选，并返回当前缓存歌词哈希供前端判断使用状态。
 #[tauri::command]
 pub(crate) async fn search_lyrics(
     lyrics_search: tauri::State<'_, LyricsSearchService>,
@@ -175,7 +175,7 @@ pub(crate) async fn search_lyrics(
     album: String,
     duration: Option<u64>,
     lyrics_cache_path: String,
-) -> Result<Vec<LyricsSearchResult>, String> {
+) -> Result<LyricsSearchResponse, String> {
     lyrics_search
         .search(title, artist, album, duration, lyrics_cache_path)
         .await

@@ -1,4 +1,4 @@
-use crate::models::{LyricsSearchResult, LyricsUseResult};
+use crate::models::{LyricsSearchResponse, LyricsSearchResult, LyricsUseResult};
 use lyrix::{Lyrix, MusicPlayer};
 use moka::future::Cache;
 use sha2::{Digest, Sha256};
@@ -37,7 +37,7 @@ impl LyricsSearchService {
         album: String,
         duration: Option<u64>,
         lyrics_cache_path: String,
-    ) -> Result<Vec<LyricsSearchResult>, String> {
+    ) -> Result<LyricsSearchResponse, String> {
         let title = title.trim().to_string();
         if title.is_empty() || title == "未知歌曲" {
             return Err("歌曲名称为空，无法搜索歌词".to_string());
@@ -57,7 +57,10 @@ impl LyricsSearchService {
             .await
             .map_err(|err| err.to_string())?;
 
-        Ok(mark_current_results(results, current_hash.as_deref()))
+        Ok(LyricsSearchResponse {
+            current_lyrics_hash: current_hash,
+            results,
+        })
     }
 
     pub(crate) fn use_lyrics(
@@ -198,7 +201,6 @@ fn map_lyrics_result(
         album_name,
         duration,
         lyrics_hash,
-        is_current: false,
         synced_lyrics: (!synced_lyrics.is_empty()).then_some(synced_lyrics),
         plain_lyrics: (!plain_lyrics.is_empty()).then_some(plain_lyrics),
     })
@@ -248,18 +250,6 @@ fn format_lrc_time(milliseconds: u32) -> String {
 fn known_value(value: &str, unknown_value: &str) -> Option<String> {
     let value = value.trim();
     (!value.is_empty() && value != unknown_value).then(|| value.to_string())
-}
-
-fn mark_current_results(
-    mut results: Vec<LyricsSearchResult>,
-    current_hash: Option<&str>,
-) -> Vec<LyricsSearchResult> {
-    for result in &mut results {
-        result.is_current = current_hash
-            .map(|hash| hash == result.lyrics_hash)
-            .unwrap_or(false);
-    }
-    results
 }
 
 fn current_lyrics_hash(lyrics_cache_path: &str) -> Result<Option<String>, String> {

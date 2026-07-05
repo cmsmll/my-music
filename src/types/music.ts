@@ -113,9 +113,13 @@ export type LyricsSearchResult = {
   album_name: string;
   duration?: number | null;
   lyrics_hash: string;
-  is_current: boolean;
   synced_lyrics?: string | null;
   plain_lyrics?: string | null;
+};
+
+export type LyricsSearchResponse = {
+  current_lyrics_hash?: string | null;
+  results: LyricsSearchResult[];
 };
 
 export type LyricsUseResult = {

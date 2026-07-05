@@ -267,6 +267,12 @@ pub(crate) struct PlayTrackResult {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub(crate) struct LyricsSearchResponse {
+    pub(crate) current_lyrics_hash: Option<String>,
+    pub(crate) results: Vec<LyricsSearchResult>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub(crate) struct LyricsSearchResult {
     pub(crate) source: String,
     pub(crate) id: String,
@@ -275,7 +281,6 @@ pub(crate) struct LyricsSearchResult {
     pub(crate) album_name: String,
     pub(crate) duration: Option<u64>,
     pub(crate) lyrics_hash: String,
-    pub(crate) is_current: bool,
     pub(crate) synced_lyrics: Option<String>,
     pub(crate) plain_lyrics: Option<String>,
 }

@@ -8,7 +8,14 @@ import minimize_icon from "../assets/icons/minimize.svg";
 import tonearm_icon from "../assets/tonearm-minimal-white.svg";
 import x_icon from "../assets/icons/x.svg";
 import PlayerBar from "./PlayerBar.vue";
-import type { LyricsSearchResult, LyricsUseResult, PlaybackModeItem, PlaybackStatus, Track } from "../types/music";
+import type {
+  LyricsSearchResponse,
+  LyricsSearchResult,
+  LyricsUseResult,
+  PlaybackModeItem,
+  PlaybackStatus,
+  Track,
+} from "../types/music";
 import { cover_src, display_album, display_artist, display_title, format_duration, icon_style } from "../utils/track";
 
 type PlayerBarExpose = {
@@ -48,6 +55,7 @@ const lyrics_search_open = ref(false);
 const lyrics_search_loading = ref(false);
 const lyrics_search_error = ref("");
 const lyrics_search_results = ref<LyricsSearchResult[]>([]);
+const current_lyrics_hash = ref<string | null>(null);
 const lyrics_use_pending_hash = ref("");
 let lyrics_search_request_id = 0;
 
@@ -93,6 +101,7 @@ async function search_current_lyrics() {
   const track = props.current_track;
   lyrics_search_error.value = "";
   lyrics_search_results.value = [];
+  current_lyrics_hash.value = null;
 
   if (!track) {
     lyrics_search_error.value = "当前没有正在播放的歌曲。";
@@ -107,7 +116,7 @@ async function search_current_lyrics() {
   const request_id = ++lyrics_search_request_id;
   lyrics_search_loading.value = true;
   try {
-    const results = await invoke<LyricsSearchResult[]>("search_lyrics", {
+    const response = await invoke<LyricsSearchResponse>("search_lyrics", {
       title,
       artist: display_artist(track),
       album: display_album(track),
@@ -115,7 +124,8 @@ async function search_current_lyrics() {
       lyricsCachePath: track.lyrics_cache_path,
     });
     if (request_id === lyrics_search_request_id) {
-      lyrics_search_results.value = results;
+      current_lyrics_hash.value = response.current_lyrics_hash ?? null;
+      lyrics_search_results.value = response.results;
     }
   } catch (error) {
     if (request_id === lyrics_search_request_id) {
@@ -149,10 +159,7 @@ async function use_lyrics_result(result: LyricsSearchResult) {
       lyrics,
     });
     lyrics_lines.value = normalize_lyrics(used.lyrics);
-    lyrics_search_results.value = lyrics_search_results.value.map((item) => ({
-      ...item,
-      is_current: item.lyrics_hash === used.lyrics_hash,
-    }));
+    current_lyrics_hash.value = used.lyrics_hash;
   } catch (error) {
     lyrics_search_error.value = error instanceof Error ? error.message : String(error);
   } finally {
@@ -168,6 +175,10 @@ function lyrics_result_meta(result: LyricsSearchResult) {
   const parts = [];
   if (result.album_name) parts.push(result.album_name);
   return parts.join(" / ");
+}
+
+function is_current_lyrics_result(result: LyricsSearchResult) {
+  return Boolean(current_lyrics_hash.value && current_lyrics_hash.value === result.lyrics_hash);
 }
 
 watch(
@@ -323,11 +334,17 @@ defineExpose({ render_progress });
               </strong>
               <button
                 type="button"
-                :class="{ current: result.is_current }"
-                :disabled="result.is_current || lyrics_use_pending_hash === result.lyrics_hash"
+                :class="{ current: is_current_lyrics_result(result) }"
+                :disabled="is_current_lyrics_result(result) || lyrics_use_pending_hash === result.lyrics_hash"
                 @click="use_lyrics_result(result)"
               >
-                {{ result.is_current ? "已使用" : lyrics_use_pending_hash === result.lyrics_hash ? "使用中" : "使用" }}
+                {{
+                  is_current_lyrics_result(result)
+                    ? "已使用"
+                    : lyrics_use_pending_hash === result.lyrics_hash
+                      ? "使用中"
+                      : "使用"
+                }}
               </button>
             </div>
           </template>

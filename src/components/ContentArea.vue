@@ -255,6 +255,7 @@ onBeforeUnmount(() => {
         class="table_row"
         :class="{ active: row.track.path === status_path, missing: is_missing_track(row.track) }"
         type="button"
+        :title="row.track.path || row.track.id"
         @click="play_track(row.track)"
         @contextmenu.prevent="emit('open_track_menu', row.track, $event)"
       >

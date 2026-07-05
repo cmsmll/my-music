@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { AlbumItem, ArtistItem, PlayStatistics, QueueSource, Track, TrackPlayStatistic, ViewKey } from "../types/music";
 import { cover_src, display_album, display_artist, display_title, format_duration, format_file_size, is_missing_track } from "../utils/track";
 
@@ -32,6 +32,49 @@ const emit = defineEmits<{
   open_album: [name: string];
   close_detail: [];
 }>();
+
+const track_table = ref<HTMLElement | null>(null);
+const scroll_top = ref(0);
+const viewport_height = ref(720);
+const track_row_height = 74;
+const virtual_overscan = 8;
+
+let resize_observer: ResizeObserver | null = null;
+
+const virtual_start_index = computed(() =>
+  Math.max(Math.floor(scroll_top.value / track_row_height) - virtual_overscan, 0),
+);
+const virtual_visible_count = computed(() =>
+  Math.ceil(viewport_height.value / track_row_height) + virtual_overscan * 2,
+);
+const virtual_track_rows = computed(() => {
+  const start = virtual_start_index.value;
+  return props.display_tracks
+    .slice(start, start + virtual_visible_count.value)
+    .map((track, offset) => ({
+      track,
+      index: start + offset,
+    }));
+});
+const virtual_top_padding = computed(() => virtual_start_index.value * track_row_height);
+const virtual_bottom_padding = computed(() =>
+  Math.max(
+    (props.display_tracks.length - virtual_start_index.value - virtual_track_rows.value.length) *
+      track_row_height,
+    0,
+  ),
+);
+
+function update_virtual_viewport() {
+  if (!track_table.value) return;
+  viewport_height.value = track_table.value.clientHeight || viewport_height.value;
+  scroll_top.value = track_table.value.scrollTop;
+}
+
+function handle_track_table_scroll() {
+  if (!track_table.value) return;
+  scroll_top.value = track_table.value.scrollTop;
+}
 
 function detail_total_duration() {
   return props.display_tracks.reduce((total, track) => total + (track.duration ?? 0), 0);
@@ -136,6 +179,37 @@ function statistic_track_artist(track: TrackPlayStatistic) {
 function format_stat_duration(seconds: number) {
   return seconds > 0 ? format_duration(seconds) : "0:00";
 }
+
+watch(
+  () => [props.active_view, props.query, props.selected_artist, props.selected_album, props.selected_playlist_id],
+  async () => {
+    await nextTick();
+    if (track_table.value) {
+      track_table.value.scrollTop = 0;
+    }
+    update_virtual_viewport();
+  },
+);
+
+watch(
+  () => props.display_tracks.length,
+  () => {
+    void nextTick(update_virtual_viewport);
+  },
+);
+
+onMounted(() => {
+  update_virtual_viewport();
+  if (track_table.value) {
+    resize_observer = new ResizeObserver(update_virtual_viewport);
+    resize_observer.observe(track_table.value);
+  }
+});
+
+onBeforeUnmount(() => {
+  resize_observer?.disconnect();
+  resize_observer = null;
+});
 </script>
 
 <template>
@@ -154,6 +228,8 @@ function format_stat_duration(seconds: number) {
       "
       class="track_table"
       aria-label="歌曲列表"
+      ref="track_table"
+      @scroll="handle_track_table_scroll"
     >
       <header v-if="selected_artist || selected_album" class="detail_header">
         <button type="button" @click="emit('close_detail')">返回</button>
@@ -172,29 +248,31 @@ function format_stat_duration(seconds: number) {
         <span class="duration_cell">时长</span>
       </div>
 
+      <div class="virtual_track_spacer" :style="{ height: `${virtual_top_padding}px` }" />
       <button
-        v-for="(track, index) in display_tracks"
-        :key="track.id"
+        v-for="row in virtual_track_rows"
+        :key="row.track.id"
         class="table_row"
-        :class="{ active: track.path === status_path, missing: is_missing_track(track) }"
+        :class="{ active: row.track.path === status_path, missing: is_missing_track(row.track) }"
         type="button"
-        @click="play_track(track)"
-        @contextmenu.prevent="emit('open_track_menu', track, $event)"
+        @click="play_track(row.track)"
+        @contextmenu.prevent="emit('open_track_menu', row.track, $event)"
       >
-        <span class="index_cell">{{ index + 1 }}</span>
+        <span class="index_cell">{{ row.index + 1 }}</span>
         <span class="song_cell">
-          <span class="cover_thumb" :class="{ spinning_cover: track_should_spin(track) }">
-            <img v-if="track.cover_cache_path" :src="cover_src(track)" alt="" />
+          <span class="cover_thumb" :class="{ spinning_cover: track_should_spin(row.track) }">
+            <img v-if="row.track.cover_cache_path" :src="cover_src(row.track)" alt="" />
             <span v-else>♪</span>
           </span>
           <span class="song_text">
-            <strong>{{ display_title(track) }}</strong>
-            <small>{{ display_artist(track) }}</small>
+            <strong>{{ display_title(row.track) }}</strong>
+            <small>{{ display_artist(row.track) }}</small>
           </span>
         </span>
-        <span class="album_cell">{{ display_album(track) }}</span>
-        <span class="duration_cell">{{ format_duration(track.duration) }}</span>
+        <span class="album_cell">{{ display_album(row.track) }}</span>
+        <span class="duration_cell">{{ format_duration(row.track.duration) }}</span>
       </button>
+      <div class="virtual_track_spacer" :style="{ height: `${virtual_bottom_padding}px` }" />
 
       <p v-if="!loading && !display_tracks.length" class="empty_state">
         没有找到歌曲，先添加音乐目录或调整搜索内容。

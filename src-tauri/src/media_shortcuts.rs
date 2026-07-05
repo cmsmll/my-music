@@ -1,9 +1,11 @@
 use tauri::Emitter;
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Shortcut, ShortcutState};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 const MEDIA_PLAY_PAUSE_EVENT: &str = "media-play-pause";
 const MEDIA_PREVIOUS_EVENT: &str = "media-previous";
 const MEDIA_NEXT_EVENT: &str = "media-next";
+static MEDIA_SHORTCUTS_REGISTERED: AtomicBool = AtomicBool::new(false);
 fn media_shortcut_event(shortcut: &Shortcut) -> Option<&'static str> {
     match shortcut.key {
         Code::MediaPlayPause => Some(MEDIA_PLAY_PAUSE_EVENT),
@@ -28,6 +30,13 @@ pub(crate) fn media_shortcut_plugin<R: tauri::Runtime>() -> tauri::plugin::Tauri
 }
 
 pub(crate) fn register_media_shortcuts<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    if MEDIA_SHORTCUTS_REGISTERED
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        return;
+    }
+
     let shortcuts = [
         Shortcut::new(None, Code::MediaPlayPause),
         Shortcut::new(None, Code::MediaTrackPrevious),

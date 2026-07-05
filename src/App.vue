@@ -27,8 +27,10 @@ import type {
   AlbumItem,
   ArtistItem,
   DecoderRunSummary,
+  LibraryRefreshResult,
   PlaybackMode,
   PlaybackModeItem,
+  PlayTrackResult,
   PlayStatistics,
   PlaybackStatus,
   PlaylistBundle,
@@ -135,6 +137,7 @@ let media_shortcut_unlisteners: UnlistenFn[] = [];
 let window_resize_unlisten: UnlistenFn | null = null;
 let window_close_unlisten: UnlistenFn | null = null;
 let media_shortcut_listeners_disposed = false;
+let media_shortcuts_scheduled = false;
 let restored_playback_pending = false;
 let restoring_player_cache = false;
 let listening_track_id: string | null = null;
@@ -323,11 +326,11 @@ async function scan_directory(directories: string[]) {
   };
 
   try {
-    const scanned_tracks = await invoke<Track[]>("scan_music_dir", { dirs: directories });
+    const result = await invoke<LibraryRefreshResult>("reload_music_library", { dirs: directories });
     library_loaded.value = true;
-    player_queue.set_library_tracks(scanned_tracks);
-    playlists.value = await invoke<PlaylistBundle>("get_playlist_bundle");
-    await load_play_statistics();
+    player_queue.set_library_tracks(result.tracks);
+    playlists.value = result.playlists;
+    play_statistics.value = result.play_statistics;
     ensure_selected_playlist();
     const restored_player_cache = restore_player_cache();
     if (!restored_player_cache) {
@@ -337,7 +340,7 @@ async function scan_directory(directories: string[]) {
       visible: true,
       status: "success",
       title: "曲库加载完成",
-      message: `成功加载 ${scanned_tracks.length} 首歌曲`,
+      message: `成功加载 ${result.tracks.length} 首歌曲`,
       detail: `已扫描 ${directories.length} 个目录`,
     };
   } catch (error) {
@@ -492,9 +495,19 @@ async function show_app_window() {
   app_window_shown = true;
   try {
     await app_window.show();
+    schedule_deferred_startup_work();
   } catch (error) {
     console.warn("无法显示窗口", error);
   }
+}
+
+function schedule_deferred_startup_work() {
+  if (media_shortcuts_scheduled) return;
+  media_shortcuts_scheduled = true;
+
+  window.setTimeout(() => {
+    void listen_media_shortcuts();
+  }, 0);
 }
 
 async function play(track: Track) {
@@ -503,9 +516,10 @@ async function play(track: Track) {
     restored_playback_pending = false;
     handled_completion_path = "";
     clear_pending_seek();
-    apply_playback_status(await invoke<PlaybackStatus>("play_track", { path: track.path }));
+    const result = await invoke<PlayTrackResult>("play_track", { path: track.path });
+    apply_playback_status(result.status);
     library_store.add_recent_track(track);
-    await load_play_statistics();
+    play_statistics.value = result.play_statistics;
     start_listening_session(track);
     start_status_polling();
   } catch (error) {
@@ -564,10 +578,6 @@ async function stop_playback() {
   } catch (error) {
     show_error_message(error);
   }
-}
-
-async function load_play_statistics() {
-  play_statistics.value = await invoke<PlayStatistics>("get_play_statistics");
 }
 
 function start_listening_session(track: Track) {
@@ -1493,6 +1503,7 @@ async function listen_media_shortcuts() {
     }
 
     media_shortcut_unlisteners = unlisteners;
+    await invoke("register_media_shortcuts");
   } catch (error) {
     console.warn("无法监听系统媒体热键", error);
   }
@@ -1571,7 +1582,6 @@ onMounted(() => {
   window.addEventListener("beforeunload", handle_before_unload);
   window.addEventListener("pointerdown", close_track_context_menu_on_pointer);
   window.addEventListener("keydown", close_track_context_menu_on_key);
-  void listen_media_shortcuts();
   void listen_window_resize();
   void listen_window_close();
   void load_startup_state();
@@ -1945,6 +1955,11 @@ p {
   min-height: 0;
   overflow: auto;
   padding: 0 12px 18px 0;
+}
+
+.virtual_track_spacer {
+  width: 100%;
+  flex: 0 0 auto;
 }
 
 .table_head,

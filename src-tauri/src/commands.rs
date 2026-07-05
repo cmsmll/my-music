@@ -4,7 +4,11 @@ use crate::decoder::{run_decoder as run_config_decoder, DecoderRunSummary};
 use crate::library::{
     load_cached_all_directories, load_or_scan_all_directories, scan_tracks, write_library_cache,
 };
-use crate::models::{AppConfig, AppStartup, PlayStatistics, PlaybackStatus, PlaylistBundle, Track};
+use crate::media_shortcuts::register_media_shortcuts as register_system_media_shortcuts;
+use crate::models::{
+    AppConfig, AppStartup, LibraryRefreshResult, PlayStatistics, PlayTrackResult, PlaybackStatus,
+    PlaylistBundle, Track,
+};
 use crate::playlist::{
     empty_playlist, ensure_unique_playlist_name, load_my_playlist_caches, load_playlist_bundle,
     my_playlist_cache_path, next_user_playlist_index, playlist_cache_path, read_all_playlist_cache,
@@ -80,6 +84,21 @@ pub(crate) fn scan_music_dir(
     load_or_scan_all_directories(&config_manager, &config)
 }
 
+/// 添加并扫描音乐目录，刷新曲库、歌单和播放统计后一次性返回前端需要的数据。
+#[tauri::command]
+pub(crate) fn reload_music_library(
+    config_manager: tauri::State<'_, ConfigManager>,
+    dirs: Vec<String>,
+) -> Result<LibraryRefreshResult, String> {
+    let tracks = scan_music_dir(config_manager.clone(), dirs)?;
+    let config = config_manager.get()?;
+    Ok(LibraryRefreshResult {
+        tracks,
+        playlists: load_playlist_bundle(&config)?,
+        play_statistics: read_play_statistics(&config)?,
+    })
+}
+
 /// 只保存新的音乐目录配置，不扫描曲库、不刷新歌曲缓存。
 #[tauri::command]
 pub(crate) fn add_music_dirs(
@@ -96,6 +115,12 @@ pub(crate) fn add_music_dirs(
     }
 
     config_manager.add_music_directories(valid_dirs)
+}
+
+/// 注册系统媒体热键，延迟到前端首屏显示后执行，避免阻塞应用启动。
+#[tauri::command]
+pub(crate) fn register_media_shortcuts(app: tauri::AppHandle) {
+    register_system_media_shortcuts(&app);
 }
 
 /// 按配置中的解码器扫描目录和输出目录执行解码，并返回本次处理统计。
@@ -318,11 +343,13 @@ pub(crate) fn play_track(
     engine: tauri::State<'_, AudioEngine>,
     config_manager: tauri::State<'_, ConfigManager>,
     path: String,
-) -> Result<PlaybackStatus, String> {
+) -> Result<PlayTrackResult, String> {
     let requested_path = path.clone();
     engine.send(|reply| AudioCommand::Play { path, reply })?;
     let status = engine.status()?;
+    let mut play_statistics = PlayStatistics::default();
     if let Ok(config) = config_manager.get() {
+        play_statistics = read_play_statistics(&config).unwrap_or_default();
         let active_path = status.path.as_deref().unwrap_or(&requested_path);
         let _ = record_recent_track(&config, active_path);
         if let Ok(all_playlist) = read_all_playlist_cache(&config) {
@@ -331,11 +358,16 @@ pub(crate) fn play_track(
                 .values()
                 .find(|track| track.path == active_path || track.id == active_path)
             {
-                let _ = record_track_play(&config, track);
+                if let Ok(next_statistics) = record_track_play(&config, track) {
+                    play_statistics = next_statistics;
+                }
             }
         }
     }
-    Ok(status)
+    Ok(PlayTrackResult {
+        status,
+        play_statistics,
+    })
 }
 
 /// 暂停当前播放的音频并返回最新播放状态。

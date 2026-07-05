@@ -14,7 +14,7 @@ mod utils;
 
 use audio::AudioEngine;
 use config::ConfigManager;
-use media_shortcuts::{media_shortcut_plugin, register_media_shortcuts};
+use media_shortcuts::media_shortcut_plugin;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -35,15 +35,13 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(AudioEngine::new(log_dir))
         .manage(config_manager)
-        .setup(|app| {
-            register_media_shortcuts(app.handle());
-            Ok(())
-        })
         .invoke_handler(tauri::generate_handler![
             commands::get_startup_state,
             commands::update_app_config,
             commands::add_music_dirs,
             commands::scan_music_dir,
+            commands::reload_music_library,
+            commands::register_media_shortcuts,
             commands::run_decoder,
             commands::get_playlist_bundle,
             commands::add_track_to_playlist,

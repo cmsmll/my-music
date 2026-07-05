@@ -82,11 +82,22 @@ export type AppStartup = {
   play_statistics: PlayStatistics;
 };
 
+export type LibraryRefreshResult = {
+  tracks: Track[];
+  playlists: PlaylistBundle;
+  play_statistics: PlayStatistics;
+};
+
 export type PlaybackStatus = {
   path?: string | null;
   playing: boolean;
   volume: number;
   elapsed: number;
+};
+
+export type PlayTrackResult = {
+  status: PlaybackStatus;
+  play_statistics: PlayStatistics;
 };
 
 export type ViewKey = "all" | "artists" | "albums" | "stats" | "recent" | "playlist_1";

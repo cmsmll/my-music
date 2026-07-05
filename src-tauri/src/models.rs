@@ -235,11 +235,24 @@ pub(crate) struct AppStartup {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub(crate) struct LibraryRefreshResult {
+    pub(crate) tracks: Vec<Track>,
+    pub(crate) playlists: PlaylistBundle,
+    pub(crate) play_statistics: PlayStatistics,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub(crate) struct PlaybackStatus {
     pub(crate) path: Option<String>,
     pub(crate) playing: bool,
     pub(crate) volume: f32,
     pub(crate) elapsed: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct PlayTrackResult {
+    pub(crate) status: PlaybackStatus,
+    pub(crate) play_statistics: PlayStatistics,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

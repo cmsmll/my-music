@@ -2779,6 +2779,10 @@ p {
   font-size: 0.94rem;
 }
 
+.queue_item.active .queue_text strong {
+  color: var(--theme-highlight-color, #426dff);
+}
+
 .queue_text small,
 .queue_duration {
   color: var(--theme-subtitle-color, #8b919c);

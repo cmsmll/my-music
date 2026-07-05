@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted } from "vue";
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { QueueSource, Track } from "../types/music";
 import { cover_src, display_artist, display_title, format_duration } from "../utils/track";
 
@@ -16,6 +16,8 @@ const emit = defineEmits<{
   open_source: [];
   play_track: [track: Track];
 }>();
+
+const queue_list = ref<HTMLElement | null>(null);
 
 function queue_title() {
   if (props.queue_source.type === "artist") return `歌手·${props.queue_source.label}`;
@@ -36,17 +38,31 @@ function track_should_spin(track: Track) {
   return props.is_playing && track_is_active(track);
 }
 
+async function scroll_active_track_into_view() {
+  await nextTick();
+  const active_item = queue_list.value?.querySelector<HTMLElement>(".queue_item.active");
+  active_item?.scrollIntoView({ block: "center" });
+}
+
 function close_on_escape(event: KeyboardEvent) {
   if (event.key === "Escape") emit("close");
 }
 
 onMounted(() => {
   window.addEventListener("keydown", close_on_escape);
+  void scroll_active_track_into_view();
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener("keydown", close_on_escape);
 });
+
+watch(
+  () => [props.active_track_id, props.status_path, props.tracks.length],
+  () => {
+    void scroll_active_track_into_view();
+  },
+);
 </script>
 
 <template>
@@ -59,7 +75,7 @@ onBeforeUnmount(() => {
         <p>{{ tracks.length }} 首歌曲 {{ format_duration(queue_total_duration()) }}</p>
       </header>
 
-      <section class="queue_list">
+      <section ref="queue_list" class="queue_list">
         <button
           v-for="track in tracks"
           :key="track.id"

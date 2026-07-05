@@ -539,11 +539,13 @@ defineExpose({ render_progress });
 }
 
 .now_playing_back span {
+  display: block;
   width: 18px;
   height: 18px;
   border-right: 3px solid currentColor;
   border-bottom: 3px solid currentColor;
-  transform: rotate(45deg) translateY(-3px);
+  transform: translateY(-5px) rotate(45deg);
+  transform-origin: center;
 }
 
 .now_playing_window_tools {

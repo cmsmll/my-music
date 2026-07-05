@@ -17,19 +17,57 @@ pub(crate) fn safe_file_name(name: &str) -> String {
     let safe: String = name
         .chars()
         .map(|ch| {
-            if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
-                ch
-            } else {
+            if ch.is_control() || matches!(ch, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*')
+            {
                 '_'
+            } else {
+                ch
             }
         })
         .collect();
+    let safe = safe.trim().trim_matches('.').trim().to_string();
 
     if safe.trim_matches('_').is_empty() {
         "music-library".to_string()
+    } else if is_windows_reserved_name(&safe) {
+        format!("{safe}_")
     } else {
         safe
     }
+}
+
+fn is_windows_reserved_name(name: &str) -> bool {
+    let stem = name
+        .split('.')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_uppercase();
+    matches!(
+        stem.as_str(),
+        "CON"
+            | "PRN"
+            | "AUX"
+            | "NUL"
+            | "COM1"
+            | "COM2"
+            | "COM3"
+            | "COM4"
+            | "COM5"
+            | "COM6"
+            | "COM7"
+            | "COM8"
+            | "COM9"
+            | "LPT1"
+            | "LPT2"
+            | "LPT3"
+            | "LPT4"
+            | "LPT5"
+            | "LPT6"
+            | "LPT7"
+            | "LPT8"
+            | "LPT9"
+    )
 }
 
 pub(crate) fn safe_cache_name(name: &str) -> String {

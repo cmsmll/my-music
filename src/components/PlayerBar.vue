@@ -79,58 +79,60 @@ defineExpose({ render_progress });
       </div>
     </div>
 
-    <div class="now_track">
-      <button
-        v-if="show_cover"
-        class="player_cover_button"
-        type="button"
-        title="打开播放页"
-        :disabled="!current_track"
-        @click="emit('open_now_playing')"
-      >
-        <span class="player_cover" :class="{ spinning_cover: status.playing && current_track }">
-          <img v-if="current_track?.cover_cache_path" :src="cover_src(current_track)" alt="" />
-          <span v-else>♪</span>
+    <div class="player_content">
+      <div class="now_track">
+        <button
+          v-if="show_cover"
+          class="player_cover_button"
+          type="button"
+          title="打开播放页"
+          :disabled="!current_track"
+          @click="emit('open_now_playing')"
+        >
+          <span class="player_cover" :class="{ spinning_cover: status.playing && current_track }">
+            <img v-if="current_track?.cover_cache_path" :src="cover_src(current_track)" alt="" />
+            <span v-else>♪</span>
+          </span>
+        </button>
+        <span class="now_text">
+          <strong>{{ display_title(current_track) }}</strong>
+          <small>{{ display_artist(current_track) }}</small>
         </span>
-      </button>
-      <span class="now_text">
-        <strong>{{ display_title(current_track) }}</strong>
-        <small>{{ display_artist(current_track) }}</small>
-      </span>
-    </div>
-
-    <div class="player_center">
-      <div class="control_row">
-        <button class="hover_border_control" type="button" title="上一首" @click="emit('previous_track')">
-          <span class="svg_icon" :style="icon_style(previous_icon)" />
-        </button>
-        <button class="play_button hover_border_control" type="button" title="播放或暂停" @click="emit('toggle_playback')">
-          <span class="svg_icon" :style="icon_style(status.playing ? pause_icon : play_icon)" />
-        </button>
-        <button class="hover_border_control" type="button" title="下一首" @click="emit('next_track')">
-          <span class="svg_icon" :style="icon_style(next_icon)" />
-        </button>
       </div>
-    </div>
 
-    <div class="player_tools">
-      <button class="hover_border_control" type="button" title="播放队列" @click="emit('open_queue')">
-        <span class="svg_icon" :style="icon_style(playlist_icon)" />
-      </button>
-      <button
-        class="hover_border_control"
-        type="button"
-        :title="playback_mode_button.label"
-        :aria-label="playback_mode_button.label"
-        @click="emit('cycle_playback_mode')"
-      >
-        <span class="svg_icon" :style="icon_style(playback_mode_button.icon)" />
-      </button>
-      <button class="hover_border_control" type="button" title="桌面歌词">
-        <span class="svg_icon" :style="icon_style(lyrics_copy_icon)" />
-      </button>
-      <span class="volume_icon svg_icon" :style="icon_style(volume_icon)" />
-      <input type="range" min="0" max="1.5" step="0.01" :value="status.volume" @input="emit('change_volume', $event)" />
+      <div class="player_center">
+        <div class="control_row">
+          <button class="hover_border_control" type="button" title="上一首" @click="emit('previous_track')">
+            <span class="svg_icon" :style="icon_style(previous_icon)" />
+          </button>
+          <button class="play_button hover_border_control" type="button" title="播放或暂停" @click="emit('toggle_playback')">
+            <span class="svg_icon" :style="icon_style(status.playing ? pause_icon : play_icon)" />
+          </button>
+          <button class="hover_border_control" type="button" title="下一首" @click="emit('next_track')">
+            <span class="svg_icon" :style="icon_style(next_icon)" />
+          </button>
+        </div>
+      </div>
+
+      <div class="player_tools">
+        <button class="hover_border_control" type="button" title="播放队列" @click="emit('open_queue')">
+          <span class="svg_icon" :style="icon_style(playlist_icon)" />
+        </button>
+        <button
+          class="hover_border_control"
+          type="button"
+          :title="playback_mode_button.label"
+          :aria-label="playback_mode_button.label"
+          @click="emit('cycle_playback_mode')"
+        >
+          <span class="svg_icon" :style="icon_style(playback_mode_button.icon)" />
+        </button>
+        <button class="hover_border_control" type="button" title="桌面歌词">
+          <span class="svg_icon" :style="icon_style(lyrics_copy_icon)" />
+        </button>
+        <span class="volume_icon svg_icon" :style="icon_style(volume_icon)" />
+        <input type="range" min="0" max="1.5" step="0.01" :value="status.volume" @input="emit('change_volume', $event)" />
+      </div>
     </div>
   </footer>
 </template>
@@ -138,19 +140,25 @@ defineExpose({ render_progress });
 <style>
 .player_bar {
   --player_bar_padding: 38px;
-  --player_bar_padding_offset: -38px;
   grid-area: player;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  grid-template-rows: 2px minmax(0, 1fr);
+  position: relative;
+  display: flex;
   align-items: center;
-  column-gap: 28px;
-  row-gap: 0;
   box-sizing: border-box;
   height: 86px;
   min-width: 0;
   padding: 0 var(--player_bar_padding);
   background: transparent;
+}
+
+.player_content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  column-gap: 28px;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
 }
 
 .player_bar button {
@@ -169,15 +177,14 @@ defineExpose({ render_progress });
 }
 
 .player_progress {
-  grid-column: 1 / -1;
+  position: absolute;
+  top: -7px;
+  left: 0;
+  right: 0;
   display: flex;
   align-items: center;
-  width: auto;
   height: 14px;
-  margin-inline: var(--player_bar_padding_offset);
-  align-self: stretch;
   cursor: pointer;
-  transform: translateY(-6px);
   touch-action: none;
   user-select: none;
   z-index: 99;
@@ -266,7 +273,6 @@ defineExpose({ render_progress });
 }
 
 .now_track {
-  grid-row: 2;
   display: flex;
   align-items: center;
   gap: 14px;
@@ -333,7 +339,6 @@ defineExpose({ render_progress });
 }
 
 .player_center {
-  grid-row: 2;
   display: grid;
   align-items: center;
   justify-items: center;
@@ -360,7 +365,6 @@ defineExpose({ render_progress });
 }
 
 .player_tools {
-  grid-row: 2;
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -391,7 +395,9 @@ defineExpose({ render_progress });
 @media (max-width: 760px) {
   .player_bar {
     --player_bar_padding: 18px;
-    --player_bar_padding_offset: -18px;
+  }
+
+  .player_content {
     column-gap: 10px;
   }
 

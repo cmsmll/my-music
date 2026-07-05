@@ -91,7 +91,7 @@ const emit = defineEmits<{
   border-radius: 8px;
   padding: 0 18px;
   color: #858b96;
-  background: #f4f5f8;
+  background: transparent;
   cursor: text;
   user-select: auto;
 }

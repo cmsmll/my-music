@@ -25,12 +25,9 @@ const track_details = computed(() => {
     ["专辑", display_album(props.track)],
     ["时长", format_duration(props.track.duration)],
     ["文件大小", format_file_size(props.track.file_size)],
-    ["文件路径", props.track.path || "--"],
-    ["歌曲 ID", props.track.id],
     ["码率", metadata.bitrate ? `${metadata.bitrate} kbps` : "--"],
     ["采样率", metadata.sample_rate ? `${metadata.sample_rate} Hz` : "--"],
-    ["年份", metadata.year ? String(metadata.year) : "--"],
-    ["流派", metadata.genre.length ? metadata.genre.join(", ") : "--"],
+    ["文件路径", props.track.path || "--"],
     ["封面缓存", props.track.cover_cache_path || "--"],
     ["歌词缓存", props.track.lyrics_cache_path || "--"],
     ["元数据来源", metadata.metadata_source],
@@ -56,7 +53,6 @@ onBeforeUnmount(() => {
       <header>
         <div>
           <h2>歌曲详情</h2>
-          <p>{{ display_title(track) }}</p>
         </div>
         <button type="button" @click="emit('close')">关闭</button>
       </header>

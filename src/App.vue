@@ -2568,6 +2568,12 @@ p {
   font-size: 1.45rem;
 }
 
+.settings_panel .primary_button {
+  border: 1px solid #e5e8ef;
+  color: var(--theme-highlight-color, #426dff);
+  background: transparent;
+}
+
 .settings_body {
   display: grid;
   grid-template-columns: 180px minmax(0, 1fr);
@@ -2809,7 +2815,7 @@ p {
   border-radius: 8px;
   padding: 10px 12px;
   color: #505763;
-  background: #f8f9fb;
+  background: transparent;
 }
 
 .settings_input_row {
@@ -2898,9 +2904,10 @@ p {
 .settings_file_button,
 .settings_delete_button {
   min-height: 40px;
+  border: 1px solid #e5e8ef;
   border-radius: 8px;
   color: var(--theme-control-color, #1e2026);
-  background: #f8f9fb;
+  background: transparent;
   font-size: 0.88rem;
   font-weight: 800;
 }

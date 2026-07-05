@@ -2101,7 +2101,6 @@ p {
   border-radius: 8px;
   padding: 0 20px 0 0;
   color: var(--theme-subtitle-color, #a0a5af);
-  background: var(--app_background_color, #ffffff);
   font-size: 0.82rem;
   font-weight: 800;
 }

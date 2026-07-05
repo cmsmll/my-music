@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
+import compact_left_icon from "../assets/icons/compact-left.svg";
+import compact_right_icon from "../assets/icons/compact-right.svg";
 import maximize_icon from "../assets/icons/maximize.svg";
 import minimize_icon from "../assets/icons/minimize.svg";
 import tonearm_icon from "../assets/tonearm-minimal-white.svg";
@@ -136,7 +138,7 @@ defineExpose({ render_progress });
         title="唱片"
         @click="compact_panel = 'record'"
       >
-        唱片
+        <span class="svg_icon" :style="icon_style(compact_left_icon)" />
       </button>
 
       <section class="record_stage" :class="{ compact_active: compact_panel === 'record' }" aria-label="歌曲封面">
@@ -188,7 +190,7 @@ defineExpose({ render_progress });
         title="歌词"
         @click="compact_panel = 'lyrics'"
       >
-        歌词
+        <span class="svg_icon" :style="icon_style(compact_right_icon)" />
       </button>
     </main>
 
@@ -517,22 +519,23 @@ defineExpose({ render_progress });
     min-width: 0;
     height: 76px;
     place-items: center;
-    border: 1px solid rgba(245, 246, 248, 0.24);
+    border: 1px solid transparent;
     border-radius: 20px;
     padding: 0;
     color: rgba(245, 246, 248, 0.72);
-    background: rgba(255, 255, 255, 0.07);
-    font-size: 0.82rem;
-    font-weight: 900;
-    line-height: 1;
+    background: transparent;
     opacity: 0;
     pointer-events: none;
     transition:
       opacity 180ms ease,
       border-color 180ms ease,
       color 180ms ease;
-    writing-mode: vertical-rl;
     cursor: pointer;
+  }
+
+  .compact_switch .svg_icon {
+    width: 22px;
+    height: 22px;
   }
 
   .now_playing_content:hover .compact_switch,
@@ -542,8 +545,12 @@ defineExpose({ render_progress });
   }
 
   .compact_switch.active {
-    border-color: rgba(245, 246, 248, 0.72);
     color: #ffffff;
+  }
+
+  .compact_switch:hover,
+  .compact_switch:focus-visible {
+    border-color: rgba(245, 246, 248, 0.58);
   }
 
   .compact_switch_record {

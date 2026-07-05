@@ -125,11 +125,13 @@ pub(crate) fn register_media_shortcuts(app: tauri::AppHandle) {
 
 /// 按配置中的解码器扫描目录和输出目录执行解码，并返回本次处理统计。
 #[tauri::command]
-pub(crate) fn run_decoder(
+pub(crate) async fn run_decoder(
     config_manager: tauri::State<'_, ConfigManager>,
 ) -> Result<DecoderRunSummary, String> {
     let config = config_manager.get()?;
-    Ok(run_config_decoder(&config))
+    tauri::async_runtime::spawn_blocking(move || run_config_decoder(&config))
+        .await
+        .map_err(|err| format!("解码线程执行失败: {err}"))
 }
 
 /// 读取曲库重载后生成的歌单缓存。

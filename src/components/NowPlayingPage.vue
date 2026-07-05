@@ -179,8 +179,6 @@ function lyrics_result_name(result: LyricsSearchResult) {
 function lyrics_result_meta(result: LyricsSearchResult) {
   const parts = [];
   if (result.album_name) parts.push(result.album_name);
-  if (result.duration) parts.push(format_duration(result.duration));
-  parts.push(result.synced_lyrics ? "同步歌词" : "纯文本歌词");
   return parts.join(" / ");
 }
 
@@ -312,6 +310,7 @@ defineExpose({ render_progress });
       <section class="lyrics_search_dialog" role="dialog" aria-modal="true" aria-label="搜索歌词">
         <header>
           <strong>搜索歌词</strong>
+          <span class="lyrics_search_duration">{{ format_duration(current_track?.duration) }}</span>
           <button type="button" title="关闭" @click="lyrics_search_open = false">×</button>
         </header>
         <div class="lyrics_result_head">
@@ -666,7 +665,7 @@ defineExpose({ render_progress });
 }
 
 .lyrics_search_dialog header {
-  grid-template-columns: minmax(0, 1fr) 36px;
+  grid-template-columns: minmax(0, 1fr) auto 36px;
   padding: 18px 20px 12px;
 }
 
@@ -675,6 +674,14 @@ defineExpose({ render_progress });
   color: #ffffff;
   font-size: 1.16rem;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lyrics_search_duration {
+  justify-self: center;
+  color: rgba(245, 246, 248, 0.64);
+  font-size: 0.95rem;
+  font-weight: 900;
   white-space: nowrap;
 }
 
@@ -712,6 +719,7 @@ defineExpose({ render_progress });
   overflow-y: auto;
   padding: 0 14px 16px;
   scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
 .lyrics_result_body::-webkit-scrollbar {

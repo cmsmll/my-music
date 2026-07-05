@@ -4,6 +4,7 @@ mod config;
 mod decoder;
 mod kgm;
 mod library;
+mod lyrics;
 mod media_shortcuts;
 mod models;
 mod ncm;
@@ -14,6 +15,7 @@ mod utils;
 
 use audio::AudioEngine;
 use config::ConfigManager;
+use lyrics::LyricsSearchService;
 use media_shortcuts::media_shortcut_plugin;
 use std::thread;
 use tauri::Manager;
@@ -34,6 +36,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(media_shortcut_plugin())
         .manage(AudioEngine::new(log_dir))
+        .manage(LyricsSearchService::new())
         .manage(config_manager)
         .setup(|app| {
             let handle = app.handle().clone();
@@ -52,6 +55,7 @@ pub fn run() {
             commands::run_decoder,
             commands::get_playlist_bundle,
             commands::read_lyrics_cache,
+            commands::search_lyrics,
             commands::add_track_to_playlist,
             commands::remove_track_from_playlist,
             commands::create_user_playlist,

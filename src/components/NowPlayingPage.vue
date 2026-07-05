@@ -15,16 +15,6 @@ type PlayerBarExpose = {
   render_progress: (percent: number, seconds: number) => void;
 };
 
-type LrcLibSearchItem = {
-  id: number;
-  trackName: string;
-  artistName: string;
-  albumName?: string | null;
-  duration?: number | null;
-  syncedLyrics?: string | null;
-  plainLyrics?: string | null;
-};
-
 const props = defineProps<{
   current_track?: Track | null;
   status: PlaybackStatus;
@@ -115,61 +105,25 @@ async function search_current_lyrics() {
 
   const request_id = ++lyrics_search_request_id;
   lyrics_search_loading.value = true;
-  const abort_controller = new AbortController();
-  const timeout_id = window.setTimeout(() => abort_controller.abort(), 10000);
   try {
-    const params = new URLSearchParams({ track_name: title });
-    append_known_lyrics_query(params, "artist_name", display_artist(track), "未知歌手");
-    append_known_lyrics_query(params, "album_name", display_album(track), "未知专辑");
-    if (track.duration) params.set("duration", String(Math.round(track.duration)));
-
-    const response = await fetch(`https://lrclib.net/api/search?${params.toString()}`, {
-      signal: abort_controller.signal,
+    const results = await invoke<LyricsSearchResult[]>("search_lyrics", {
+      title,
+      artist: display_artist(track),
+      album: display_album(track),
+      duration: track.duration ? Math.round(track.duration) : null,
     });
-    if (!response.ok) {
-      throw new Error(`歌词搜索服务返回异常状态: ${response.status}`);
-    }
-
-    const items = (await response.json()) as LrcLibSearchItem[];
-    const results = items.slice(0, 10).map(map_lrc_lib_result);
     if (request_id === lyrics_search_request_id) {
       lyrics_search_results.value = results;
     }
   } catch (error) {
     if (request_id === lyrics_search_request_id) {
-      lyrics_search_error.value =
-        error instanceof DOMException && error.name === "AbortError"
-          ? "歌词搜索超时，请稍后重试。"
-          : error instanceof Error
-            ? error.message
-            : String(error);
+      lyrics_search_error.value = error instanceof Error ? error.message : String(error);
     }
   } finally {
-    window.clearTimeout(timeout_id);
     if (request_id === lyrics_search_request_id) {
       lyrics_search_loading.value = false;
     }
   }
-}
-
-function append_known_lyrics_query(params: URLSearchParams, key: string, value: string, unknown_value: string) {
-  const trimmed_value = value.trim();
-  if (trimmed_value && trimmed_value !== unknown_value) {
-    params.set(key, trimmed_value);
-  }
-}
-
-function map_lrc_lib_result(item: LrcLibSearchItem): LyricsSearchResult {
-  return {
-    source: "LRCLIB",
-    id: String(item.id),
-    track_name: item.trackName || "未知歌曲",
-    artist_name: item.artistName || "未知歌手",
-    album_name: item.albumName || "",
-    duration: typeof item.duration === "number" ? Math.round(item.duration) : null,
-    synced_lyrics: item.syncedLyrics || null,
-    plain_lyrics: item.plainLyrics || null,
-  };
 }
 
 function lyrics_result_name(result: LyricsSearchResult) {

@@ -266,6 +266,18 @@ pub(crate) struct PlayTrackResult {
     pub(crate) play_statistics: PlayStatistics,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct LyricsSearchResult {
+    pub(crate) source: String,
+    pub(crate) id: String,
+    pub(crate) track_name: String,
+    pub(crate) artist_name: String,
+    pub(crate) album_name: String,
+    pub(crate) duration: Option<u64>,
+    pub(crate) synced_lyrics: Option<String>,
+    pub(crate) plain_lyrics: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub(crate) struct PlayStatistics {
     pub(crate) total_play_count: u64,

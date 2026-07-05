@@ -4,10 +4,11 @@ use crate::decoder::{run_decoder as run_config_decoder, DecoderRunSummary};
 use crate::library::{
     load_cached_all_directories, load_or_scan_all_directories, scan_tracks, write_library_cache,
 };
+use crate::lyrics::LyricsSearchService;
 use crate::media_shortcuts::register_media_shortcuts as register_system_media_shortcuts;
 use crate::models::{
-    AppConfig, AppStartup, LibraryRefreshResult, PlayStatistics, PlayTrackResult, PlaybackStatus,
-    PlaylistBundle, Track,
+    AppConfig, AppStartup, LibraryRefreshResult, LyricsSearchResult, PlayStatistics,
+    PlayTrackResult, PlaybackStatus, PlaylistBundle, Track,
 };
 use crate::playlist::{
     empty_playlist, ensure_unique_playlist_name, load_my_playlist_caches, load_playlist_bundle,
@@ -163,6 +164,18 @@ pub(crate) fn read_lyrics_cache(path: String) -> Result<Option<String>, String> 
     fs::read_to_string(&path)
         .map(Some)
         .map_err(|err| format!("无法读取歌词缓存: {err}"))
+}
+
+/// 从 Lyrix 支持的公开歌词源搜索歌词候选，并使用内存缓存避免重复请求外部接口。
+#[tauri::command]
+pub(crate) async fn search_lyrics(
+    lyrics_search: tauri::State<'_, LyricsSearchService>,
+    title: String,
+    artist: String,
+    album: String,
+    duration: Option<u64>,
+) -> Result<Vec<LyricsSearchResult>, String> {
+    lyrics_search.search(title, artist, album, duration).await
 }
 
 fn empty_playlist_bundle() -> PlaylistBundle {

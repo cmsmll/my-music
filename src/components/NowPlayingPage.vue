@@ -330,10 +330,14 @@ defineExpose({ render_progress });
   align-self: start;
   justify-self: center;
   z-index: 2;
+  --tonearm-x: 0%;
+  --tonearm-y: -8%;
+  --tonearm-rest-angle: -10deg;
+  --tonearm-play-angle: 30deg;
   width: min(72%, 310px);
   aspect-ratio: 520 / 300;
   pointer-events: none;
-  transform: translate(9%, -8%) rotate(-4deg);
+  transform: translate(var(--tonearm-x), var(--tonearm-y)) rotate(var(--tonearm-rest-angle));
   transform-origin: 14.23% 25.33%;
   transition:
     transform 520ms cubic-bezier(0.2, 0.9, 0.28, 1),
@@ -342,7 +346,7 @@ defineExpose({ render_progress });
 }
 
 .tonearm_playing {
-  transform: translate(9%, -8%) rotate(35deg);
+  transform: translate(var(--tonearm-x), var(--tonearm-y)) rotate(var(--tonearm-play-angle));
   filter: drop-shadow(0 7px 9px rgba(0, 0, 0, 0.34));
 }
 

@@ -961,15 +961,20 @@ function restore_player_cache() {
   restoring_player_cache = true;
   try {
     player_queue.set_playback_mode(cache.playback_mode);
+    const restored_queue_source =
+      cache.queue_source.type === "search" ? queue_source_for_view("all") : cache.queue_source;
 
     const track_by_id = new Map(tracks.value.map((track) => [track.id, track]));
-    const restored_queue = cache.track_ids
-      .map((track_id) => track_by_id.get(track_id))
-      .filter((track): track is Track => Boolean(track));
+    const restored_queue =
+      restored_queue_source.type === "all"
+        ? tracks.value
+        : cache.track_ids
+            .map((track_id) => track_by_id.get(track_id))
+            .filter((track): track is Track => Boolean(track));
 
     if (!restored_queue.length) return false;
 
-    player_queue.set_current_queue(cache.queue_source, restored_queue);
+    player_queue.set_current_queue(restored_queue_source, restored_queue);
 
     const restored_track =
       (cache.current_track_id ? track_by_id.get(cache.current_track_id) : undefined) ??
@@ -1143,15 +1148,6 @@ function queue_tracks_for_source(source: QueueSource) {
   if (source.type === "recent" || source.type === "playlist") {
     return tracks_from_ids(playlist_track_ids_for_source(source));
   }
-  if (source.type === "search") {
-    const keyword = source.id.trim().toLowerCase();
-    if (!keyword) return [];
-
-    return tracks.value.filter((track) =>
-      `${track.title} ${track.artist} ${track.album}`.toLowerCase().includes(keyword),
-    );
-  }
-
   return tracks.value;
 }
 
@@ -1216,14 +1212,7 @@ function ensure_selected_playlist() {
 
 function set_queue_for_current_view() {
   if (query.value.trim()) {
-    player_queue.set_current_queue(
-      {
-        type: "search",
-        id: query.value.trim(),
-        label: "搜索结果",
-      },
-      display_tracks.value,
-    );
+    player_queue.set_current_queue(queue_source_for_view("all"), tracks.value);
     return;
   }
 
@@ -1484,7 +1473,7 @@ async function open_queue_source() {
   } else if (source.type === "album") {
     open_album_playlist(source.id);
   } else if (source.type === "search") {
-    update_query(source.id);
+    show_view("all");
   } else if (source.type === "recent" || source.type === "user_playlist" || source.type === "all") {
     show_view(source.type);
   } else if (source.type === "playlist") {
@@ -1664,10 +1653,6 @@ const album_items = computed<AlbumItem[]>(() => {
   return Array.from(albums.values()).sort((left, right) =>
     left.name.localeCompare(right.name, "zh-Hans-CN"),
   );
-});
-
-watch(display_tracks, () => {
-  if (query.value.trim() && queue_source.value.type === "search") set_queue_for_current_view();
 });
 
 watch([current_queue, queue_source, playback_mode], () => {

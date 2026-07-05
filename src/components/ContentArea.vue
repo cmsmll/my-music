@@ -97,7 +97,7 @@ function detail_total_duration() {
 function visible_list_matches_playback_source() {
   const keyword = props.query.trim();
   if (keyword) {
-    return props.playback_queue_source.type === "search" && props.playback_queue_source.id === keyword;
+    return props.playback_queue_source.type === "all";
   }
   if (props.selected_artist) {
     return (

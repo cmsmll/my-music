@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -48,70 +47,6 @@ function replace_required(content, pattern, replacement, label) {
   return content.replace(pattern, replacement);
 }
 
-function quote_windows_arg(value) {
-  const arg = String(value);
-  if (!/[ \t&()^|<>"]/u.test(arg)) {
-    return arg;
-  }
-  return `"${arg.replace(/"/g, '""')}"`;
-}
-
-function run(command, args, cwd) {
-  const display_command = `${command} ${args.join(" ")}`;
-  const executable = process.platform === "win32" ? (process.env.ComSpec ?? "cmd.exe") : command;
-  const spawn_args =
-    process.platform === "win32"
-      ? ["/d", "/s", "/c", [command, ...args].map(quote_windows_arg).join(" ")]
-      : args;
-
-  return new Promise((resolve_promise, reject) => {
-    const child = spawn(executable, spawn_args, {
-      cwd,
-      stdio: ["inherit", "pipe", "pipe"],
-    });
-
-    child.stdout.on("data", (chunk) => {
-      process.stdout.write(chunk);
-    });
-
-    child.stderr.on("data", (chunk) => {
-      process.stderr.write(chunk);
-    });
-
-    child.on("error", (error) => {
-      reject(
-        new Error(
-          [
-            `${display_command} 启动失败`,
-            `工作目录: ${cwd}`,
-            `启动器: ${executable} ${spawn_args.join(" ")}`,
-            `错误信息: ${error.message}`,
-          ].join("\n"),
-        ),
-      );
-    });
-
-    child.on("close", (status, signal) => {
-      if (status === 0) {
-        resolve_promise();
-        return;
-      }
-
-      reject(
-        new Error(
-          [
-            `${display_command} 执行失败`,
-            `工作目录: ${cwd}`,
-            `启动器: ${executable} ${spawn_args.join(" ")}`,
-            `退出码: ${status ?? "无"}`,
-            `信号: ${signal ?? "无"}`,
-          ].join("\n"),
-        ),
-      );
-    });
-  });
-}
-
 function restore_files(files) {
   for (const file of files) {
     writeFileSync(file.path, file.content);
@@ -146,7 +81,6 @@ try {
   write_json(tauri_config_path, tauri_config);
 
   console.log(`版本号已更新为 ${version}`);
-  await run("pnpm", ["tauri:build"], root);
 } catch (error) {
   try {
     restore_files(original_files);

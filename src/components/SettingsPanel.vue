@@ -88,7 +88,7 @@ const subtitle_color = computed({
 });
 
 const highlight_color = computed({
-  get: () => current_config.value?.style.highlight_color ?? "#426dff",
+  get: () => current_config.value?.style.highlight_color ?? "#22a05a",
   set: (value: string) => {
     app_config_store.update_style({ highlight_color: value });
   },
@@ -263,7 +263,7 @@ function reset_subtitle_color() {
 
 function reset_highlight_color() {
   app_config_store.update_style({
-    highlight_color: default_config.value?.style.highlight_color ?? "#426dff",
+    highlight_color: default_config.value?.style.highlight_color ?? "#22a05a",
   });
 }
 

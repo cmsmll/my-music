@@ -43,7 +43,7 @@ impl ConfigManager {
                 background_image_opacity: 1.0,
                 title_color: "#1e2026".to_string(),
                 subtitle_color: "#8b919c".to_string(),
-                highlight_color: "#426dff".to_string(),
+                highlight_color: "#22a05a".to_string(),
                 show_border: true,
             },
             state: crate::models::AppStateConfig {

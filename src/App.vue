@@ -270,7 +270,7 @@ const theme_subtitle_color = computed(
 );
 
 const theme_highlight_color = computed(
-  () => app_config.value?.style.highlight_color?.trim() || "#426dff",
+  () => app_config.value?.style.highlight_color?.trim() || "#22a05a",
 );
 
 const app_border_width = computed(() =>

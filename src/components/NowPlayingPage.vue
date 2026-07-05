@@ -259,13 +259,16 @@ defineExpose({ render_progress });
 }
 
 .record_stage {
+  align-self: center;
+  justify-self: center;
   display: grid;
   grid-template-areas: "turntable";
   place-items: center;
-  width: min(32vw, 430px);
+  width: min(28vw, 430px);
   min-width: 320px;
   aspect-ratio: 0.76;
   min-height: 0;
+  transform: translateY(-10%);
 }
 
 .record_disc {
@@ -282,16 +285,16 @@ defineExpose({ render_progress });
     radial-gradient(circle, transparent 0 26%, rgba(0, 0, 0, 0.82) 27% 100%),
     repeating-radial-gradient(circle, #1b1c1d 0 2px, #101112 3px 5px);
   box-shadow:
-    0 0 0 22px rgba(255, 255, 255, 0.045),
-    0 0 0 25px rgba(0, 0, 0, 0.18),
+    0 0 0 12px rgba(255, 255, 255, 0.04),
+    0 0 0 15px rgba(0, 0, 0, 0.18),
     0 28px 70px rgba(0, 0, 0, 0.38),
-    inset 0 0 0 15px rgba(255, 255, 255, 0.028),
-    inset 0 0 0 24px rgba(0, 0, 0, 0.32);
+    inset 0 0 0 8px rgba(255, 255, 255, 0.024),
+    inset 0 0 0 14px rgba(0, 0, 0, 0.32);
 }
 
 .record_grooves {
   grid-area: 1 / 1;
-  width: 88%;
+  width: 94%;
   aspect-ratio: 1;
   place-self: center;
   border-radius: 50%;
@@ -303,10 +306,10 @@ defineExpose({ render_progress });
   z-index: 1;
   display: grid;
   overflow: hidden;
-  width: 50%;
+  width: 58%;
   aspect-ratio: 1;
   place-items: center;
-  border: 10px solid rgba(0, 0, 0, 0.24);
+  border: 8px solid rgba(0, 0, 0, 0.24);
   border-radius: 50%;
   color: #ffffff;
   background:
@@ -339,7 +342,7 @@ defineExpose({ render_progress });
 }
 
 .tonearm_playing {
-  transform: translate(9%, -8%) rotate(43deg);
+  transform: translate(9%, -8%) rotate(35deg);
   filter: drop-shadow(0 7px 9px rgba(0, 0, 0, 0.34));
 }
 

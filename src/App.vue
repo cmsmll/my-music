@@ -267,10 +267,6 @@ const theme_highlight_color = computed(
   () => app_config.value?.style.highlight_color?.trim() || "#426dff",
 );
 
-const theme_control_color = computed(
-  () => app_config.value?.style.control_color?.trim() || "#1e2026",
-);
-
 const app_border_width = computed(() =>
   (app_config.value?.style.show_border ?? true) ? "1px" : "0px",
 );
@@ -284,14 +280,14 @@ const app_shell_style = computed(() => ({
   "--theme-title-color": theme_title_color.value,
   "--theme-subtitle-color": theme_subtitle_color.value,
   "--theme-highlight-color": theme_highlight_color.value,
-  "--theme-control-color": theme_control_color.value,
+  "--theme-control-color": theme_title_color.value,
 }));
 
 watchEffect(() => {
   document.documentElement.style.setProperty("--theme-title-color", theme_title_color.value);
   document.documentElement.style.setProperty("--theme-subtitle-color", theme_subtitle_color.value);
   document.documentElement.style.setProperty("--theme-highlight-color", theme_highlight_color.value);
-  document.documentElement.style.setProperty("--theme-control-color", theme_control_color.value);
+  document.documentElement.style.setProperty("--theme-control-color", theme_title_color.value);
 });
 
 const playback_mode_button = computed(() => {

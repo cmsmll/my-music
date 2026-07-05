@@ -94,13 +94,6 @@ const highlight_color = computed({
   },
 });
 
-const control_color = computed({
-  get: () => current_config.value?.style.control_color ?? "#1e2026",
-  set: (value: string) => {
-    app_config_store.update_style({ control_color: value });
-  },
-});
-
 const show_border = computed({
   get: () => current_config.value?.style.show_border ?? true,
   set: (value: boolean) => {
@@ -271,12 +264,6 @@ function reset_subtitle_color() {
 function reset_highlight_color() {
   app_config_store.update_style({
     highlight_color: default_config.value?.style.highlight_color ?? "#426dff",
-  });
-}
-
-function reset_control_color() {
-  app_config_store.update_style({
-    control_color: default_config.value?.style.control_color ?? "#1e2026",
   });
 }
 
@@ -599,26 +586,6 @@ async function choose_cache_path(entry: CacheEntry) {
                     class="settings_color_picker"
                     type="color"
                     title="选择高亮色"
-                  />
-                </div>
-              </label>
-              <label>
-                <span>控件颜色</span>
-                <div class="settings_input_row">
-                  <input :value="control_color" readonly />
-                  <button
-                    class="settings_default_button"
-                    type="button"
-                    title="恢复默认控件颜色"
-                    @click="reset_control_color"
-                  >
-                    <span class="svg_icon" :style="icon_style(system_icon)" />
-                  </button>
-                  <input
-                    v-model="control_color"
-                    class="settings_color_picker"
-                    type="color"
-                    title="选择控件颜色"
                   />
                 </div>
               </label>

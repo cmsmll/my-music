@@ -75,7 +75,6 @@ pub(crate) struct StyleConfig {
     pub(crate) title_color: String,
     pub(crate) subtitle_color: String,
     pub(crate) highlight_color: String,
-    pub(crate) control_color: String,
     pub(crate) show_border: bool,
 }
 

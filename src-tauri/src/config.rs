@@ -44,7 +44,6 @@ impl ConfigManager {
                 title_color: "#1e2026".to_string(),
                 subtitle_color: "#8b919c".to_string(),
                 highlight_color: "#426dff".to_string(),
-                control_color: "#1e2026".to_string(),
                 show_border: true,
             },
             state: crate::models::AppStateConfig {
@@ -187,7 +186,6 @@ pub(crate) fn parse_config(content: &str, default_config: &AppConfig) -> Option<
             sidebar_width: None,
         });
 
-        let style_has_highlight_color = style.highlight_color.is_some();
         let legacy_highlight_color = style.control_color.clone();
 
         sanitize_config(AppConfig {
@@ -253,13 +251,6 @@ pub(crate) fn parse_config(content: &str, default_config: &AppConfig) -> Option<
                     .highlight_color
                     .or(legacy_highlight_color)
                     .unwrap_or_else(|| default_config.style.highlight_color.clone()),
-                control_color: if style_has_highlight_color {
-                    style
-                        .control_color
-                        .unwrap_or_else(|| default_config.style.control_color.clone())
-                } else {
-                    default_config.style.control_color.clone()
-                },
                 show_border: style.show_border.unwrap_or(default_config.style.show_border),
             },
             state: crate::models::AppStateConfig {

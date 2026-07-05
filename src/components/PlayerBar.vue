@@ -276,6 +276,7 @@ defineExpose({ render_progress });
   display: flex;
   align-items: center;
   justify-self: start;
+  overflow: hidden;
   gap: 14px;
   width: 100%;
   min-width: 0;
@@ -321,6 +322,8 @@ defineExpose({ render_progress });
 
 .now_text {
   display: grid;
+  overflow: hidden;
+  width: 100%;
   min-width: 0;
   gap: 4px;
 }
@@ -345,12 +348,14 @@ defineExpose({ render_progress });
   align-items: center;
   justify-items: center;
   justify-self: center;
+  z-index: 1;
   min-width: 0;
 }
 
 .control_row {
   display: flex;
   align-items: center;
+  flex: 0 0 auto;
   gap: 24px;
 }
 
@@ -372,6 +377,7 @@ defineExpose({ render_progress });
   align-items: center;
   justify-content: flex-end;
   justify-self: end;
+  overflow: hidden;
   gap: 12px;
   width: 100%;
   min-width: 0;

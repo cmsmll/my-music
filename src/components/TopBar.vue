@@ -88,6 +88,7 @@ const emit = defineEmits<{
   width: 60%;
   min-width: 300px;
   height: 52px;
+  border: 1px solid var(--theme-subtitle-color, #8b919c);
   border-radius: 8px;
   padding: 0 18px;
   color: #858b96;

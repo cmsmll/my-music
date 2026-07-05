@@ -153,7 +153,7 @@ defineExpose({ render_progress });
 
 .player_content {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   column-gap: 28px;
   width: 100%;
@@ -275,7 +275,9 @@ defineExpose({ render_progress });
 .now_track {
   display: flex;
   align-items: center;
+  justify-self: start;
   gap: 14px;
+  width: 100%;
   min-width: 0;
 }
 
@@ -342,6 +344,7 @@ defineExpose({ render_progress });
   display: grid;
   align-items: center;
   justify-items: center;
+  justify-self: center;
   min-width: 0;
 }
 
@@ -368,7 +371,9 @@ defineExpose({ render_progress });
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  justify-self: end;
   gap: 12px;
+  width: 100%;
   min-width: 0;
 }
 

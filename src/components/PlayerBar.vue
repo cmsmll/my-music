@@ -325,7 +325,9 @@ defineExpose({ render_progress });
 }
 
 .control_row .play_button:hover {
-  background: #f0f2f6;
+  border-color: var(--theme-title-color, #1e2026);
+  color: var(--theme-title-color, #1e2026);
+  background: transparent;
 }
 
 .player_tools {

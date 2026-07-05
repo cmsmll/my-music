@@ -1930,6 +1930,7 @@ button:focus-visible {
   width: 38px;
   height: 38px;
   place-items: center;
+  border: 1px solid transparent;
   border-radius: 8px;
   color: var(--theme-control-color, #1e2026);
   background: transparent;
@@ -1966,7 +1967,9 @@ p {
 .window_button:hover,
 .player_tools button:hover,
 .control_row button:hover {
-  background: #f0f2f6;
+  border-color: var(--theme-title-color, #1e2026);
+  color: var(--theme-title-color, #1e2026);
+  background: transparent;
 }
 
 .tool_button .svg_icon,
@@ -2962,8 +2965,9 @@ p {
 }
 
 .settings_default_button:hover {
-  color: var(--theme-highlight-color, #426dff);
-  background: #eaf0ff;
+  border-color: var(--theme-title-color, #1e2026);
+  color: var(--theme-title-color, #1e2026);
+  background: transparent;
 }
 
 .settings_file_button,
@@ -2974,13 +2978,15 @@ p {
 }
 
 .settings_file_button:hover {
-  color: var(--theme-highlight-color, #426dff);
-  background: #eaf0ff;
+  border-color: var(--theme-title-color, #1e2026);
+  color: var(--theme-title-color, #1e2026);
+  background: transparent;
 }
 
 .settings_delete_button:hover {
-  color: #c33131;
-  background: #fff0f0;
+  border-color: var(--theme-title-color, #1e2026);
+  color: var(--theme-title-color, #1e2026);
+  background: transparent;
 }
 
 .settings_default_button .svg_icon,

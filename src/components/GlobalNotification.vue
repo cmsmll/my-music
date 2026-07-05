@@ -47,27 +47,27 @@ const { items } = storeToRefs(notification_store);
 }
 
 .global_notification_info {
-  --notification-bg: #eef5ff;
-  --notification-border: #6fa8ff;
-  --notification-text: #245ebd;
+  --notification-bg: #f4f4f5;
+  --notification-border: #e9e9eb;
+  --notification-text: #909399;
 }
 
 .global_notification_success {
-  --notification-bg: #ecf9f1;
-  --notification-border: #8bdca8;
-  --notification-text: #1f8c4c;
+  --notification-bg: #f0f9eb;
+  --notification-border: #e1f3d8;
+  --notification-text: #67c23a;
 }
 
 .global_notification_error {
-  --notification-bg: #fff0f0;
-  --notification-border: #ffb6b6;
-  --notification-text: #c24747;
+  --notification-bg: #fef0f0;
+  --notification-border: #fde2e2;
+  --notification-text: #f56c6c;
 }
 
 .global_notification_warning {
-  --notification-bg: #fff8dd;
-  --notification-border: #f0cf66;
-  --notification-text: #9a6b00;
+  --notification-bg: #fdf6ec;
+  --notification-border: #faecd8;
+  --notification-text: #e6a23c;
 }
 
 .global_notification-enter-active,

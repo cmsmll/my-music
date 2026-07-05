@@ -51,6 +51,7 @@ impl ConfigManager {
                 height: 820,
                 volume: 1.0,
                 sidebar_width: 250,
+                auto_lyrics_enabled: false,
             },
         };
 
@@ -184,6 +185,7 @@ pub(crate) fn parse_config(content: &str, default_config: &AppConfig) -> Option<
             height: None,
             volume: None,
             sidebar_width: None,
+            auto_lyrics_enabled: None,
         });
 
         let legacy_highlight_color = style.control_color.clone();
@@ -251,7 +253,9 @@ pub(crate) fn parse_config(content: &str, default_config: &AppConfig) -> Option<
                     .highlight_color
                     .or(legacy_highlight_color)
                     .unwrap_or_else(|| default_config.style.highlight_color.clone()),
-                show_border: style.show_border.unwrap_or(default_config.style.show_border),
+                show_border: style
+                    .show_border
+                    .unwrap_or(default_config.style.show_border),
             },
             state: crate::models::AppStateConfig {
                 width: state.width.unwrap_or(default_config.state.width),
@@ -260,6 +264,9 @@ pub(crate) fn parse_config(content: &str, default_config: &AppConfig) -> Option<
                 sidebar_width: state
                     .sidebar_width
                     .unwrap_or(default_config.state.sidebar_width),
+                auto_lyrics_enabled: state
+                    .auto_lyrics_enabled
+                    .unwrap_or(default_config.state.auto_lyrics_enabled),
             },
         })
     })

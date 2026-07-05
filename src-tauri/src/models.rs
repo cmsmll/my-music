@@ -107,6 +107,7 @@ pub(crate) struct AppStateConfig {
     pub(crate) height: u32,
     pub(crate) volume: f32,
     pub(crate) sidebar_width: u32,
+    pub(crate) auto_lyrics_enabled: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -160,6 +161,7 @@ pub(crate) struct AppStateConfigFile {
     pub(crate) height: Option<u32>,
     pub(crate) volume: Option<f32>,
     pub(crate) sidebar_width: Option<u32>,
+    pub(crate) auto_lyrics_enabled: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

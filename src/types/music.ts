@@ -68,6 +68,7 @@ export type AppStateConfig = {
   height: number;
   volume: number;
   sidebar_width: number;
+  auto_lyrics_enabled: boolean;
 };
 
 export type AppStartup = {

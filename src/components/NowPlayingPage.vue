@@ -8,6 +8,7 @@ import minimize_icon from "../assets/icons/minimize.svg";
 import tonearm_icon from "../assets/tonearm-minimal-white.svg";
 import x_icon from "../assets/icons/x.svg";
 import PlayerBar from "./PlayerBar.vue";
+import { use_app_config_store } from "../stores/app_config";
 import { use_notification_store } from "../stores/notifications";
 import { use_player_queue_store } from "../stores/player_queue";
 import type {
@@ -32,6 +33,7 @@ const props = defineProps<{
 }>();
 
 const player_queue = use_player_queue_store();
+const app_config_store = use_app_config_store();
 const notification = use_notification_store();
 
 const emit = defineEmits<{
@@ -62,7 +64,6 @@ const lyrics_search_error = ref("");
 const lyrics_search_results = ref<LyricsSearchResult[]>([]);
 const current_lyrics_hash = ref<string | null>(null);
 const lyrics_use_pending_hash = ref("");
-const auto_lyrics_enabled = ref(false);
 const auto_lyrics_attempted_track_ids = ref(new Set<string>());
 let lyrics_search_request_id = 0;
 let auto_lyrics_request_id = 0;
@@ -76,6 +77,15 @@ const lyric_placeholder = [
 const display_lyrics = computed(() =>
   lyrics_lines.value.length ? lyrics_lines.value : lyric_placeholder,
 );
+
+const auto_lyrics_enabled = computed({
+  get() {
+    return app_config_store.config?.state.auto_lyrics_enabled ?? false;
+  },
+  set(value: boolean) {
+    app_config_store.update_state({ auto_lyrics_enabled: value });
+  },
+});
 
 function normalize_lyrics(content: string) {
   return content

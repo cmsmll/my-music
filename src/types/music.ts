@@ -66,6 +66,9 @@ export type StyleConfig = {
   background_color: string;
   background_image: string;
   background_image_opacity: number;
+  title_color: string;
+  subtitle_color: string;
+  control_color: string;
 };
 
 export type AppStateConfig = {

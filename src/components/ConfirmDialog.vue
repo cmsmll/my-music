@@ -93,7 +93,7 @@ onMounted(async () => {
 
 .confirm_content h2 {
   margin: 0 0 8px;
-  color: #1e2026;
+  color: var(--theme-title-color, #1e2026);
   font-size: 1.05rem;
   font-weight: 900;
 }

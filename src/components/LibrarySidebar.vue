@@ -369,7 +369,7 @@ function reset_playlist_drag() {
 
 .nav_item:hover,
 .nav_item.active {
-  color: #426dff;
+  color: var(--theme-control-color, #426dff);
   background: #eaf0ff;
 }
 
@@ -387,13 +387,13 @@ function reset_playlist_drag() {
 }
 
 .nav_item.drag_over {
-  color: #426dff;
+  color: var(--theme-control-color, #426dff);
   background: #f1f5ff;
-  box-shadow: inset 0 3px 0 #426dff;
+  box-shadow: inset 0 3px 0 var(--theme-control-color, #426dff);
 }
 
 .nav_item.drag_over_after {
-  box-shadow: inset 0 -3px 0 #426dff;
+  box-shadow: inset 0 -3px 0 var(--theme-control-color, #426dff);
 }
 
 .nav_icon {
@@ -443,6 +443,6 @@ function reset_playlist_drag() {
 }
 
 .create_playlist_input::placeholder {
-  color: #a0a5af;
+  color: var(--theme-subtitle-color, #a0a5af);
 }
 </style>

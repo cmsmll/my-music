@@ -114,14 +114,14 @@ onBeforeUnmount(() => {
 }
 
 .track_detail_dialog h2 {
-  color: #1e2026;
+  color: var(--theme-title-color, #1e2026);
   font-size: 1.18rem;
   font-weight: 900;
 }
 
 .track_detail_dialog p {
   margin-top: 2px;
-  color: #8b919c;
+  color: var(--theme-subtitle-color, #8b919c);
   font-size: 0.9rem;
   font-weight: 800;
 }
@@ -131,7 +131,7 @@ onBeforeUnmount(() => {
   min-height: 34px;
   border-radius: 8px;
   padding: 0 12px;
-  color: #426dff;
+  color: var(--theme-control-color, #426dff);
   background: #eaf0ff;
   font-size: 0.9rem;
   font-weight: 800;
@@ -172,11 +172,11 @@ onBeforeUnmount(() => {
 }
 
 .track_detail_dialog dt {
-  color: #8b919c;
+  color: var(--theme-subtitle-color, #8b919c);
   font-weight: 800;
 }
 
 .track_detail_dialog dd {
-  color: #1e2026;
+  color: var(--theme-title-color, #1e2026);
 }
 </style>

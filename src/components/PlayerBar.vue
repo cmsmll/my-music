@@ -185,7 +185,7 @@ defineExpose({ render_progress });
   width: 100%;
   height: 100%;
   border-radius: 15px;
-  background: #426dff;
+  background: var(--theme-control-color, #426dff);
   transform: scaleX(0);
   transform-origin: left center;
   will-change: transform;
@@ -264,7 +264,7 @@ defineExpose({ render_progress });
   border-radius: 8px;
   color: #ffffff;
   background:
-    linear-gradient(145deg, #21242b, #426dff),
+    linear-gradient(145deg, #21242b, var(--theme-control-color, #426dff)),
     #21242b;
   font-size: 1.8rem;
   font-weight: 900;
@@ -294,7 +294,7 @@ defineExpose({ render_progress });
 }
 
 .now_text small {
-  color: #8b919c;
+  color: var(--theme-subtitle-color, #8b919c);
 }
 
 .player_center {

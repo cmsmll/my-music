@@ -73,6 +73,27 @@ const background_color = computed({
   },
 });
 
+const title_color = computed({
+  get: () => current_config.value?.style.title_color ?? "#1e2026",
+  set: (value: string) => {
+    app_config_store.update_style({ title_color: value });
+  },
+});
+
+const subtitle_color = computed({
+  get: () => current_config.value?.style.subtitle_color ?? "#8b919c",
+  set: (value: string) => {
+    app_config_store.update_style({ subtitle_color: value });
+  },
+});
+
+const control_color = computed({
+  get: () => current_config.value?.style.control_color ?? "#426dff",
+  set: (value: string) => {
+    app_config_store.update_style({ control_color: value });
+  },
+});
+
 const background_image = computed(
   () => current_config.value?.style.background_image ?? "",
 );
@@ -218,6 +239,24 @@ async function choose_decoder_directory() {
 function reset_background_color() {
   app_config_store.update_style({
     background_color: default_config.value?.style.background_color ?? "#ffffff",
+  });
+}
+
+function reset_title_color() {
+  app_config_store.update_style({
+    title_color: default_config.value?.style.title_color ?? "#1e2026",
+  });
+}
+
+function reset_subtitle_color() {
+  app_config_store.update_style({
+    subtitle_color: default_config.value?.style.subtitle_color ?? "#8b919c",
+  });
+}
+
+function reset_control_color() {
+  app_config_store.update_style({
+    control_color: default_config.value?.style.control_color ?? "#426dff",
   });
 }
 
@@ -480,6 +519,66 @@ async function choose_cache_path(entry: CacheEntry) {
                     class="settings_color_picker"
                     type="color"
                     title="选择背景颜色"
+                  />
+                </div>
+              </label>
+              <label>
+                <span>标题颜色</span>
+                <div class="settings_input_row">
+                  <input :value="title_color" readonly />
+                  <button
+                    class="settings_default_button"
+                    type="button"
+                    title="恢复默认标题颜色"
+                    @click="reset_title_color"
+                  >
+                    <span class="svg_icon" :style="icon_style(system_icon)" />
+                  </button>
+                  <input
+                    v-model="title_color"
+                    class="settings_color_picker"
+                    type="color"
+                    title="选择标题颜色"
+                  />
+                </div>
+              </label>
+              <label>
+                <span>副标题颜色</span>
+                <div class="settings_input_row">
+                  <input :value="subtitle_color" readonly />
+                  <button
+                    class="settings_default_button"
+                    type="button"
+                    title="恢复默认副标题颜色"
+                    @click="reset_subtitle_color"
+                  >
+                    <span class="svg_icon" :style="icon_style(system_icon)" />
+                  </button>
+                  <input
+                    v-model="subtitle_color"
+                    class="settings_color_picker"
+                    type="color"
+                    title="选择副标题颜色"
+                  />
+                </div>
+              </label>
+              <label>
+                <span>控件颜色</span>
+                <div class="settings_input_row">
+                  <input :value="control_color" readonly />
+                  <button
+                    class="settings_default_button"
+                    type="button"
+                    title="恢复默认控件颜色"
+                    @click="reset_control_color"
+                  >
+                    <span class="svg_icon" :style="icon_style(system_icon)" />
+                  </button>
+                  <input
+                    v-model="control_color"
+                    class="settings_color_picker"
+                    type="color"
+                    title="选择控件颜色"
                   />
                 </div>
               </label>

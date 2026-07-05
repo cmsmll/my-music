@@ -78,7 +78,7 @@ function playlist_disabled(playlist: PlaylistCache) {
 
 .track_context_menu_header p {
   min-width: 0;
-  color: #8b919c;
+  color: var(--theme-subtitle-color, #8b919c);
   font-size: 0.78rem;
   font-weight: 800;
 }
@@ -109,7 +109,7 @@ function playlist_disabled(playlist: PlaylistCache) {
 }
 
 .track_context_detail_button {
-  color: #426dff;
+  color: var(--theme-control-color, #426dff);
 }
 
 .track_context_detail_button:hover {
@@ -121,7 +121,7 @@ function playlist_disabled(playlist: PlaylistCache) {
   min-height: 34px;
   border-radius: 8px;
   padding: 0 10px;
-  color: #1e2026;
+  color: var(--theme-title-color, #1e2026);
   background: transparent;
   font-size: 0.92rem;
   font-weight: 800;
@@ -131,7 +131,7 @@ function playlist_disabled(playlist: PlaylistCache) {
 }
 
 .track_context_playlist_button:hover {
-  color: #426dff;
+  color: var(--theme-control-color, #426dff);
   background: #eaf0ff;
 }
 

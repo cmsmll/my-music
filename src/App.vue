@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import {
+  computed,
+  defineAsyncComponent,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+  watchEffect,
+} from "vue";
 import { storeToRefs } from "pinia";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -247,12 +255,33 @@ const app_background_image_opacity = computed(() =>
   Math.min(Math.max(app_config.value?.style.background_image_opacity ?? 1, 0), 1),
 );
 
+const theme_title_color = computed(
+  () => app_config.value?.style.title_color?.trim() || "#1e2026",
+);
+
+const theme_subtitle_color = computed(
+  () => app_config.value?.style.subtitle_color?.trim() || "#8b919c",
+);
+
+const theme_control_color = computed(
+  () => app_config.value?.style.control_color?.trim() || "#426dff",
+);
+
 const app_shell_style = computed(() => ({
   "--sidebar_width": `${sidebar_width.value}px`,
   "--app_background_color": app_background_color.value,
   "--app_background_image": app_background_image.value,
   "--app_background_image_opacity": `${app_background_image_opacity.value}`,
+  "--theme-title-color": theme_title_color.value,
+  "--theme-subtitle-color": theme_subtitle_color.value,
+  "--theme-control-color": theme_control_color.value,
 }));
+
+watchEffect(() => {
+  document.documentElement.style.setProperty("--theme-title-color", theme_title_color.value);
+  document.documentElement.style.setProperty("--theme-subtitle-color", theme_subtitle_color.value);
+  document.documentElement.style.setProperty("--theme-control-color", theme_control_color.value);
+});
 
 const playback_mode_button = computed(() => {
   return playback_modes.find((item) => item.mode === playback_mode.value) ?? playback_modes[0];
@@ -1801,7 +1830,7 @@ watch([current_queue, queue_source, playback_mode], () => {
 
 <style>
 :root {
-  color: #1e2026;
+  color: var(--theme-title-color, #1e2026);
   background: #f6f7fa;
   font-family:
     Inter, "Segoe UI", "Microsoft YaHei", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
@@ -1864,7 +1893,7 @@ button:focus-visible {
   grid-template-rows: minmax(0, 1fr) 86px;
   height: 100vh;
   overflow: hidden;
-  color: #1e2026;
+  color: var(--theme-title-color, #1e2026);
   background-color: var(--app_background_color, #ffffff);
 }
 
@@ -1950,7 +1979,7 @@ p {
 
 .status_line,
 .muted {
-  color: #8b919c;
+  color: var(--theme-subtitle-color, #8b919c);
   font-size: 0.92rem;
 }
 
@@ -1959,7 +1988,7 @@ p {
   border-radius: 8px;
   padding: 0 16px;
   color: #ffffff;
-  background: #426dff;
+  background: var(--theme-control-color, #426dff);
   font-size: 0.95rem;
   font-weight: 800;
 }
@@ -2065,7 +2094,7 @@ p {
   height: 36px;
   border-radius: 8px;
   padding: 0 20px 0 0;
-  color: #a0a5af;
+  color: var(--theme-subtitle-color, #a0a5af);
   background: var(--app_background_color, #ffffff);
   font-size: 0.82rem;
   font-weight: 800;
@@ -2075,7 +2104,7 @@ p {
   min-height: 74px;
   border-radius: 8px;
   padding: 8px 0;
-  color: #1e2026;
+  color: var(--theme-title-color, #1e2026);
   background: transparent;
   text-align: left;
 }
@@ -2106,7 +2135,7 @@ p {
   min-height: 34px;
   border-radius: 8px;
   padding: 0 10px;
-  color: #1e2026;
+  color: var(--theme-title-color, #1e2026);
   background: transparent;
   font-size: 0.92rem;
   font-weight: 800;
@@ -2114,7 +2143,7 @@ p {
 }
 
 .context_menu_button:hover {
-  color: #426dff;
+  color: var(--theme-control-color, #426dff);
   background: #eaf0ff;
 }
 
@@ -2136,7 +2165,7 @@ p {
 
 .index_cell,
 .duration_cell {
-  color: #8b919c;
+  color: var(--theme-subtitle-color, #8b919c);
   text-align: center;
 }
 
@@ -2157,7 +2186,7 @@ p {
   border-radius: 8px;
   color: #ffffff;
   background:
-    linear-gradient(145deg, #21242b, #426dff),
+    linear-gradient(145deg, #21242b, var(--theme-control-color, #426dff)),
     #21242b;
   font-weight: 900;
 }
@@ -2200,7 +2229,7 @@ p {
 
 .song_text small,
 .album_cell {
-  color: #a0a5af;
+  color: var(--theme-subtitle-color, #a0a5af);
   font-size: 0.95rem;
 }
 
@@ -2208,7 +2237,7 @@ p {
   display: grid;
   min-height: 220px;
   place-items: center;
-  color: #8b919c;
+  color: var(--theme-subtitle-color, #8b919c);
 }
 
 .placeholder_view {
@@ -2240,7 +2269,7 @@ p {
 }
 
 .media_tile:hover strong {
-  color: #426dff;
+  color: var(--theme-control-color, #426dff);
 }
 
 .detail_header {
@@ -2256,7 +2285,7 @@ p {
   min-height: 32px;
   border-radius: 8px;
   padding: 0 12px;
-  color: #426dff;
+  color: var(--theme-control-color, #426dff);
   background: #eaf0ff;
   font-size: 0.9rem;
   font-weight: 800;
@@ -2277,7 +2306,7 @@ p {
 
 .detail_meta {
   justify-self: end;
-  color: #8b919c;
+  color: var(--theme-subtitle-color, #8b919c);
   font-size: 0.88rem;
   font-weight: 700;
   text-align: right;
@@ -2309,7 +2338,7 @@ p {
   border-radius: 8px;
   color: #ffffff;
   background:
-    linear-gradient(145deg, #21242b, #426dff),
+    linear-gradient(145deg, #21242b, var(--theme-control-color, #426dff)),
     #21242b;
   font-weight: 900;
 }
@@ -2331,7 +2360,7 @@ p {
 
 .album_tile small,
 .artist_tile small {
-  color: #8b919c;
+  color: var(--theme-subtitle-color, #8b919c);
 }
 
 .stats_view {
@@ -2352,7 +2381,7 @@ p {
 
 .stats_section h2 {
   margin: 0;
-  color: #1e2026;
+  color: var(--theme-title-color, #1e2026);
   font-size: 1.18rem;
   font-weight: 900;
 }
@@ -2379,7 +2408,7 @@ p {
 
 .stats_card_grid strong {
   overflow: hidden;
-  color: #426dff;
+  color: var(--theme-control-color, #426dff);
   font-size: 1.55rem;
   font-weight: 900;
   text-overflow: ellipsis;
@@ -2387,7 +2416,7 @@ p {
 }
 
 .stats_card_grid span {
-  color: #8b919c;
+  color: var(--theme-subtitle-color, #8b919c);
   font-size: 0.92rem;
   font-weight: 800;
 }
@@ -2431,7 +2460,7 @@ p {
 
 .most_played_song small,
 .play_count_cell {
-  color: #8b919c;
+  color: var(--theme-subtitle-color, #8b919c);
   font-size: 0.9rem;
 }
 
@@ -2548,7 +2577,7 @@ p {
 
 .settings_nav_item:hover,
 .settings_nav_item.active {
-  color: #426dff;
+  color: var(--theme-control-color, #426dff);
   background: #eaf0ff;
 }
 
@@ -2566,7 +2595,7 @@ p {
   min-width: 0;
   border: 0;
   padding: 0;
-  color: #1e2026;
+  color: var(--theme-title-color, #1e2026);
   background: transparent;
   font-size: 1.24rem;
   font-weight: 800;
@@ -2576,18 +2605,18 @@ p {
 }
 
 .queue_title_button:hover {
-  color: #426dff;
+  color: var(--theme-control-color, #426dff);
 }
 
 .settings_panel header p {
-  color: #8b919c;
+  color: var(--theme-subtitle-color, #8b919c);
 }
 
 .queue_panel header p {
   justify-self: end;
   overflow: hidden;
   margin: 0;
-  color: #8b919c;
+  color: var(--theme-subtitle-color, #8b919c);
   font-size: 0.9rem;
   font-weight: 700;
   text-align: right;
@@ -2615,7 +2644,7 @@ p {
   min-height: 58px;
   border-radius: 8px;
   padding: 8px;
-  color: #1e2026;
+  color: var(--theme-title-color, #1e2026);
   background: transparent;
   text-align: left;
 }
@@ -2634,7 +2663,7 @@ p {
   border-radius: 8px;
   color: #ffffff;
   background:
-    linear-gradient(145deg, #21242b, #426dff),
+    linear-gradient(145deg, #21242b, var(--theme-control-color, #426dff)),
     #21242b;
   font-weight: 900;
 }
@@ -2676,7 +2705,7 @@ p {
 
 .queue_text small,
 .queue_duration {
-  color: #8b919c;
+  color: var(--theme-subtitle-color, #8b919c);
   font-size: 0.84rem;
 }
 
@@ -2721,7 +2750,7 @@ p {
 .settings_row strong,
 .settings_placeholder strong {
   display: block;
-  color: #1e2026;
+  color: var(--theme-title-color, #1e2026);
   font-size: 0.96rem;
 }
 
@@ -2730,7 +2759,7 @@ p {
   display: block;
   overflow: hidden;
   margin-top: 2px;
-  color: #8b919c;
+  color: var(--theme-subtitle-color, #8b919c);
   font-size: 0.82rem;
   font-weight: 800;
   text-overflow: ellipsis;
@@ -2794,7 +2823,7 @@ p {
 
 .settings_opacity_control > span {
   margin: 0;
-  color: #8b919c;
+  color: var(--theme-subtitle-color, #8b919c);
   font-size: 0.82rem;
   font-weight: 800;
   white-space: nowrap;
@@ -2806,7 +2835,7 @@ p {
   border: 0;
   padding: 0;
   background: transparent;
-  accent-color: #426dff;
+  accent-color: var(--theme-control-color, #426dff);
 }
 
 .settings_opacity_control input[type="range"]::-webkit-slider-runnable-track {
@@ -2821,7 +2850,7 @@ p {
   margin-top: -5px;
   border: 3px solid #ffffff;
   border-radius: 50%;
-  background: #426dff;
+  background: var(--theme-control-color, #426dff);
   box-shadow: 0 2px 8px rgba(66, 109, 255, 0.28);
   -webkit-appearance: none;
 }
@@ -2837,7 +2866,7 @@ p {
   height: 16px;
   border: 3px solid #ffffff;
   border-radius: 50%;
-  background: #426dff;
+  background: var(--theme-control-color, #426dff);
   box-shadow: 0 2px 8px rgba(66, 109, 255, 0.28);
 }
 
@@ -2859,7 +2888,7 @@ p {
 }
 
 .settings_default_button:hover {
-  color: #426dff;
+  color: var(--theme-control-color, #426dff);
   background: #eaf0ff;
 }
 
@@ -2871,7 +2900,7 @@ p {
 }
 
 .settings_file_button:hover {
-  color: #426dff;
+  color: var(--theme-control-color, #426dff);
   background: #eaf0ff;
 }
 
@@ -2891,7 +2920,7 @@ p {
   display: grid;
   gap: 6px;
   min-width: 0;
-  color: #8b919c;
+  color: var(--theme-subtitle-color, #8b919c);
   font-size: 0.84rem;
   font-weight: 800;
 }

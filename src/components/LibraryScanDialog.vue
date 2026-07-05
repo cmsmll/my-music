@@ -80,7 +80,7 @@ const emit = defineEmits<{
 }
 
 .scan_icon.loading {
-  color: #426dff;
+  color: var(--theme-control-color, #426dff);
   background: #eaf0ff;
 }
 
@@ -98,7 +98,7 @@ const emit = defineEmits<{
   width: 22px;
   height: 22px;
   border: 3px solid rgba(66, 109, 255, 0.2);
-  border-top-color: #426dff;
+  border-top-color: var(--theme-control-color, #426dff);
   border-radius: 50%;
   animation: scan_spin 0.75s linear infinite;
 }
@@ -110,7 +110,7 @@ const emit = defineEmits<{
 
 .scan_content h2 {
   margin: 0 0 8px;
-  color: #1e2026;
+  color: var(--theme-title-color, #1e2026);
   font-size: 1.08rem;
   font-weight: 900;
 }
@@ -126,7 +126,7 @@ const emit = defineEmits<{
 .scan_content span {
   display: block;
   margin-top: 8px;
-  color: #8b919c;
+  color: var(--theme-subtitle-color, #8b919c);
   font-size: 0.86rem;
   font-weight: 700;
 }
@@ -145,7 +145,7 @@ const emit = defineEmits<{
   border-radius: 8px;
   padding: 0 16px;
   color: #ffffff;
-  background: #426dff;
+  background: var(--theme-control-color, #426dff);
   font-size: 0.92rem;
   font-weight: 900;
   cursor: pointer;

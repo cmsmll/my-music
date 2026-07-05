@@ -100,7 +100,7 @@ const emit = defineEmits<{
   width: 100%;
   border: 0;
   outline: 0;
-  color: #1e2026;
+  color: var(--theme-title-color, #1e2026);
   background: transparent;
   font-size: 1rem;
   user-select: none;

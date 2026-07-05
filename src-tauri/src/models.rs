@@ -72,6 +72,9 @@ pub(crate) struct StyleConfig {
     pub(crate) background_color: String,
     pub(crate) background_image: String,
     pub(crate) background_image_opacity: f32,
+    pub(crate) title_color: String,
+    pub(crate) subtitle_color: String,
+    pub(crate) control_color: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -120,6 +123,9 @@ pub(crate) struct StyleConfigFile {
     pub(crate) background_color: Option<String>,
     pub(crate) background_image: Option<String>,
     pub(crate) background_image_opacity: Option<f32>,
+    pub(crate) title_color: Option<String>,
+    pub(crate) subtitle_color: Option<String>,
+    pub(crate) control_color: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

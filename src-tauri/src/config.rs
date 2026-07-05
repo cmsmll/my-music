@@ -41,6 +41,9 @@ impl ConfigManager {
                 background_color: "#ffffff".to_string(),
                 background_image: String::new(),
                 background_image_opacity: 1.0,
+                title_color: "#1e2026".to_string(),
+                subtitle_color: "#8b919c".to_string(),
+                control_color: "#426dff".to_string(),
             },
             state: crate::models::AppStateConfig {
                 width: 1280,
@@ -169,6 +172,9 @@ pub(crate) fn parse_config(content: &str, default_config: &AppConfig) -> Option<
             background_color: None,
             background_image: None,
             background_image_opacity: None,
+            title_color: None,
+            subtitle_color: None,
+            control_color: None,
         });
         let state = config.state.unwrap_or(crate::models::AppStateConfigFile {
             width: None,
@@ -230,6 +236,15 @@ pub(crate) fn parse_config(content: &str, default_config: &AppConfig) -> Option<
                 background_image_opacity: style
                     .background_image_opacity
                     .unwrap_or(default_config.style.background_image_opacity),
+                title_color: style
+                    .title_color
+                    .unwrap_or_else(|| default_config.style.title_color.clone()),
+                subtitle_color: style
+                    .subtitle_color
+                    .unwrap_or_else(|| default_config.style.subtitle_color.clone()),
+                control_color: style
+                    .control_color
+                    .unwrap_or_else(|| default_config.style.control_color.clone()),
             },
             state: crate::models::AppStateConfig {
                 width: state.width.unwrap_or(default_config.state.width),

@@ -2495,7 +2495,26 @@ p {
   inset: 0;
   z-index: 999;
   display: flex;
-  background: #ffffff;
+  overflow: hidden;
+  background-color: var(--app_background_color, #ffffff);
+}
+
+.settings_overlay::before {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  content: "";
+  background-image: var(--app_background_image, none);
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  opacity: var(--app_background_image_opacity, 1);
+  pointer-events: none;
+}
+
+.settings_overlay > * {
+  position: relative;
+  z-index: 1;
 }
 
 .queue_overlay {
@@ -2514,7 +2533,7 @@ p {
   width: 100%;
   height: 100%;
   padding: 28px;
-  background: #ffffff;
+  background: transparent;
 }
 
 .queue_panel {

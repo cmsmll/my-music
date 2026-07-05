@@ -8,11 +8,21 @@ import minimize_icon from "../assets/icons/minimize.svg";
 import tonearm_icon from "../assets/tonearm-minimal-white.svg";
 import x_icon from "../assets/icons/x.svg";
 import PlayerBar from "./PlayerBar.vue";
-import type { PlaybackModeItem, PlaybackStatus, Track } from "../types/music";
-import { cover_src, display_album, display_artist, display_title, icon_style } from "../utils/track";
+import type { LyricsSearchResult, PlaybackModeItem, PlaybackStatus, Track } from "../types/music";
+import { cover_src, display_album, display_artist, display_title, format_duration, icon_style } from "../utils/track";
 
 type PlayerBarExpose = {
   render_progress: (percent: number, seconds: number) => void;
+};
+
+type LrcLibSearchItem = {
+  id: number;
+  trackName: string;
+  artistName: string;
+  albumName?: string | null;
+  duration?: number | null;
+  syncedLyrics?: string | null;
+  plainLyrics?: string | null;
 };
 
 const props = defineProps<{
@@ -45,6 +55,10 @@ const lyrics_loading = ref(false);
 const lyrics_lines = ref<string[]>([]);
 const compact_panel = ref<"record" | "lyrics">("record");
 const lyrics_search_open = ref(false);
+const lyrics_search_loading = ref(false);
+const lyrics_search_error = ref("");
+const lyrics_search_results = ref<LyricsSearchResult[]>([]);
+let lyrics_search_request_id = 0;
 
 const lyric_placeholder = [
   "暂未获取到歌词",
@@ -77,6 +91,97 @@ async function load_lyrics(track?: Track | null) {
   } finally {
     lyrics_loading.value = false;
   }
+}
+
+async function open_lyrics_search() {
+  lyrics_search_open.value = true;
+  await search_current_lyrics();
+}
+
+async function search_current_lyrics() {
+  const track = props.current_track;
+  lyrics_search_error.value = "";
+  lyrics_search_results.value = [];
+
+  if (!track) {
+    lyrics_search_error.value = "当前没有正在播放的歌曲。";
+    return;
+  }
+  const title = display_title(track);
+  if (title === "未知歌曲") {
+    lyrics_search_error.value = "歌曲名称为空，无法搜索歌词。";
+    return;
+  }
+
+  const request_id = ++lyrics_search_request_id;
+  lyrics_search_loading.value = true;
+  const abort_controller = new AbortController();
+  const timeout_id = window.setTimeout(() => abort_controller.abort(), 10000);
+  try {
+    const params = new URLSearchParams({ track_name: title });
+    append_known_lyrics_query(params, "artist_name", display_artist(track), "未知歌手");
+    append_known_lyrics_query(params, "album_name", display_album(track), "未知专辑");
+    if (track.duration) params.set("duration", String(Math.round(track.duration)));
+
+    const response = await fetch(`https://lrclib.net/api/search?${params.toString()}`, {
+      signal: abort_controller.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`歌词搜索服务返回异常状态: ${response.status}`);
+    }
+
+    const items = (await response.json()) as LrcLibSearchItem[];
+    const results = items.slice(0, 10).map(map_lrc_lib_result);
+    if (request_id === lyrics_search_request_id) {
+      lyrics_search_results.value = results;
+    }
+  } catch (error) {
+    if (request_id === lyrics_search_request_id) {
+      lyrics_search_error.value =
+        error instanceof DOMException && error.name === "AbortError"
+          ? "歌词搜索超时，请稍后重试。"
+          : error instanceof Error
+            ? error.message
+            : String(error);
+    }
+  } finally {
+    window.clearTimeout(timeout_id);
+    if (request_id === lyrics_search_request_id) {
+      lyrics_search_loading.value = false;
+    }
+  }
+}
+
+function append_known_lyrics_query(params: URLSearchParams, key: string, value: string, unknown_value: string) {
+  const trimmed_value = value.trim();
+  if (trimmed_value && trimmed_value !== unknown_value) {
+    params.set(key, trimmed_value);
+  }
+}
+
+function map_lrc_lib_result(item: LrcLibSearchItem): LyricsSearchResult {
+  return {
+    source: "LRCLIB",
+    id: String(item.id),
+    track_name: item.trackName || "未知歌曲",
+    artist_name: item.artistName || "未知歌手",
+    album_name: item.albumName || "",
+    duration: typeof item.duration === "number" ? Math.round(item.duration) : null,
+    synced_lyrics: item.syncedLyrics || null,
+    plain_lyrics: item.plainLyrics || null,
+  };
+}
+
+function lyrics_result_name(result: LyricsSearchResult) {
+  return `${result.track_name || "未知歌曲"} - ${result.artist_name || "未知歌手"}`;
+}
+
+function lyrics_result_meta(result: LyricsSearchResult) {
+  const parts = [];
+  if (result.album_name) parts.push(result.album_name);
+  if (result.duration) parts.push(format_duration(result.duration));
+  parts.push(result.synced_lyrics ? "同步歌词" : "纯文本歌词");
+  return parts.join(" / ");
 }
 
 watch(
@@ -122,7 +227,7 @@ defineExpose({ render_progress });
         <span />
       </button>
       <div class="now_playing_window_tools">
-        <button class="lyrics_search_button" type="button" @click="lyrics_search_open = true">搜索歌词</button>
+        <button class="lyrics_search_button" type="button" @click="open_lyrics_search">搜索歌词</button>
         <button class="window_button hover_border_control" type="button" title="最小化" @click="emit('minimize_window')">
           <span class="svg_icon" :style="icon_style(minimize_icon)" />
         </button>
@@ -214,10 +319,24 @@ defineExpose({ render_progress });
           <span>歌词名称</span>
           <span>操作</span>
         </div>
-        <div class="lyrics_result_row">
-          <span>占位来源</span>
-          <strong>{{ display_title(current_track) }}</strong>
-          <button type="button" disabled>下载</button>
+        <div class="lyrics_result_body">
+          <p v-if="lyrics_search_loading" class="lyrics_result_state">正在搜索歌词...</p>
+          <p v-else-if="lyrics_search_error" class="lyrics_result_state error">{{ lyrics_search_error }}</p>
+          <p v-else-if="!lyrics_search_results.length" class="lyrics_result_state">暂无搜索结果</p>
+          <template v-else>
+            <div
+              v-for="result in lyrics_search_results"
+              :key="`${result.source}-${result.id}`"
+              class="lyrics_result_row"
+            >
+              <span>{{ result.source }}</span>
+              <strong :title="lyrics_result_meta(result)">
+                <span>{{ lyrics_result_name(result) }}</span>
+                <small>{{ lyrics_result_meta(result) }}</small>
+              </strong>
+              <button type="button" disabled>下载</button>
+            </div>
+          </template>
         </div>
       </section>
     </div>
@@ -584,9 +703,36 @@ defineExpose({ render_progress });
   font-size: 0.88rem;
   font-weight: 900;
 }
+.lyrics_result_head span:nth-child(3) {
+  text-align: center;
+}
+
+.lyrics_result_body {
+  min-height: 120px;
+  overflow-y: auto;
+  padding: 0 14px 16px;
+  scrollbar-width: none;
+}
+
+.lyrics_result_body::-webkit-scrollbar {
+  display: none;
+}
+
+.lyrics_result_state {
+  display: grid;
+  min-height: 116px;
+  margin: 0;
+  place-items: center;
+  color: rgba(245, 246, 248, 0.56);
+  font-weight: 900;
+}
+
+.lyrics_result_state.error {
+  color: #ffb4b4;
+}
 
 .lyrics_result_row {
-  margin: 0 14px 16px;
+  margin: 0 0 8px;
   border-radius: 6px;
   padding: 12px 6px;
   color: rgba(245, 246, 248, 0.74);
@@ -594,10 +740,23 @@ defineExpose({ render_progress });
 }
 
 .lyrics_result_row strong {
+  display: grid;
+  gap: 4px;
   overflow: hidden;
   color: #ffffff;
+}
+
+.lyrics_result_row strong span,
+.lyrics_result_row strong small {
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.lyrics_result_row strong small {
+  color: rgba(245, 246, 248, 0.46);
+  font-size: 0.78rem;
+  font-weight: 800;
 }
 
 .lyrics_result_row button {

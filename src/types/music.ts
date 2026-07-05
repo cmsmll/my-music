@@ -105,6 +105,17 @@ export type PlayTrackResult = {
   play_statistics: PlayStatistics;
 };
 
+export type LyricsSearchResult = {
+  source: string;
+  id: string;
+  track_name: string;
+  artist_name: string;
+  album_name: string;
+  duration?: number | null;
+  synced_lyrics?: string | null;
+  plain_lyrics?: string | null;
+};
+
 export type ViewKey = "all" | "artists" | "albums" | "stats" | "recent" | "user_playlist";
 
 export type PlaybackMode = "shuffle" | "repeat" | "repeat_one";

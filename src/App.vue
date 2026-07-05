@@ -2598,9 +2598,10 @@ p {
 
 .settings_nav_item {
   min-height: 48px;
+  border: 1px solid transparent;
   border-radius: 8px;
   padding: 0 16px;
-  color: #5f6570;
+  color: var(--theme-title-color, #1e2026);
   background: transparent;
   font-size: 1.08rem;
   font-weight: 900;
@@ -2610,7 +2611,7 @@ p {
 .settings_nav_item:hover,
 .settings_nav_item.active {
   color: var(--theme-highlight-color, #426dff);
-  background: #eaf0ff;
+  background: transparent;
 }
 
 .settings_content {

@@ -168,7 +168,6 @@ const sidebar_max_width = 420;
 const sidebar_compact_width = 100;
 const app_min_width = 600;
 const app_min_height = 700;
-const default_window_frame_delta = { width: 0, height: 0 };
 const player_cache_storage_key = "music_box_player_cache";
 const app_window = getCurrentWindow();
 const playback_modes: PlaybackModeItem[] = [
@@ -518,41 +517,16 @@ async function apply_config_state(config: AppConfig) {
 
   if (config.state.width > 0 && config.state.height > 0) {
     try {
-      const content_width = Math.max(config.state.width, app_min_width);
-      const content_height = Math.max(config.state.height, app_min_height);
-      const frame_delta = await get_window_frame_delta();
-      const outer_width = content_width + frame_delta.width;
-      const outer_height = content_height + frame_delta.height;
-      await app_window.setMinSize(
-        new PhysicalSize(
-          app_min_width + frame_delta.width,
-          app_min_height + frame_delta.height,
-        ),
-      );
-      await app_window.setSize(new PhysicalSize(outer_width, outer_height));
-      await center_app_window(outer_width, outer_height);
+      const width = Math.max(config.state.width, app_min_width);
+      const height = Math.max(config.state.height, app_min_height);
+      await app_window.setSize(new PhysicalSize(width, height));
+      await center_app_window(width, height);
     } catch (error) {
       console.warn("无法同步配置窗口大小", error);
     }
   }
 
   await show_app_window();
-}
-
-async function get_window_frame_delta() {
-  try {
-    const [inner_size, outer_size] = await Promise.all([
-      app_window.innerSize(),
-      app_window.outerSize(),
-    ]);
-    return {
-      width: Math.max(Math.round(outer_size.width - inner_size.width), 0),
-      height: Math.max(Math.round(outer_size.height - inner_size.height), 0),
-    };
-  } catch (error) {
-    console.warn("无法读取窗口边框尺寸", error);
-    return default_window_frame_delta;
-  }
 }
 
 async function center_app_window(width: number, height: number) {

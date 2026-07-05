@@ -2568,6 +2568,8 @@ p {
   grid-template-rows: auto minmax(0, 1fr);
   width: min(420px, 100vw);
   height: 100%;
+  overflow: hidden;
+  border-radius: 16px 0 0 16px;
   padding: 24px;
   background: #ffffff;
   box-shadow: -20px 0 60px rgba(19, 24, 34, 0.14);

@@ -367,9 +367,13 @@ function reset_playlist_drag() {
   white-space: nowrap;
 }
 
-.nav_item:hover,
 .nav_item.active {
   color: var(--theme-title-color, #1e2026);
+  background: #eaf0ff;
+}
+
+.nav_item:hover {
+  color: var(--theme-highlight-color, #426dff);
   background: #eaf0ff;
 }
 

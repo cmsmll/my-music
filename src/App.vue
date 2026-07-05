@@ -1839,8 +1839,19 @@ textarea,
 }
 
 button {
+  appearance: none;
+  -webkit-appearance: none;
   border: 0;
   cursor: pointer;
+  outline: none;
+  box-shadow: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:focus,
+button:focus-visible {
+  outline: none;
+  box-shadow: none;
 }
 
 .app_shell {

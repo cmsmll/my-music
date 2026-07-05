@@ -25,6 +25,7 @@ import repeat_icon from "./assets/icons/repeat.svg";
 import shuffle_icon from "./assets/icons/shuffle.svg";
 import ContextMenu from "./components/ContextMenu.vue";
 import ContentArea from "./components/ContentArea.vue";
+import GlobalNotification from "./components/GlobalNotification.vue";
 import LibrarySidebar from "./components/LibrarySidebar.vue";
 import PlayerBar from "./components/PlayerBar.vue";
 import TrackDetailDialog from "./components/TrackDetailDialog.vue";
@@ -1842,6 +1843,8 @@ watch([current_queue, queue_source, playback_mode], () => {
       @confirm="confirm_delete_playlist"
       @cancel="cancel_delete_playlist"
     />
+
+    <GlobalNotification />
   </main>
 </template>
 

@@ -8,6 +8,7 @@ import minimize_icon from "../assets/icons/minimize.svg";
 import tonearm_icon from "../assets/tonearm-minimal-white.svg";
 import x_icon from "../assets/icons/x.svg";
 import PlayerBar from "./PlayerBar.vue";
+import { use_notification_store } from "../stores/notifications";
 import { use_player_queue_store } from "../stores/player_queue";
 import type {
   LyricsSearchResponse,
@@ -31,6 +32,7 @@ const props = defineProps<{
 }>();
 
 const player_queue = use_player_queue_store();
+const notification = use_notification_store();
 
 const emit = defineEmits<{
   close: [];
@@ -61,8 +63,6 @@ const lyrics_search_results = ref<LyricsSearchResult[]>([]);
 const current_lyrics_hash = ref<string | null>(null);
 const lyrics_use_pending_hash = ref("");
 const auto_lyrics_enabled = ref(false);
-const auto_lyrics_loading = ref(false);
-const auto_lyrics_status = ref("");
 const auto_lyrics_attempted_track_ids = ref(new Set<string>());
 let lyrics_search_request_id = 0;
 let auto_lyrics_request_id = 0;
@@ -217,8 +217,6 @@ function toggle_auto_lyrics() {
   auto_lyrics_enabled.value = !auto_lyrics_enabled.value;
   if (auto_lyrics_enabled.value) {
     void maybe_auto_load_lyrics(props.current_track, lyrics_lines.value.length > 0);
-  } else {
-    auto_lyrics_status.value = "";
   }
 }
 
@@ -251,8 +249,7 @@ async function maybe_auto_load_lyrics(track?: Track | null, has_local_lyrics = l
 
   const request_id = ++auto_lyrics_request_id;
   set_auto_attempted(track, true);
-  auto_lyrics_loading.value = true;
-  auto_lyrics_status.value = "Auto 正在搜索歌词";
+  notification.info("Auto 正在搜索歌词");
 
   try {
     const response = await search_lyrics_for_track(track);
@@ -264,20 +261,16 @@ async function maybe_auto_load_lyrics(track?: Track | null, has_local_lyrics = l
     current_lyrics_hash.value = response.current_lyrics_hash ?? track.lyrics_cache_hash?.trim() ?? null;
     const result = select_auto_lyrics_result(response.results);
     if (!result) {
-      auto_lyrics_status.value = "Auto 未找到歌词";
+      notification.warning("Auto 未找到歌词");
       return;
     }
 
     await apply_lyrics_result(track, result);
-    auto_lyrics_status.value = `Auto 已加载${result.source ? `：${result.source}` : ""}`;
+    notification.success(`Auto 已加载${result.source ? `：${result.source}` : ""}`);
   } catch (error) {
     console.warn("自动获取歌词失败", error);
     if (request_id === auto_lyrics_request_id && props.current_track?.id === track.id) {
-      auto_lyrics_status.value = "Auto 获取歌词失败";
-    }
-  } finally {
-    if (request_id === auto_lyrics_request_id) {
-      auto_lyrics_loading.value = false;
+      notification.error("Auto 获取歌词失败");
     }
   }
 }
@@ -285,7 +278,6 @@ async function maybe_auto_load_lyrics(track?: Track | null, has_local_lyrics = l
 watch(
   () => props.current_track?.id,
   async () => {
-    auto_lyrics_status.value = "";
     const has_lyrics = await load_lyrics(props.current_track);
     await maybe_auto_load_lyrics(props.current_track, has_lyrics);
   },
@@ -400,7 +392,6 @@ defineExpose({ render_progress });
             <span>专辑：{{ display_album(current_track) }}</span>
             <span>歌手：{{ display_artist(current_track) }}</span>
           </p>
-          <small v-if="auto_lyrics_status" class="auto_lyrics_status">{{ auto_lyrics_status }}</small>
         </div>
 
         <div class="lyrics_panel">
@@ -744,17 +735,6 @@ defineExpose({ render_progress });
 
 .track_identity p span {
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.auto_lyrics_status {
-  display: block;
-  min-height: 18px;
-  overflow: hidden;
-  color: rgba(245, 246, 248, 0.48);
-  font-size: 0.86rem;
-  font-weight: 800;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

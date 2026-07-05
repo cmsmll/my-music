@@ -102,6 +102,10 @@ function render_progress(percent: number, seconds: number) {
   player_bar.value?.render_progress(percent, seconds);
 }
 
+function toggle_compact_panel() {
+  compact_panel.value = compact_panel.value === "record" ? "lyrics" : "record";
+}
+
 defineExpose({ render_progress });
 </script>
 
@@ -135,8 +139,8 @@ defineExpose({ render_progress });
         class="compact_switch compact_switch_record"
         :class="{ active: compact_panel === 'record' }"
         type="button"
-        title="唱片"
-        @click="compact_panel = 'record'"
+        :title="compact_panel === 'record' ? '切换到歌词' : '切换到唱片'"
+        @click="toggle_compact_panel"
       >
         <span class="svg_icon" :style="icon_style(compact_left_icon)" />
       </button>
@@ -187,8 +191,8 @@ defineExpose({ render_progress });
         class="compact_switch compact_switch_lyrics"
         :class="{ active: compact_panel === 'lyrics' }"
         type="button"
-        title="歌词"
-        @click="compact_panel = 'lyrics'"
+        :title="compact_panel === 'record' ? '切换到歌词' : '切换到唱片'"
+        @click="toggle_compact_panel"
       >
         <span class="svg_icon" :style="icon_style(compact_right_icon)" />
       </button>

@@ -278,8 +278,8 @@ fn sanitize_config(mut config: AppConfig) -> AppConfig {
     config.decoder.process_formats = sanitize_process_formats(&config.decoder.process_formats);
     config.state.volume = config.state.volume.clamp(0.0, 1.5);
     config.style.background_image_opacity = config.style.background_image_opacity.clamp(0.0, 1.0);
-    config.state.width = config.state.width.max(480);
-    config.state.height = config.state.height.max(360);
+    config.state.width = config.state.width.max(600);
+    config.state.height = config.state.height.max(700);
     config.state.sidebar_width = config.state.sidebar_width.clamp(72, 420);
     config
 }

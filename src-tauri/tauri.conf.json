@@ -14,7 +14,9 @@
       {
         "title": "my-music",
         "width": 1200,
-        "height": 600,
+        "height": 700,
+        "minWidth": 600,
+        "minHeight": 700,
         "decorations": false,
         "visible": false,
         "center": true

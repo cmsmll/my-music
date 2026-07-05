@@ -165,6 +165,8 @@ let app_window_shown = false;
 const sidebar_min_width = 72;
 const sidebar_max_width = 420;
 const sidebar_compact_width = 100;
+const app_min_width = 600;
+const app_min_height = 700;
 const player_cache_storage_key = "music_box_player_cache";
 const app_window = getCurrentWindow();
 const playback_modes: PlaybackModeItem[] = [
@@ -514,8 +516,10 @@ async function apply_config_state(config: AppConfig) {
 
   if (config.state.width > 0 && config.state.height > 0) {
     try {
-      await app_window.setSize(new PhysicalSize(config.state.width, config.state.height));
-      await center_app_window(config.state.width, config.state.height);
+      const width = Math.max(config.state.width, app_min_width);
+      const height = Math.max(config.state.height, app_min_height);
+      await app_window.setSize(new PhysicalSize(width, height));
+      await center_app_window(width, height);
     } catch (error) {
       console.warn("无法同步配置窗口大小", error);
     }
@@ -688,8 +692,8 @@ async function capture_app_state() {
     const size = await app_window.innerSize();
     app_config_store.update_state({
       ...current_state,
-      width: Math.round(size.width),
-      height: Math.round(size.height),
+      width: Math.max(Math.round(size.width), app_min_width),
+      height: Math.max(Math.round(size.height), app_min_height),
     });
   } catch {
     app_config_store.update_state(current_state);
@@ -1870,8 +1874,8 @@ watch([current_queue, queue_source, playback_mode], () => {
 
 body {
   margin: 0;
-  min-width: 900px;
-  min-height: 100vh;
+  min-width: 600px;
+  min-height: 700px;
   overflow: hidden;
 }
 
@@ -1912,6 +1916,8 @@ button:focus-visible {
   grid-template-columns: var(--sidebar_width, 250px) minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr) 86px;
   height: 100vh;
+  min-width: 600px;
+  min-height: 700px;
   overflow: hidden;
   color: var(--theme-title-color, #1e2026);
   background-color: var(--app_background_color, #ffffff);

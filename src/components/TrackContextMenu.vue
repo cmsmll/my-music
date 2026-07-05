@@ -1,14 +1,6 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
 import type { PlaylistCache, Track } from "../types/music";
-import {
-  display_album,
-  display_artist,
-  display_title,
-  format_duration,
-  format_file_size,
-  is_missing_track,
-} from "../utils/track";
+import { is_missing_track } from "../utils/track";
 import ContextMenu from "./ContextMenu.vue";
 
 const props = defineProps<{
@@ -22,36 +14,11 @@ const props = defineProps<{
 const emit = defineEmits<{
   add_playlist: [playlist: PlaylistCache];
   remove: [];
+  detail: [];
 }>();
-
-const detail_open = ref(false);
-
-const track_details = computed(() => {
-  const metadata = props.track.metadata;
-  return [
-    ["歌曲", display_title(props.track)],
-    ["歌手", display_artist(props.track)],
-    ["专辑", display_album(props.track)],
-    ["时长", format_duration(props.track.duration)],
-    ["文件大小", format_file_size(props.track.file_size)],
-    ["文件路径", props.track.path || "--"],
-    ["歌曲 ID", props.track.id],
-    ["码率", metadata.bitrate ? `${metadata.bitrate} kbps` : "--"],
-    ["采样率", metadata.sample_rate ? `${metadata.sample_rate} Hz` : "--"],
-    ["年份", metadata.year ? String(metadata.year) : "--"],
-    ["流派", metadata.genre.length ? metadata.genre.join(", ") : "--"],
-    ["封面缓存", props.track.cover_cache_path || "--"],
-    ["歌词缓存", props.track.lyrics_cache_path || "--"],
-    ["元数据来源", metadata.metadata_source],
-  ];
-});
 
 function playlist_disabled(playlist: PlaylistCache) {
   return is_missing_track(props.track) || playlist.track_ids.includes(props.track.id);
-}
-
-function toggle_detail() {
-  detail_open.value = !detail_open.value;
 }
 </script>
 
@@ -71,24 +38,14 @@ function toggle_detail() {
         </button>
         <button
           class="track_context_detail_button"
-          :class="{ active: detail_open }"
           type="button"
           title="查看歌曲详情"
-          @click="toggle_detail"
+          @click="emit('detail')"
         >
           详情
         </button>
       </div>
     </div>
-
-    <section v-if="detail_open" class="track_detail_panel">
-      <dl>
-        <div v-for="[label, value] in track_details" :key="label">
-          <dt>{{ label }}</dt>
-          <dd :title="value">{{ value }}</dd>
-        </div>
-      </dl>
-    </section>
 
     <button
       v-for="playlist in playlists"
@@ -108,8 +65,6 @@ function toggle_detail() {
 .track_context_menu {
   min-width: 220px;
   max-width: min(360px, calc(100vw - 24px));
-  max-height: calc(100vh - 24px);
-  overflow-y: auto;
 }
 
 .track_context_menu_header {
@@ -157,8 +112,7 @@ function toggle_detail() {
   color: #426dff;
 }
 
-.track_context_detail_button:hover,
-.track_context_detail_button.active {
+.track_context_detail_button:hover {
   background: #eaf0ff;
 }
 
@@ -188,41 +142,4 @@ function toggle_detail() {
   cursor: default;
 }
 
-.track_detail_panel {
-  min-width: 0;
-  border-radius: 8px;
-  padding: 8px;
-  background: #f8f9fb;
-}
-
-.track_detail_panel dl {
-  display: grid;
-  gap: 6px;
-  margin: 0;
-}
-
-.track_detail_panel div {
-  display: grid;
-  grid-template-columns: 72px minmax(0, 1fr);
-  gap: 8px;
-  min-width: 0;
-}
-
-.track_detail_panel dt,
-.track_detail_panel dd {
-  overflow: hidden;
-  margin: 0;
-  font-size: 0.78rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.track_detail_panel dt {
-  color: #8b919c;
-  font-weight: 800;
-}
-
-.track_detail_panel dd {
-  color: #1e2026;
-}
 </style>

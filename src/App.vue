@@ -18,6 +18,7 @@ import ContextMenu from "./components/ContextMenu.vue";
 import ContentArea from "./components/ContentArea.vue";
 import LibrarySidebar from "./components/LibrarySidebar.vue";
 import PlayerBar from "./components/PlayerBar.vue";
+import TrackDetailDialog from "./components/TrackDetailDialog.vue";
 import TrackContextMenu from "./components/TrackContextMenu.vue";
 import TopBar from "./components/TopBar.vue";
 import { use_app_config_store } from "./stores/app_config";
@@ -108,6 +109,7 @@ const selected_playlist_id = ref("my_playlist");
 const settings_open = ref(false);
 const playback_queue_open = ref(false);
 const track_context_menu = ref<TrackContextMenuState | null>(null);
+const track_detail_dialog = ref<Track | null>(null);
 const playlist_context_menu = ref<PlaylistContextMenu | null>(null);
 const pending_delete_playlist = ref<PlaylistCache | null>(null);
 const library_scan_dialog = ref<LibraryScanDialogState>({
@@ -1248,6 +1250,17 @@ function close_track_context_menu() {
   track_context_menu.value = null;
 }
 
+function open_track_detail_dialog() {
+  const track = track_context_menu.value?.track;
+  if (!track) return;
+  track_detail_dialog.value = track;
+  close_track_context_menu();
+}
+
+function close_track_detail_dialog() {
+  track_detail_dialog.value = null;
+}
+
 function open_playlist_context_menu(playlist: PlaylistCache, event: MouseEvent) {
   const menu_width = 170;
   const menu_min_height = 96;
@@ -1698,6 +1711,7 @@ watch([current_queue, queue_source, playback_mode], () => {
       :playlists="ordered_user_playlist_items"
       :can_remove="context_track_can_be_removed()"
       @remove="remove_context_track_record"
+      @detail="open_track_detail_dialog"
       @add_playlist="add_context_track_to_playlist"
     />
 
@@ -1764,6 +1778,12 @@ watch([current_queue, queue_source, playback_mode], () => {
       :message="library_scan_dialog.message"
       :detail="library_scan_dialog.detail"
       @confirm="close_library_scan_dialog"
+    />
+
+    <TrackDetailDialog
+      v-if="track_detail_dialog"
+      :track="track_detail_dialog"
+      @close="close_track_detail_dialog"
     />
 
     <ConfirmDialog

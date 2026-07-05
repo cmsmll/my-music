@@ -70,6 +70,7 @@ export type StyleConfig = {
   subtitle_color: string;
   highlight_color: string;
   control_color: string;
+  show_border: boolean;
 };
 
 export type AppStateConfig = {

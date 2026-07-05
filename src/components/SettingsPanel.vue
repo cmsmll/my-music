@@ -101,6 +101,13 @@ const control_color = computed({
   },
 });
 
+const show_border = computed({
+  get: () => current_config.value?.style.show_border ?? true,
+  set: (value: boolean) => {
+    app_config_store.update_style({ show_border: value });
+  },
+});
+
 const background_image = computed(
   () => current_config.value?.style.background_image ?? "",
 );
@@ -615,6 +622,25 @@ async function choose_cache_path(entry: CacheEntry) {
                   />
                 </div>
               </label>
+              <div class="settings_radio_field">
+                <span>是否显示边框</span>
+                <div class="settings_radio_group">
+                  <label
+                    class="settings_radio_option"
+                    :class="{ active: show_border }"
+                  >
+                    <input v-model="show_border" type="radio" :value="true" />
+                    <span>显示</span>
+                  </label>
+                  <label
+                    class="settings_radio_option"
+                    :class="{ active: !show_border }"
+                  >
+                    <input v-model="show_border" type="radio" :value="false" />
+                    <span>不显示</span>
+                  </label>
+                </div>
+              </div>
               <label>
                 <span>背景图片</span>
                 <div class="settings_input_row">

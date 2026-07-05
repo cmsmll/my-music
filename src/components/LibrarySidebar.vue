@@ -293,7 +293,7 @@ function reset_playlist_drag() {
   flex-direction: column;
   position: relative;
   min-height: 0;
-  border-right: 1px solid #ebedf2;
+  border-right: var(--app_border_width, 1px) solid #ebedf2;
   background: transparent;
 }
 

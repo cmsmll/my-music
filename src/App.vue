@@ -271,8 +271,13 @@ const theme_control_color = computed(
   () => app_config.value?.style.control_color?.trim() || "#1e2026",
 );
 
+const app_border_width = computed(() =>
+  (app_config.value?.style.show_border ?? true) ? "1px" : "0px",
+);
+
 const app_shell_style = computed(() => ({
   "--sidebar_width": `${sidebar_width.value}px`,
+  "--app_border_width": app_border_width.value,
   "--app_background_color": app_background_color.value,
   "--app_background_image": app_background_image.value,
   "--app_background_image_opacity": `${app_background_image_opacity.value}`,
@@ -2832,6 +2837,48 @@ p {
   border-radius: 8px;
   padding: 4px;
   cursor: pointer;
+}
+
+.settings_radio_field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: var(--theme-subtitle-color, #8b919c);
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.settings_radio_group {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+
+.settings_section .settings_radio_option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  border: 1px solid #e5e8ef;
+  border-radius: 8px;
+  padding: 0 12px;
+  color: var(--theme-title-color, #1e2026);
+  background: transparent;
+  cursor: pointer;
+}
+
+.settings_section .settings_radio_option.active {
+  color: var(--theme-highlight-color, #426dff);
+}
+
+.settings_section .settings_radio_option input {
+  width: 14px;
+  height: 14px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  accent-color: var(--theme-highlight-color, #426dff);
 }
 
 .settings_color_picker::-webkit-color-swatch-wrapper {

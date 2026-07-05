@@ -72,7 +72,7 @@ const emit = defineEmits<{
   justify-content: center;
   align-items: center;
   grid-template-columns: 1fr 260px;
-  border-bottom: 1px solid #eef0f4;
+  border-bottom: var(--app_border_width, 1px) solid #eef0f4;
   padding-right: 28px;
   cursor: move;
   user-select: none;

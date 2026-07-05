@@ -45,6 +45,7 @@ impl ConfigManager {
                 subtitle_color: "#8b919c".to_string(),
                 highlight_color: "#426dff".to_string(),
                 control_color: "#1e2026".to_string(),
+                show_border: true,
             },
             state: crate::models::AppStateConfig {
                 width: 1280,
@@ -177,6 +178,7 @@ pub(crate) fn parse_config(content: &str, default_config: &AppConfig) -> Option<
             subtitle_color: None,
             highlight_color: None,
             control_color: None,
+            show_border: None,
         });
         let state = config.state.unwrap_or(crate::models::AppStateConfigFile {
             width: None,
@@ -258,6 +260,7 @@ pub(crate) fn parse_config(content: &str, default_config: &AppConfig) -> Option<
                 } else {
                     default_config.style.control_color.clone()
                 },
+                show_border: style.show_border.unwrap_or(default_config.style.show_border),
             },
             state: crate::models::AppStateConfig {
                 width: state.width.unwrap_or(default_config.state.width),

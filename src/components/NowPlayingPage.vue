@@ -128,9 +128,10 @@ defineExpose({ render_progress });
 
     <main class="now_playing_content">
       <section class="record_stage" aria-label="歌曲封面">
-        <div class="tonearm">
+        <div class="tonearm" :class="{ tonearm_playing: status.playing && current_track }">
           <span class="tonearm_head" />
           <span class="tonearm_body" />
+          <span class="tonearm_needle" />
         </div>
         <div class="record_disc" :class="{ spinning_cover: status.playing && current_track }">
           <div class="record_grooves" />
@@ -323,8 +324,17 @@ defineExpose({ render_progress });
   width: 230px;
   height: 142px;
   pointer-events: none;
-  transform: rotate(10deg);
+  transform: translateY(-13px) rotate(-9deg);
   transform-origin: 32px 30px;
+  transition:
+    transform 420ms cubic-bezier(0.2, 0.9, 0.28, 1),
+    filter 420ms ease;
+  filter: drop-shadow(0 16px 18px rgba(0, 0, 0, 0.28));
+}
+
+.tonearm_playing {
+  transform: translateY(0) rotate(13deg);
+  filter: drop-shadow(0 7px 9px rgba(0, 0, 0, 0.34));
 }
 
 .tonearm_head {
@@ -348,6 +358,7 @@ defineExpose({ render_progress });
   border-right: 10px solid #f4f5f7;
   border-radius: 0 0 32px 0;
   transform: skewX(22deg);
+  transition: border-color 240ms ease;
 }
 
 .tonearm_body::after {
@@ -359,6 +370,23 @@ defineExpose({ render_progress });
   border-radius: 5px;
   background: #f4f5f7;
   content: "";
+}
+
+.tonearm_needle {
+  position: absolute;
+  right: -2px;
+  bottom: 14px;
+  width: 9px;
+  height: 38px;
+  border-radius: 6px;
+  background: linear-gradient(180deg, #f4f5f7 0 62%, #26282d 63% 100%);
+  transform: rotate(-22deg) translateY(-12px);
+  transform-origin: 50% 0;
+  transition: transform 420ms cubic-bezier(0.2, 0.9, 0.28, 1);
+}
+
+.tonearm_playing .tonearm_needle {
+  transform: rotate(-22deg) translateY(0);
 }
 
 .now_playing_info {

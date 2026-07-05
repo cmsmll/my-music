@@ -137,6 +137,7 @@ const player_bar = ref<PlayerBarExpose | null>(null);
 const sidebar_width = ref(250);
 const sidebar_resizing = ref(false);
 
+const visual_elapsed_seconds = ref(0);
 let status_timer: number | undefined;
 let progress_frame: number | undefined;
 let progress_sync_started_at = performance.now();
@@ -816,7 +817,7 @@ function apply_playback_status(next_status: PlaybackStatus) {
 }
 
 function sync_visual_elapsed(next_status: PlaybackStatus) {
-  visual_elapsed = next_status.elapsed;
+  set_visual_elapsed(next_status.elapsed);
   progress_sync_started_at = performance.now();
   if (!progress_dragging.value) {
     render_progress(progress_percent_for(next_status.elapsed), next_status.elapsed);
@@ -827,7 +828,7 @@ function hold_progress_at_seek_target(seconds: number) {
   pending_seek_seconds = seconds;
   pending_seek_path = status.value.path ?? null;
   pending_seek_started_at = performance.now();
-  visual_elapsed = seconds;
+  set_visual_elapsed(seconds);
   render_progress(progress_percent_for(seconds), seconds);
 }
 
@@ -845,7 +846,7 @@ function hold_pending_seek_progress(next_status: PlaybackStatus) {
     return false;
   }
 
-  visual_elapsed = playback_elapsed_from_pending_seek();
+  set_visual_elapsed(playback_elapsed_from_pending_seek());
   progress_sync_started_at = pending_seek_started_at;
   render_progress(progress_percent_for(visual_elapsed), visual_elapsed);
   return true;
@@ -872,7 +873,7 @@ function update_progress_frame(now: number) {
 
   const duration = current_track.value?.duration ?? 0;
   if (!duration || !status.value.path) {
-    visual_elapsed = 0;
+    set_visual_elapsed(0);
     render_progress(0, 0);
     return;
   }
@@ -881,7 +882,7 @@ function update_progress_frame(now: number) {
     const base_elapsed = pending_seek_seconds ?? status.value.elapsed;
     const started_at = pending_seek_seconds === null ? progress_sync_started_at : pending_seek_started_at;
     const elapsed = base_elapsed + (now - started_at) / 1000;
-    visual_elapsed = Math.min(elapsed, duration);
+    set_visual_elapsed(Math.min(elapsed, duration));
     if (!progress_dragging.value) {
       render_progress(progress_percent_for(visual_elapsed), visual_elapsed);
     }
@@ -897,10 +898,15 @@ function update_progress_frame(now: number) {
     return;
   }
 
-  visual_elapsed = Math.min(status.value.elapsed, duration);
+  set_visual_elapsed(Math.min(status.value.elapsed, duration));
   if (!progress_dragging.value) {
     render_progress(progress_percent_for(visual_elapsed), visual_elapsed);
   }
+}
+
+function set_visual_elapsed(seconds: number) {
+  visual_elapsed = seconds;
+  visual_elapsed_seconds.value = seconds;
 }
 
 function progress_percent_for(seconds: number) {
@@ -1780,6 +1786,7 @@ watch([current_queue, queue_source, playback_mode], () => {
         :current_track="current_track"
         :status="status"
         :progress_dragging="progress_dragging"
+        :visual_elapsed="visual_elapsed_seconds"
         :playback_mode_button="playback_mode_button"
         @close="now_playing_open = false"
         @start_window_drag="start_window_drag"

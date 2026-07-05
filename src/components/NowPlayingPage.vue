@@ -29,6 +29,7 @@ type PlayerBarExpose = {
 const props = defineProps<{
   current_track?: Track | null;
   status: PlaybackStatus;
+  visual_elapsed: number;
   progress_dragging: boolean;
   playback_mode_button: PlaybackModeItem;
 }>();
@@ -409,7 +410,7 @@ defineExpose({ render_progress });
 
         <LineLyricsRenderer
           :lyrics="lyrics_text"
-          :elapsed="status.elapsed"
+          :elapsed="visual_elapsed"
           :loading="lyrics_loading"
           :placeholder="lyric_placeholder"
         />

@@ -1993,6 +1993,13 @@ p {
   padding: 0 12px 18px 0;
 }
 
+.track_table_view {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .track_table::-webkit-scrollbar,
 .placeholder_view::-webkit-scrollbar,
 .stats_view::-webkit-scrollbar,
@@ -2054,12 +2061,10 @@ p {
 }
 
 .table_head {
-  position: sticky;
-  top: 0;
-  z-index: 1;
+  flex: 0 0 auto;
   height: 36px;
   border-radius: 8px;
-  padding: 0 8px 0 0;
+  padding: 0 20px 0 0;
   color: #a0a5af;
   background: var(--app_background_color, #ffffff);
   font-size: 0.82rem;

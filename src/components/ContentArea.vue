@@ -226,10 +226,8 @@ onBeforeUnmount(() => {
         selected_album ||
         query.trim()
       "
-      class="track_table"
+      class="track_table_view"
       aria-label="歌曲列表"
-      ref="track_table"
-      @scroll="handle_track_table_scroll"
     >
       <header v-if="selected_artist || selected_album" class="detail_header">
         <button type="button" @click="emit('close_detail')">返回</button>
@@ -248,35 +246,41 @@ onBeforeUnmount(() => {
         <span class="duration_cell">时长</span>
       </div>
 
-      <div class="virtual_track_spacer" :style="{ height: `${virtual_top_padding}px` }" />
-      <button
-        v-for="row in virtual_track_rows"
-        :key="row.track.id"
-        class="table_row"
-        :class="{ active: row.track.path === status_path, missing: is_missing_track(row.track) }"
-        type="button"
-        @click="play_track(row.track)"
-        @contextmenu.prevent="emit('open_track_menu', row.track, $event)"
+      <section
+        class="track_table"
+        ref="track_table"
+        @scroll="handle_track_table_scroll"
       >
-        <span class="index_cell">{{ row.index + 1 }}</span>
-        <span class="song_cell">
-          <span class="cover_thumb" :class="{ spinning_cover: track_should_spin(row.track) }">
-            <img v-if="row.track.cover_cache_path" :src="cover_src(row.track)" alt="" />
-            <span v-else>♪</span>
+        <div class="virtual_track_spacer" :style="{ height: `${virtual_top_padding}px` }" />
+        <button
+          v-for="row in virtual_track_rows"
+          :key="row.track.id"
+          class="table_row"
+          :class="{ active: row.track.path === status_path, missing: is_missing_track(row.track) }"
+          type="button"
+          @click="play_track(row.track)"
+          @contextmenu.prevent="emit('open_track_menu', row.track, $event)"
+        >
+          <span class="index_cell">{{ row.index + 1 }}</span>
+          <span class="song_cell">
+            <span class="cover_thumb" :class="{ spinning_cover: track_should_spin(row.track) }">
+              <img v-if="row.track.cover_cache_path" :src="cover_src(row.track)" alt="" />
+              <span v-else>♪</span>
+            </span>
+            <span class="song_text">
+              <strong>{{ display_title(row.track) }}</strong>
+              <small>{{ display_artist(row.track) }}</small>
+            </span>
           </span>
-          <span class="song_text">
-            <strong>{{ display_title(row.track) }}</strong>
-            <small>{{ display_artist(row.track) }}</small>
-          </span>
-        </span>
-        <span class="album_cell">{{ display_album(row.track) }}</span>
-        <span class="duration_cell">{{ format_duration(row.track.duration) }}</span>
-      </button>
-      <div class="virtual_track_spacer" :style="{ height: `${virtual_bottom_padding}px` }" />
+          <span class="album_cell">{{ display_album(row.track) }}</span>
+          <span class="duration_cell">{{ format_duration(row.track.duration) }}</span>
+        </button>
+        <div class="virtual_track_spacer" :style="{ height: `${virtual_bottom_padding}px` }" />
 
-      <p v-if="!loading && !display_tracks.length" class="empty_state">
-        没有找到歌曲，先添加音乐目录或调整搜索内容。
-      </p>
+        <p v-if="!loading && !display_tracks.length" class="empty_state">
+          没有找到歌曲，先添加音乐目录或调整搜索内容。
+        </p>
+      </section>
     </section>
 
     <section v-else-if="active_view === 'albums'" class="placeholder_view">

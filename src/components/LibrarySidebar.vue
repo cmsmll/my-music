@@ -369,7 +369,7 @@ function reset_playlist_drag() {
 
 .nav_item:hover,
 .nav_item.active {
-  color: var(--theme-title-color, #1e2026);
+  color: var(--theme-highlight-color, #426dff);
   background: #eaf0ff;
 }
 

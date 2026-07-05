@@ -399,7 +399,7 @@ pub(crate) fn set_volume(
     engine: tauri::State<'_, AudioEngine>,
     volume: f32,
 ) -> Result<PlaybackStatus, String> {
-    engine.send(|reply| AudioCommand::SetVolume { volume, reply })?;
+    engine.set_volume(volume)?;
     engine.status()
 }
 

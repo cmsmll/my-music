@@ -1982,37 +1982,64 @@ p {
   font-size: 0.92rem;
 }
 
+.track_table,
+.placeholder_view,
+.stats_view,
+.settings_content,
+.queue_list {
+  scrollbar-color: rgba(136, 150, 176, 0.38) transparent;
+  scrollbar-width: thin;
+}
+
 .track_table {
   flex: 1;
   min-height: 0;
   overflow: auto;
   padding: 0 12px 18px 0;
-  scrollbar-color: rgba(136, 150, 176, 0.38) transparent;
-  scrollbar-width: thin;
 }
 
-.track_table::-webkit-scrollbar {
+.track_table::-webkit-scrollbar,
+.placeholder_view::-webkit-scrollbar,
+.stats_view::-webkit-scrollbar,
+.settings_content::-webkit-scrollbar,
+.queue_list::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
 
-.track_table::-webkit-scrollbar-track {
+.track_table::-webkit-scrollbar-track,
+.placeholder_view::-webkit-scrollbar-track,
+.stats_view::-webkit-scrollbar-track,
+.settings_content::-webkit-scrollbar-track,
+.queue_list::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.track_table::-webkit-scrollbar-thumb {
+.track_table::-webkit-scrollbar-thumb,
+.placeholder_view::-webkit-scrollbar-thumb,
+.stats_view::-webkit-scrollbar-thumb,
+.settings_content::-webkit-scrollbar-thumb,
+.queue_list::-webkit-scrollbar-thumb {
   border: 3px solid transparent;
   border-radius: 999px;
   background: rgba(136, 150, 176, 0.42);
   background-clip: content-box;
 }
 
-.track_table::-webkit-scrollbar-thumb:hover {
+.track_table::-webkit-scrollbar-thumb:hover,
+.placeholder_view::-webkit-scrollbar-thumb:hover,
+.stats_view::-webkit-scrollbar-thumb:hover,
+.settings_content::-webkit-scrollbar-thumb:hover,
+.queue_list::-webkit-scrollbar-thumb:hover {
   background: rgba(66, 109, 255, 0.58);
   background-clip: content-box;
 }
 
-.track_table::-webkit-scrollbar-corner {
+.track_table::-webkit-scrollbar-corner,
+.placeholder_view::-webkit-scrollbar-corner,
+.stats_view::-webkit-scrollbar-corner,
+.settings_content::-webkit-scrollbar-corner,
+.queue_list::-webkit-scrollbar-corner {
   background: transparent;
 }
 

@@ -11,6 +11,7 @@ import LineLyricsRenderer from "./LineLyricsRenderer.vue";
 import PlayerBar from "./PlayerBar.vue";
 import { use_app_config_store } from "../stores/app_config";
 import { use_notification_store } from "../stores/notifications";
+import { use_playback_store } from "../stores/playback";
 import { use_player_queue_store } from "../stores/player_queue";
 import type {
   LyricsSearchResponse,
@@ -35,6 +36,7 @@ const props = defineProps<{
 }>();
 
 const player_queue = use_player_queue_store();
+const playback_store = use_playback_store();
 const app_config_store = use_app_config_store();
 const notification = use_notification_store();
 
@@ -209,6 +211,7 @@ async function apply_lyrics_result(track: Track, result: LyricsSearchResult) {
   lyrics_lines.value = normalize_lyrics(used.lyrics);
   current_lyrics_hash.value = used.lyrics_hash;
   if (used.track) {
+    playback_store.upsert_track(used.track);
     player_queue.upsert_track(used.track);
   }
 }

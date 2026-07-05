@@ -33,6 +33,7 @@ import TrackContextMenu from "./components/TrackContextMenu.vue";
 import TopBar from "./components/TopBar.vue";
 import { use_app_config_store } from "./stores/app_config";
 import { use_library_store } from "./stores/library";
+import { use_playback_store } from "./stores/playback";
 import { use_player_queue_store } from "./stores/player_queue";
 import type {
   AppConfig,
@@ -99,17 +100,13 @@ type LibraryScanDialogState = {
 };
 
 const player_queue = use_player_queue_store();
+const playback_store = use_playback_store();
 const app_config_store = use_app_config_store();
 const library_store = use_library_store();
 const { library_tracks: tracks, current_queue, playback_mode, queue_source } = storeToRefs(player_queue);
+const { status, current_track, progress_dragging, visual_elapsed: visual_elapsed_seconds } = storeToRefs(playback_store);
 const { config: app_config } = storeToRefs(app_config_store);
 const { selected_directories, library_loaded, playlists, play_statistics } = storeToRefs(library_store);
-const status = ref<PlaybackStatus>({
-  path: null,
-  playing: false,
-  volume: 1,
-  elapsed: 0,
-});
 const loading = ref(false);
 const error_message = ref("");
 const query = ref("");
@@ -132,12 +129,9 @@ const library_scan_dialog = ref<LibraryScanDialogState>({
   message: "正在扫描音乐目录...",
   detail: "",
 });
-const progress_dragging = ref(false);
 const player_bar = ref<PlayerBarExpose | null>(null);
 const sidebar_width = ref(250);
 const sidebar_resizing = ref(false);
-
-const visual_elapsed_seconds = ref(0);
 let status_timer: number | undefined;
 let progress_frame: number | undefined;
 let progress_sync_started_at = performance.now();
@@ -176,10 +170,6 @@ const playback_modes: PlaybackModeItem[] = [
   { mode: "repeat", icon: repeat_icon, label: "循环播放" },
   { mode: "repeat_one", icon: repeat_one_icon, label: "单曲循环" },
 ];
-
-const current_track = computed(() =>
-  tracks.value.find((track) => track.path === status.value.path),
-);
 
 const tracks_by_id = computed(() => new Map(tracks.value.map((track) => [track.id, track])));
 
@@ -382,6 +372,7 @@ async function scan_directory(directories: string[]) {
     const result = await invoke<LibraryRefreshResult>("reload_music_library", { dirs: directories });
     library_loaded.value = true;
     player_queue.set_library_tracks(result.tracks);
+    playback_store.set_library_tracks(result.tracks);
     playlists.value = result.playlists;
     play_statistics.value = result.play_statistics;
     ensure_selected_playlist();
@@ -480,6 +471,7 @@ async function load_startup_state() {
     restoring_player_cache = true;
     library_loaded.value = startup.tracks.length > 0;
     player_queue.set_library_tracks(startup.tracks);
+    playback_store.set_library_tracks(startup.tracks);
     selected_directories.value = startup.config.music_directory;
     ensure_selected_playlist();
     const restored_player_cache = restore_player_cache();
@@ -498,19 +490,13 @@ async function load_startup_state() {
 
 async function apply_config_state(config: AppConfig) {
   sidebar_width.value = clamp_sidebar_width(config.state.sidebar_width);
-  status.value = {
-    ...status.value,
-    volume: config.state.volume,
-  };
+  playback_store.patch_status({ volume: config.state.volume });
 
   void invoke<PlaybackStatus>("set_volume", {
     volume: config.state.volume,
   })
     .then((next_status) => {
-      status.value = {
-        ...status.value,
-        volume: next_status.volume,
-      };
+      playback_store.patch_status({ volume: next_status.volume });
     })
     .catch((error) => {
       console.warn("无法同步配置音量", error);
@@ -736,6 +722,7 @@ function update_progress_preview(event: PointerEvent) {
   const ratio = Math.min(Math.max((event.clientX - rect.left) / rect.width, 0), 1);
   progress_preview_percent = ratio * 100;
   progress_preview_seconds = Math.round(duration * ratio);
+  set_visual_elapsed(progress_preview_seconds);
   render_progress(progress_preview_percent, progress_preview_seconds);
 }
 
@@ -745,10 +732,7 @@ async function commit_progress_seek(seconds = progress_preview_seconds) {
 
   const target_seconds = Math.min(Math.max(seconds, 0), duration);
   if (restored_playback_pending && !status.value.playing) {
-    status.value = {
-      ...status.value,
-      elapsed: target_seconds,
-    };
+    playback_store.patch_status({ elapsed: target_seconds });
     sync_visual_elapsed(status.value);
     save_player_cache();
     return;
@@ -766,7 +750,7 @@ async function commit_progress_seek(seconds = progress_preview_seconds) {
 
 function begin_progress_drag(event: PointerEvent) {
   if (!current_track.value?.duration) return;
-  progress_dragging.value = true;
+  playback_store.set_progress_dragging(true);
   progress_drag_rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
   update_progress_preview(event);
   (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
@@ -782,13 +766,13 @@ async function end_progress_drag(event: PointerEvent) {
   update_progress_preview(event);
   (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
   progress_drag_rect = null;
-  progress_dragging.value = false;
+  playback_store.set_progress_dragging(false);
   await commit_progress_seek(progress_preview_seconds);
 }
 
 function cancel_progress_drag(event: PointerEvent) {
   if (!progress_dragging.value) return;
-  progress_dragging.value = false;
+  playback_store.set_progress_dragging(false);
   progress_drag_rect = null;
   (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
   render_progress(progress_percent_for(visual_elapsed), visual_elapsed);
@@ -804,7 +788,7 @@ function start_status_polling() {
 }
 
 function apply_playback_status(next_status: PlaybackStatus) {
-  status.value = next_status;
+  playback_store.set_status(next_status);
   player_queue.set_current_track_path(next_status.path);
   if (hold_pending_seek_progress(next_status)) {
     save_player_cache();
@@ -882,11 +866,11 @@ function update_progress_frame(now: number) {
     const base_elapsed = pending_seek_seconds ?? status.value.elapsed;
     const started_at = pending_seek_seconds === null ? progress_sync_started_at : pending_seek_started_at;
     const elapsed = base_elapsed + (now - started_at) / 1000;
-    set_visual_elapsed(Math.min(elapsed, duration));
     if (!progress_dragging.value) {
+      set_visual_elapsed(Math.min(elapsed, duration));
       render_progress(progress_percent_for(visual_elapsed), visual_elapsed);
     }
-    if (visual_elapsed >= duration) {
+    if (!progress_dragging.value && visual_elapsed >= duration) {
       void handle_playback_completion({
         ...status.value,
         playing: false,
@@ -906,7 +890,7 @@ function update_progress_frame(now: number) {
 
 function set_visual_elapsed(seconds: number) {
   visual_elapsed = seconds;
-  visual_elapsed_seconds.value = seconds;
+  playback_store.set_visual_elapsed(seconds);
 }
 
 function progress_percent_for(seconds: number) {
@@ -998,12 +982,12 @@ function restore_player_cache() {
 
     const elapsed = Math.min(Math.max(cache.elapsed ?? 0, 0), restored_track.duration ?? cache.elapsed ?? 0);
     restored_playback_pending = true;
-    status.value = {
+    playback_store.set_status({
       path: restored_track.path,
       playing: false,
       volume: status.value.volume,
       elapsed,
-    };
+    });
     player_queue.set_current_track_path(restored_track.path);
     sync_visual_elapsed(status.value);
     return true;

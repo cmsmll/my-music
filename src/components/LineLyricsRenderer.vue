@@ -18,6 +18,7 @@ const props = withDefaults(defineProps<{
 });
 
 const active_line = ref<HTMLElement | null>(null);
+const lyrics_viewport = ref<HTMLElement | null>(null);
 
 const lyric_lines = computed(() => {
   const parsed: LineLyricItem[] = [];
@@ -88,20 +89,36 @@ const active_index = computed(() => {
       break;
     }
   }
-  return index;
+  if (index >= 0) return index;
+  return lyric_lines.value.findIndex((line) => line.time !== null);
 });
 
-watch(active_index, async () => {
+async function scroll_active_line(behavior: ScrollBehavior = "smooth") {
   await nextTick();
   active_line.value?.scrollIntoView({
     block: "center",
-    behavior: "smooth",
+    behavior,
   });
+}
+
+watch(active_index, () => {
+  void scroll_active_line();
+});
+
+watch(lyric_lines, async () => {
+  await nextTick();
+  if (active_line.value) {
+    await scroll_active_line("auto");
+    return;
+  }
+  if (lyrics_viewport.value) {
+    lyrics_viewport.value.scrollTop = 0;
+  }
 });
 </script>
 
 <template>
-  <section class="line_lyrics_renderer" aria-label="歌词">
+  <section ref="lyrics_viewport" class="line_lyrics_renderer" aria-label="歌词">
     <p v-if="loading" class="line_lyrics_state">正在读取歌词...</p>
     <template v-else>
       <p
@@ -122,11 +139,9 @@ watch(active_index, async () => {
 
 <style scoped>
 .line_lyrics_renderer {
-  display: grid;
-  align-content: center;
-  justify-items: center;
-  gap: 18px;
   height: min(44vh, 430px);
+  box-sizing: border-box;
+  padding: min(18vh, 180px) 0;
   overflow-y: auto;
   color: rgba(245, 246, 248, 0.48);
   font-size: clamp(1.2rem, 1.6vw, 1.7rem);
@@ -143,7 +158,7 @@ watch(active_index, async () => {
 .line_lyrics_row,
 .line_lyrics_state {
   max-width: min(100%, 760px);
-  margin: 0;
+  margin: 0 auto 18px;
   overflow-wrap: anywhere;
   transition:
     color 180ms ease,

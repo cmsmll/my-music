@@ -10,12 +10,15 @@ import volume_icon from "../assets/icons/volume.svg";
 import type { PlaybackModeItem, PlaybackStatus, Track } from "../types/music";
 import { cover_src, display_artist, display_title, format_duration, icon_style } from "../utils/track";
 
-defineProps<{
+withDefaults(defineProps<{
   current_track?: Track | null;
   status: PlaybackStatus;
   progress_dragging: boolean;
   playback_mode_button: PlaybackModeItem;
-}>();
+  show_cover?: boolean;
+}>(), {
+  show_cover: true,
+});
 
 const emit = defineEmits<{
   begin_progress_drag: [event: PointerEvent];
@@ -28,6 +31,7 @@ const emit = defineEmits<{
   open_queue: [];
   cycle_playback_mode: [];
   change_volume: [event: Event];
+  open_now_playing: [];
 }>();
 
 const progress_fill_element = ref<HTMLElement | null>(null);
@@ -76,10 +80,19 @@ defineExpose({ render_progress });
     </div>
 
     <div class="now_track">
-      <span class="player_cover" :class="{ spinning_cover: status.playing && current_track }">
-        <img v-if="current_track?.cover_cache_path" :src="cover_src(current_track)" alt="" />
-        <span v-else>♪</span>
-      </span>
+      <button
+        v-if="show_cover"
+        class="player_cover_button"
+        type="button"
+        title="打开播放页"
+        :disabled="!current_track"
+        @click="emit('open_now_playing')"
+      >
+        <span class="player_cover" :class="{ spinning_cover: status.playing && current_track }">
+          <img v-if="current_track?.cover_cache_path" :src="cover_src(current_track)" alt="" />
+          <span v-else>♪</span>
+        </span>
+      </button>
       <span class="now_text">
         <strong>{{ display_title(current_track) }}</strong>
         <small>{{ display_artist(current_track) }}</small>
@@ -269,6 +282,22 @@ defineExpose({ render_progress });
     #21242b;
   font-size: 1.8rem;
   font-weight: 900;
+}
+
+.player_cover_button {
+  display: grid;
+  width: 62px;
+  height: 62px;
+  place-items: center;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.player_cover_button:disabled {
+  cursor: default;
 }
 
 .player_cover img {

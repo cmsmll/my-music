@@ -147,6 +147,24 @@ pub(crate) fn get_playlist_bundle(
     load_playlist_bundle(&config)
 }
 
+/// 读取歌曲歌词缓存文本，文件不存在或路径为空时返回空值。
+#[tauri::command]
+pub(crate) fn read_lyrics_cache(path: String) -> Result<Option<String>, String> {
+    let trimmed_path = path.trim();
+    if trimmed_path.is_empty() {
+        return Ok(None);
+    }
+
+    let path = PathBuf::from(trimmed_path);
+    if !path.is_file() {
+        return Ok(None);
+    }
+
+    fs::read_to_string(&path)
+        .map(Some)
+        .map_err(|err| format!("无法读取歌词缓存: {err}"))
+}
+
 fn empty_playlist_bundle() -> PlaylistBundle {
     PlaylistBundle {
         recent: empty_playlist("recent", "最近播放", "recent"),

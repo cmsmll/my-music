@@ -51,6 +51,7 @@ pub fn run() {
             commands::register_media_shortcuts,
             commands::run_decoder,
             commands::get_playlist_bundle,
+            commands::read_lyrics_cache,
             commands::add_track_to_playlist,
             commands::remove_track_from_playlist,
             commands::create_user_playlist,

@@ -55,6 +55,7 @@ import { display_album, display_artist, is_missing_track } from "./utils/track";
 
 const ConfirmDialog = defineAsyncComponent(() => import("./components/ConfirmDialog.vue"));
 const LibraryScanDialog = defineAsyncComponent(() => import("./components/LibraryScanDialog.vue"));
+const NowPlayingPage = defineAsyncComponent(() => import("./components/NowPlayingPage.vue"));
 const PlaybackQueuePanel = defineAsyncComponent(
   () => import("./components/PlaybackQueuePanel.vue"),
 );
@@ -117,6 +118,7 @@ const selected_album = ref("");
 const selected_playlist_id = ref("my_playlist");
 const settings_open = ref(false);
 const playback_queue_open = ref(false);
+const now_playing_open = ref(false);
 const locate_playing_track_request = ref(0);
 const track_context_menu = ref<TrackContextMenuState | null>(null);
 const track_detail_dialog = ref<Track | null>(null);
@@ -1754,11 +1756,37 @@ watch([current_queue, queue_source, playback_mode], () => {
     </ContextMenu>
 
     <PlayerBar
+      v-if="!now_playing_open"
       ref="player_bar"
       :current_track="current_track"
       :status="status"
       :progress_dragging="progress_dragging"
       :playback_mode_button="playback_mode_button"
+      @begin_progress_drag="begin_progress_drag"
+      @drag_progress="drag_progress"
+      @end_progress_drag="end_progress_drag"
+      @cancel_progress_drag="cancel_progress_drag"
+      @previous_track="previous_track"
+      @toggle_playback="toggle_playback"
+      @next_track="next_track"
+      @open_queue="playback_queue_open = true"
+      @cycle_playback_mode="cycle_playback_mode"
+      @change_volume="change_volume"
+      @open_now_playing="now_playing_open = true"
+    />
+
+    <NowPlayingPage
+      v-if="now_playing_open"
+      ref="player_bar"
+      :current_track="current_track"
+      :status="status"
+      :progress_dragging="progress_dragging"
+      :playback_mode_button="playback_mode_button"
+      @close="now_playing_open = false"
+      @start_window_drag="start_window_drag"
+      @minimize_window="minimize_window"
+      @toggle_maximize_window="toggle_maximize_window"
+      @close_window="close_window"
       @begin_progress_drag="begin_progress_drag"
       @drag_progress="drag_progress"
       @end_progress_drag="end_progress_drag"

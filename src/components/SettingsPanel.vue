@@ -332,7 +332,7 @@ async function choose_cache_path(entry: CacheEntry) {
           <p>配置文件内容</p>
         </div>
         <button
-          class="tool_button"
+          class="tool_button hover_border_control"
           type="button"
           title="关闭设置"
           @click="emit('close')"
@@ -380,7 +380,7 @@ async function choose_cache_path(entry: CacheEntry) {
                 >
                   <p>{{ directory }}</p>
                   <button
-                    class="settings_delete_button"
+                    class="settings_delete_button hover_border_control"
                     type="button"
                     title="删除音乐目录"
                     @click="remove_music_directory(directory)"
@@ -408,7 +408,7 @@ async function choose_cache_path(entry: CacheEntry) {
                     readonly
                   />
                   <button
-                    class="settings_default_button"
+                    class="settings_default_button hover_border_control"
                     type="button"
                     title="恢复默认输出目录"
                     @click="reset_decoder_output_directory"
@@ -416,7 +416,7 @@ async function choose_cache_path(entry: CacheEntry) {
                     <span class="svg_icon" :style="icon_style(system_icon)" />
                   </button>
                   <button
-                    class="settings_file_button"
+                    class="settings_file_button hover_border_control"
                     type="button"
                     title="选择输出目录"
                     @click="choose_decoder_output_directory"
@@ -456,7 +456,7 @@ async function choose_cache_path(entry: CacheEntry) {
                 >
                   <p>{{ directory }}</p>
                   <button
-                    class="settings_delete_button"
+                    class="settings_delete_button hover_border_control"
                     type="button"
                     title="删除加密音频目录"
                     @click="remove_decoder_directory(directory)"
@@ -480,7 +480,7 @@ async function choose_cache_path(entry: CacheEntry) {
                 <div class="settings_input_row">
                   <input :value="cache_entry_value(entry)" readonly />
                   <button
-                    class="settings_default_button"
+                    class="settings_default_button hover_border_control"
                     type="button"
                     :title="`恢复默认${entry.title}`"
                     @click="reset_cache_entry(entry)"
@@ -488,7 +488,7 @@ async function choose_cache_path(entry: CacheEntry) {
                     <span class="svg_icon" :style="icon_style(system_icon)" />
                   </button>
                   <button
-                    class="settings_file_button"
+                    class="settings_file_button hover_border_control"
                     type="button"
                     :title="`选择${entry.title}`"
                     @click="choose_cache_path(entry)"
@@ -514,7 +514,7 @@ async function choose_cache_path(entry: CacheEntry) {
                 <div class="settings_input_row">
                   <input :value="background_color" readonly />
                   <button
-                    class="settings_default_button"
+                    class="settings_default_button hover_border_control"
                     type="button"
                     title="恢复默认背景颜色"
                     @click="reset_background_color"
@@ -534,7 +534,7 @@ async function choose_cache_path(entry: CacheEntry) {
                 <div class="settings_input_row">
                   <input :value="title_color" readonly />
                   <button
-                    class="settings_default_button"
+                    class="settings_default_button hover_border_control"
                     type="button"
                     title="恢复默认标题颜色"
                     @click="reset_title_color"
@@ -554,7 +554,7 @@ async function choose_cache_path(entry: CacheEntry) {
                 <div class="settings_input_row">
                   <input :value="subtitle_color" readonly />
                   <button
-                    class="settings_default_button"
+                    class="settings_default_button hover_border_control"
                     type="button"
                     title="恢复默认副标题颜色"
                     @click="reset_subtitle_color"
@@ -574,7 +574,7 @@ async function choose_cache_path(entry: CacheEntry) {
                 <div class="settings_input_row">
                   <input :value="highlight_color" readonly />
                   <button
-                    class="settings_default_button"
+                    class="settings_default_button hover_border_control"
                     type="button"
                     title="恢复默认高亮色"
                     @click="reset_highlight_color"
@@ -617,7 +617,7 @@ async function choose_cache_path(entry: CacheEntry) {
                     readonly
                   />
                   <button
-                    class="settings_default_button"
+                    class="settings_default_button hover_border_control"
                     type="button"
                     title="恢复默认背景图片"
                     @click="reset_background_image"
@@ -625,7 +625,7 @@ async function choose_cache_path(entry: CacheEntry) {
                     <span class="svg_icon" :style="icon_style(system_icon)" />
                   </button>
                   <button
-                    class="settings_file_button"
+                    class="settings_file_button hover_border_control"
                     type="button"
                     title="选择背景图片"
                     @click="choose_background_image"
@@ -647,7 +647,7 @@ async function choose_cache_path(entry: CacheEntry) {
                     title="调节背景图片透明度"
                   />
                   <button
-                    class="settings_default_button"
+                    class="settings_default_button hover_border_control"
                     type="button"
                     title="恢复默认背景图片透明度"
                     @click="reset_background_image_opacity"

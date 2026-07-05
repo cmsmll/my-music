@@ -1963,14 +1963,6 @@ p {
   background: transparent;
 }
 
-.tool_button:hover,
-.window_button:hover,
-.player_tools button:hover,
-.control_row button:hover {
-  border-color: var(--theme-title-color, #1e2026);
-  color: var(--theme-title-color, #1e2026);
-  background: transparent;
-}
 
 .tool_button .svg_icon,
 .window_button .svg_icon,
@@ -1978,6 +1970,12 @@ p {
 .control_row .svg_icon {
   width: 20px;
   height: 20px;
+}
+
+.hover_border_control:hover {
+  border-color: var(--theme-title-color, #1e2026);
+  color: var(--theme-title-color, #1e2026);
+  background: transparent;
 }
 
 .content_area {
@@ -2964,11 +2962,6 @@ p {
   place-items: center;
 }
 
-.settings_default_button:hover {
-  border-color: var(--theme-title-color, #1e2026);
-  color: var(--theme-title-color, #1e2026);
-  background: transparent;
-}
 
 .settings_file_button,
 .settings_delete_button {
@@ -2977,17 +2970,6 @@ p {
   place-items: center;
 }
 
-.settings_file_button:hover {
-  border-color: var(--theme-title-color, #1e2026);
-  color: var(--theme-title-color, #1e2026);
-  background: transparent;
-}
-
-.settings_delete_button:hover {
-  border-color: var(--theme-title-color, #1e2026);
-  color: var(--theme-title-color, #1e2026);
-  background: transparent;
-}
 
 .settings_default_button .svg_icon,
 .settings_file_button .svg_icon,

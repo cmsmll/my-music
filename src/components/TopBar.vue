@@ -39,27 +39,27 @@ const emit = defineEmits<{
     </label>
 
     <div class="toolbar">
-      <button class="tool_button" type="button" title="解码" @click="emit('open_tools')">
+      <button class="tool_button hover_border_control" type="button" title="解码" @click="emit('open_tools')">
         <span class="svg_icon" :style="icon_style(tools_icon)" />
       </button>
-      <button class="tool_button" type="button" title="重载" @click="emit('reload_library')">
+      <button class="tool_button hover_border_control" type="button" title="重载" @click="emit('reload_library')">
         <span class="svg_icon" :style="icon_style(refresh_icon)" />
       </button>
-      <button class="tool_button" type="button" title="设置" @click="emit('open_settings')">
+      <button class="tool_button hover_border_control" type="button" title="设置" @click="emit('open_settings')">
         <span class="svg_icon" :style="icon_style(settings_icon)" />
       </button>
-      <button class="window_button" type="button" title="最小化" @click="emit('minimize_window')">
+      <button class="window_button hover_border_control" type="button" title="最小化" @click="emit('minimize_window')">
         <span class="svg_icon" :style="icon_style(minimize_icon)" />
       </button>
       <button
-        class="window_button"
+        class="window_button hover_border_control"
         type="button"
         title="最大化"
         @click="emit('toggle_maximize_window')"
       >
         <span class="svg_icon" :style="icon_style(maximize_icon)" />
       </button>
-      <button class="window_button close" type="button" title="关闭" @click="emit('close_window')">
+      <button class="window_button close hover_border_control" type="button" title="关闭" @click="emit('close_window')">
         <span class="svg_icon" :style="icon_style(x_icon)" />
       </button>
     </div>

@@ -88,23 +88,24 @@ defineExpose({ render_progress });
 
     <div class="player_center">
       <div class="control_row">
-        <button type="button" title="上一首" @click="emit('previous_track')">
+        <button class="hover_border_control" type="button" title="上一首" @click="emit('previous_track')">
           <span class="svg_icon" :style="icon_style(previous_icon)" />
         </button>
-        <button class="play_button" type="button" title="播放或暂停" @click="emit('toggle_playback')">
+        <button class="play_button hover_border_control" type="button" title="播放或暂停" @click="emit('toggle_playback')">
           <span class="svg_icon" :style="icon_style(status.playing ? pause_icon : play_icon)" />
         </button>
-        <button type="button" title="下一首" @click="emit('next_track')">
+        <button class="hover_border_control" type="button" title="下一首" @click="emit('next_track')">
           <span class="svg_icon" :style="icon_style(next_icon)" />
         </button>
       </div>
     </div>
 
     <div class="player_tools">
-      <button type="button" title="播放队列" @click="emit('open_queue')">
+      <button class="hover_border_control" type="button" title="播放队列" @click="emit('open_queue')">
         <span class="svg_icon" :style="icon_style(playlist_icon)" />
       </button>
       <button
+        class="hover_border_control"
         type="button"
         :title="playback_mode_button.label"
         :aria-label="playback_mode_button.label"
@@ -112,7 +113,7 @@ defineExpose({ render_progress });
       >
         <span class="svg_icon" :style="icon_style(playback_mode_button.icon)" />
       </button>
-      <button type="button" title="桌面歌词">
+      <button class="hover_border_control" type="button" title="桌面歌词">
         <span class="svg_icon" :style="icon_style(lyrics_copy_icon)" />
       </button>
       <span class="volume_icon svg_icon" :style="icon_style(volume_icon)" />
@@ -322,12 +323,6 @@ defineExpose({ render_progress });
 .control_row .play_button .svg_icon {
   width: 19px;
   height: 19px;
-}
-
-.control_row .play_button:hover {
-  border-color: var(--theme-title-color, #1e2026);
-  color: var(--theme-title-color, #1e2026);
-  background: transparent;
 }
 
 .player_tools {

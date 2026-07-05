@@ -416,6 +416,7 @@ defineExpose({ render_progress });
           :elapsed="visual_elapsed"
           :loading="lyrics_loading"
           :placeholder="lyric_placeholder"
+          :seeking="progress_dragging"
         />
       </section>
 

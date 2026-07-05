@@ -12,13 +12,16 @@ const props = withDefaults(defineProps<{
   elapsed: number;
   loading?: boolean;
   placeholder?: string[];
+  seeking?: boolean;
 }>(), {
   loading: false,
   placeholder: () => ["暂未获取到歌词"],
+  seeking: false,
 });
 
 const active_line = ref<HTMLElement | null>(null);
 const lyrics_viewport = ref<HTMLElement | null>(null);
+const last_scroll_elapsed = ref(0);
 
 const lyric_lines = computed(() => {
   const parsed: LineLyricItem[] = [];
@@ -101,8 +104,12 @@ async function scroll_active_line(behavior: ScrollBehavior = "smooth") {
   });
 }
 
-watch(active_index, () => {
-  void scroll_active_line();
+watch(active_index, (current, previous) => {
+  const elapsed_jump = Math.abs(props.elapsed - last_scroll_elapsed.value) > 1.2;
+  const line_jump = previous >= 0 && current >= 0 && Math.abs(current - previous) > 1;
+  const behavior = props.seeking || elapsed_jump || line_jump ? "auto" : "smooth";
+  last_scroll_elapsed.value = props.elapsed;
+  void scroll_active_line(behavior);
 });
 
 watch(lyric_lines, async () => {

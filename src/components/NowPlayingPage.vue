@@ -41,6 +41,7 @@ const emit = defineEmits<{
 const player_bar = ref<PlayerBarExpose | null>(null);
 const lyrics_loading = ref(false);
 const lyrics_lines = ref<string[]>([]);
+const compact_panel = ref<"record" | "lyrics">("record");
 
 const lyric_placeholder = [
   "暂未获取到歌词",
@@ -128,7 +129,17 @@ defineExpose({ render_progress });
     </header>
 
     <main class="now_playing_content">
-      <section class="record_stage" aria-label="歌曲封面">
+      <button
+        class="compact_switch compact_switch_record"
+        :class="{ active: compact_panel === 'record' }"
+        type="button"
+        title="唱片"
+        @click="compact_panel = 'record'"
+      >
+        唱片
+      </button>
+
+      <section class="record_stage" :class="{ compact_active: compact_panel === 'record' }" aria-label="歌曲封面">
         <div class="tonearm" :class="{ tonearm_playing: status.playing && current_track }">
           <img :src="tonearm_icon" alt="" />
         </div>
@@ -141,7 +152,7 @@ defineExpose({ render_progress });
         </div>
       </section>
 
-      <section class="now_playing_info">
+      <section class="now_playing_info" :class="{ compact_active: compact_panel === 'lyrics' }">
         <div class="track_identity">
           <h1>{{ display_title(current_track) }}</h1>
           <p>
@@ -169,6 +180,16 @@ defineExpose({ render_progress });
           </p>
         </div>
       </section>
+
+      <button
+        class="compact_switch compact_switch_lyrics"
+        :class="{ active: compact_panel === 'lyrics' }"
+        type="button"
+        title="歌词"
+        @click="compact_panel = 'lyrics'"
+      >
+        歌词
+      </button>
     </main>
 
     <PlayerBar
@@ -258,6 +279,10 @@ defineExpose({ render_progress });
   padding: 0 clamp(58px, 9vw, 150px) 20px;
 }
 
+.compact_switch {
+  display: none;
+}
+
 .record_stage {
   align-self: center;
   justify-self: center;
@@ -330,7 +355,7 @@ defineExpose({ render_progress });
   align-self: start;
   justify-self: center;
   z-index: 2;
-  --tonearm-x: 0%;
+  --tonearm-x: 12%;
   --tonearm-y: -8%;
   --tonearm-rest-angle: -10deg;
   --tonearm-play-angle: 30deg;
@@ -475,12 +500,76 @@ defineExpose({ render_progress });
   accent-color: rgba(245, 246, 248, 0.78);
 }
 
-@media (max-width: 980px) {
+@media (max-width: 1120px) {
   .now_playing_content {
-    grid-template-columns: 1fr;
-    align-content: start;
-    overflow-y: auto;
-    padding: 0 32px 24px;
+    grid-template-columns: 46px minmax(0, 1fr) 46px;
+    grid-template-areas: "record_switch compact_panel lyrics_switch";
+    align-content: center;
+    align-items: center;
+    gap: 12px;
+    overflow: hidden;
+    padding: 0 18px 24px;
+  }
+
+  .compact_switch {
+    display: grid;
+    width: 38px;
+    min-width: 0;
+    height: 76px;
+    place-items: center;
+    border: 1px solid rgba(245, 246, 248, 0.24);
+    border-radius: 20px;
+    padding: 0;
+    color: rgba(245, 246, 248, 0.72);
+    background: rgba(255, 255, 255, 0.07);
+    font-size: 0.82rem;
+    font-weight: 900;
+    line-height: 1;
+    opacity: 0;
+    pointer-events: none;
+    transition:
+      opacity 180ms ease,
+      border-color 180ms ease,
+      color 180ms ease;
+    writing-mode: vertical-rl;
+    cursor: pointer;
+  }
+
+  .now_playing_content:hover .compact_switch,
+  .compact_switch:focus-visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .compact_switch.active {
+    border-color: rgba(245, 246, 248, 0.72);
+    color: #ffffff;
+  }
+
+  .compact_switch_record {
+    grid-area: record_switch;
+  }
+
+  .compact_switch_lyrics {
+    grid-area: lyrics_switch;
+  }
+
+  .record_stage,
+  .now_playing_info {
+    display: none;
+    grid-area: compact_panel;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .record_stage.compact_active,
+  .now_playing_info.compact_active {
+    display: grid;
+  }
+
+  .record_stage {
+    justify-self: center;
+    width: min(72vw, 350px);
   }
 
   .record_disc {

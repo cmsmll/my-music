@@ -18,19 +18,19 @@ const emit = defineEmits<{
 }>();
 
 const track_details = computed(() => {
-  const metadata = props.track.metadata;
   return [
     ["歌曲", display_title(props.track)],
     ["歌手", display_artist(props.track)],
     ["专辑", display_album(props.track)],
     ["时长", format_duration(props.track.duration)],
     ["文件大小", format_file_size(props.track.file_size)],
-    ["码率", metadata.bitrate ? `${metadata.bitrate} kbps` : "--"],
-    ["采样率", metadata.sample_rate ? `${metadata.sample_rate} Hz` : "--"],
+    ["码率", props.track.bitrate ? `${props.track.bitrate} kbps` : "--"],
+    ["采样率", props.track.sample_rate ? `${props.track.sample_rate} Hz` : "--"],
     ["文件路径", props.track.path || "--"],
     ["封面缓存", props.track.cover_cache_path || "--"],
     ["歌词缓存", props.track.lyrics_cache_path || "--"],
-    ["元数据来源", metadata.metadata_source],
+    ["歌词哈希", props.track.lyrics_cache_hash || "--"],
+    ["元数据来源", props.track.metadata_source],
   ];
 });
 

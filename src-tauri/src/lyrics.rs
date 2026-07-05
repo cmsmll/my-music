@@ -37,6 +37,7 @@ impl LyricsSearchService {
         album: String,
         duration: Option<u64>,
         lyrics_cache_path: String,
+        lyrics_cache_hash: Option<String>,
     ) -> Result<LyricsSearchResponse, String> {
         let title = title.trim().to_string();
         if title.is_empty() || title == "未知歌曲" {
@@ -47,7 +48,14 @@ impl LyricsSearchService {
         let album = known_value(&album, "未知专辑");
         let cache_key = cache_key(&title, artist.as_deref(), album.as_deref(), duration);
         let lyrix = self.lyrix.clone();
-        let current_hash = current_lyrics_hash(&lyrics_cache_path)?;
+        let current_hash = match lyrics_cache_hash
+            .as_deref()
+            .map(str::trim)
+            .filter(|hash| !hash.is_empty())
+        {
+            Some(hash) => Some(hash.to_string()),
+            None => current_lyrics_hash(&lyrics_cache_path)?,
+        };
 
         let results = self
             .cache
@@ -90,6 +98,7 @@ impl LyricsSearchService {
             lyrics_cache_path: path.to_string_lossy().to_string(),
             lyrics_hash,
             lyrics,
+            track: None,
         })
     }
 }
@@ -252,7 +261,7 @@ fn known_value(value: &str, unknown_value: &str) -> Option<String> {
     (!value.is_empty() && value != unknown_value).then(|| value.to_string())
 }
 
-fn current_lyrics_hash(lyrics_cache_path: &str) -> Result<Option<String>, String> {
+pub(crate) fn current_lyrics_hash(lyrics_cache_path: &str) -> Result<Option<String>, String> {
     let lyrics_cache_path = lyrics_cache_path.trim();
     if lyrics_cache_path.is_empty() {
         return Ok(None);
@@ -280,12 +289,12 @@ fn current_lyrics_hash(lyrics_cache_path: &str) -> Result<Option<String>, String
     Ok(Some(hash))
 }
 
-fn lyrics_hash(lyrics: &str) -> String {
+pub(crate) fn lyrics_hash(lyrics: &str) -> String {
     let digest = Sha256::digest(lyrics.trim().as_bytes());
     digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-fn write_hash_sidecar(lyrics_path: &Path, hash: &str) -> Result<(), String> {
+pub(crate) fn write_hash_sidecar(lyrics_path: &Path, hash: &str) -> Result<(), String> {
     let hash_path = hash_sidecar_path(lyrics_path);
     if let Some(parent) = hash_path.parent() {
         fs::create_dir_all(parent).map_err(|err| format!("无法创建歌词哈希目录: {err}"))?;

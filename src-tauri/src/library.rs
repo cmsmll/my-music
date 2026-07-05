@@ -1,4 +1,5 @@
 use crate::config::ConfigManager;
+use crate::lyrics::{current_lyrics_hash, lyrics_hash, write_hash_sidecar};
 use crate::models::{
     AppConfig, LibraryCache, MetadataSource, Track, TrackCacheEntries, TrackMetadata,
 };
@@ -44,7 +45,7 @@ pub(crate) fn load_or_scan_all_directories(
             tracks
         };
 
-        if fill_missing_file_sizes(&mut tracks) {
+        if fill_missing_track_cache_info(&mut tracks) {
             let _ = write_library_cache(&cache_path, dir, config, &tracks);
         }
 
@@ -76,7 +77,12 @@ pub(crate) fn load_cached_all_directories(
         }
 
         match read_library_cache(&cache_path) {
-            Ok(mut tracks) => all_tracks.append(&mut tracks),
+            Ok(mut tracks) => {
+                if fill_missing_track_cache_info(&mut tracks) {
+                    let _ = write_library_cache(&cache_path, dir, config, &tracks);
+                }
+                all_tracks.append(&mut tracks);
+            }
             Err(err) => eprintln!("读取启动曲库缓存失败: {err}"),
         }
     }
@@ -155,24 +161,76 @@ pub(crate) fn track_from_path(path: &Path, config: &AppConfig) -> Track {
         path: path.to_string_lossy().to_string(),
         duration: metadata.duration,
         file_size: fs::metadata(path).ok().map(|metadata| metadata.len()),
+        bitrate: metadata.bitrate,
+        sample_rate: metadata.sample_rate,
+        year: metadata.year,
+        genre: metadata.genre,
+        track_number: metadata.track_number,
+        disk_number: metadata.disk_number,
         cover_cache_path: metadata.cover_cache_path.clone(),
         lyrics_cache_path: metadata.lyrics_cache_path.clone(),
-        metadata,
+        lyrics_cache_hash: metadata.lyrics_cache_hash,
+        metadata_source: metadata.metadata_source,
+        legacy_metadata: None,
     }
 }
 
-fn fill_missing_file_sizes(tracks: &mut [Track]) -> bool {
+fn fill_missing_track_cache_info(tracks: &mut [Track]) -> bool {
     let mut changed = false;
     for track in tracks {
-        if track.file_size.is_some() {
-            continue;
+        if let Some(metadata) = track.legacy_metadata.take() {
+            promote_legacy_metadata(track, metadata);
+            changed = true;
         }
-        track.file_size = fs::metadata(&track.path)
-            .ok()
-            .map(|metadata| metadata.len());
-        changed = true;
+
+        if track.file_size.is_none() {
+            track.file_size = fs::metadata(&track.path)
+                .ok()
+                .map(|metadata| metadata.len());
+            changed = true;
+        }
+
+        if track.lyrics_cache_hash.trim().is_empty() {
+            if let Ok(Some(hash)) = current_lyrics_hash(&track.lyrics_cache_path) {
+                track.lyrics_cache_hash = hash;
+                changed = true;
+            }
+        }
     }
     changed
+}
+
+fn promote_legacy_metadata(track: &mut Track, metadata: TrackMetadata) {
+    if track.bitrate.is_none() {
+        track.bitrate = metadata.bitrate;
+    }
+    if track.sample_rate.is_none() {
+        track.sample_rate = metadata.sample_rate;
+    }
+    if track.year.is_none() {
+        track.year = metadata.year;
+    }
+    if track.genre.is_empty() {
+        track.genre = metadata.genre;
+    }
+    if track.track_number.is_none() {
+        track.track_number = metadata.track_number;
+    }
+    if track.disk_number.is_none() {
+        track.disk_number = metadata.disk_number;
+    }
+    if track.cover_cache_path.is_none() {
+        track.cover_cache_path = metadata.cover_cache_path;
+    }
+    if track.lyrics_cache_path.trim().is_empty() {
+        track.lyrics_cache_path = metadata.lyrics_cache_path;
+    }
+    if track.lyrics_cache_hash.trim().is_empty() {
+        track.lyrics_cache_hash = metadata.lyrics_cache_hash;
+    }
+    if matches!(track.metadata_source, MetadataSource::Filename) {
+        track.metadata_source = metadata.metadata_source;
+    }
 }
 
 pub(crate) fn parse_track_metadata(path: &Path, config: &AppConfig) -> TrackMetadata {
@@ -190,6 +248,10 @@ pub(crate) fn parse_track_metadata(path: &Path, config: &AppConfig) -> TrackMeta
         .to_string();
     let (fallback_artist, fallback_title) = parse_artist_and_title(file_name);
     let lyrics_cache_path = lyrics_cache_path(path, config);
+    let lyrics_cache_hash = current_lyrics_hash(&lyrics_cache_path)
+        .ok()
+        .flatten()
+        .unwrap_or_default();
 
     let Ok(tagged_file) = Probe::open(path).and_then(|probe| probe.read()) else {
         return TrackMetadata {
@@ -205,6 +267,7 @@ pub(crate) fn parse_track_metadata(path: &Path, config: &AppConfig) -> TrackMeta
             disk_number: None,
             cover_cache_path: None,
             lyrics_cache_path,
+            lyrics_cache_hash,
             metadata_source: MetadataSource::Filename,
         };
     };
@@ -232,10 +295,12 @@ pub(crate) fn parse_track_metadata(path: &Path, config: &AppConfig) -> TrackMeta
     };
 
     let cover_cache_path = tag.and_then(|tag| cache_cover(tag, path, config));
-    let lyrics_cache_path = tag
+    let cached_lyrics = tag
         .and_then(extract_embedded_lyrics)
-        .and_then(|lyrics| cache_lyrics(&lyrics, &lyrics_cache_path).ok())
-        .unwrap_or(lyrics_cache_path);
+        .and_then(|lyrics| cache_lyrics(&lyrics, &lyrics_cache_path).ok());
+    let (lyrics_cache_path, lyrics_cache_hash) = cached_lyrics
+        .map(|cached| (cached.path, cached.hash))
+        .unwrap_or((lyrics_cache_path, lyrics_cache_hash));
 
     TrackMetadata {
         title: embedded_title.unwrap_or(fallback_title),
@@ -254,6 +319,7 @@ pub(crate) fn parse_track_metadata(path: &Path, config: &AppConfig) -> TrackMeta
         disk_number: tag.and_then(|tag| tag.disk()),
         cover_cache_path,
         lyrics_cache_path,
+        lyrics_cache_hash,
         metadata_source,
     }
 }
@@ -292,13 +358,61 @@ pub(crate) fn extract_embedded_lyrics(tag: &lofty::tag::Tag) -> Option<String> {
         .map(String::from)
 }
 
-pub(crate) fn cache_lyrics(lyrics: &str, lyrics_cache_path: &str) -> Result<String, String> {
+pub(crate) struct CachedLyrics {
+    path: String,
+    hash: String,
+}
+
+pub(crate) fn cache_lyrics(lyrics: &str, lyrics_cache_path: &str) -> Result<CachedLyrics, String> {
     let path = PathBuf::from(lyrics_cache_path);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|err| format!("无法创建歌词缓存目录: {err}"))?;
     }
     fs::write(&path, lyrics).map_err(|err| format!("无法写入歌词缓存: {err}"))?;
-    Ok(path.to_string_lossy().to_string())
+    let hash = lyrics_hash(lyrics);
+    write_hash_sidecar(&path, &hash)?;
+    Ok(CachedLyrics {
+        path: path.to_string_lossy().to_string(),
+        hash,
+    })
+}
+
+pub(crate) fn update_track_lyrics_cache_hash(
+    config_manager: &ConfigManager,
+    config: &AppConfig,
+    track_id: &str,
+    lyrics_cache_path: &str,
+    lyrics_cache_hash: &str,
+) -> Result<Option<Track>, String> {
+    let mut updated_track = None;
+    for dir in &config.music_directory {
+        let cache_path = config_manager.library_cache_path(dir)?;
+        if !cache_path.exists() {
+            continue;
+        }
+
+        let mut tracks = read_library_cache(&cache_path)?;
+        let mut changed = false;
+        for track in &mut tracks {
+            if track.id == track_id {
+                track.lyrics_cache_path = lyrics_cache_path.to_string();
+                track.lyrics_cache_hash = lyrics_cache_hash.to_string();
+                track.legacy_metadata = None;
+                updated_track = Some(track.clone());
+                changed = true;
+                break;
+            }
+        }
+
+        if changed {
+            write_library_cache(&cache_path, dir, config, &tracks)?;
+            let all_tracks = load_cached_all_directories(config_manager, config)?;
+            write_playlist_caches(config, &all_tracks)?;
+            break;
+        }
+    }
+
+    Ok(updated_track)
 }
 
 pub(crate) fn non_empty_owned(value: Option<String>) -> Option<String> {

@@ -6,26 +6,17 @@ export type Track = {
   path: string;
   duration?: number | null;
   file_size?: number | null;
-  cover_cache_path?: string | null;
-  lyrics_cache_path: string;
-  metadata: TrackMetadata;
-  missing?: boolean;
-};
-
-export type TrackMetadata = {
-  title: string;
-  artist: string;
-  album: string;
-  duration?: number | null;
   bitrate?: number | null;
   sample_rate?: number | null;
   year?: number | null;
-  genre: string[];
+  genre?: string[];
   track_number?: number | null;
   disk_number?: number | null;
   cover_cache_path?: string | null;
   lyrics_cache_path: string;
+  lyrics_cache_hash: string;
   metadata_source: "embedded" | "embedded_with_filename_fallback" | "filename";
+  missing?: boolean;
 };
 
 export type AppConfig = {
@@ -126,6 +117,7 @@ export type LyricsUseResult = {
   lyrics_cache_path: string;
   lyrics_hash: string;
   lyrics: string;
+  track?: Track | null;
 };
 
 export type ViewKey = "all" | "artists" | "albums" | "stats" | "recent" | "user_playlist";

@@ -11,9 +11,26 @@ pub(crate) struct Track {
     pub(crate) duration: Option<u64>,
     #[serde(default)]
     pub(crate) file_size: Option<u64>,
+    #[serde(default)]
+    pub(crate) bitrate: Option<u32>,
+    #[serde(default)]
+    pub(crate) sample_rate: Option<u32>,
+    #[serde(default)]
+    pub(crate) year: Option<u16>,
+    #[serde(default)]
+    pub(crate) genre: Vec<String>,
+    #[serde(default)]
+    pub(crate) track_number: Option<u32>,
+    #[serde(default)]
+    pub(crate) disk_number: Option<u32>,
     pub(crate) cover_cache_path: Option<String>,
     pub(crate) lyrics_cache_path: String,
-    pub(crate) metadata: TrackMetadata,
+    #[serde(default)]
+    pub(crate) lyrics_cache_hash: String,
+    #[serde(default = "default_metadata_source")]
+    pub(crate) metadata_source: MetadataSource,
+    #[serde(default, rename = "metadata", skip_serializing)]
+    pub(crate) legacy_metadata: Option<TrackMetadata>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,6 +47,8 @@ pub(crate) struct TrackMetadata {
     pub(crate) disk_number: Option<u32>,
     pub(crate) cover_cache_path: Option<String>,
     pub(crate) lyrics_cache_path: String,
+    #[serde(default)]
+    pub(crate) lyrics_cache_hash: String,
     pub(crate) metadata_source: MetadataSource,
 }
 
@@ -39,6 +58,10 @@ pub(crate) enum MetadataSource {
     Embedded,
     EmbeddedWithFilenameFallback,
     Filename,
+}
+
+fn default_metadata_source() -> MetadataSource {
+    MetadataSource::Filename
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -290,6 +313,7 @@ pub(crate) struct LyricsUseResult {
     pub(crate) lyrics_cache_path: String,
     pub(crate) lyrics_hash: String,
     pub(crate) lyrics: String,
+    pub(crate) track: Option<Track>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

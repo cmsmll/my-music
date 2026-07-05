@@ -8,6 +8,7 @@ import minimize_icon from "../assets/icons/minimize.svg";
 import tonearm_icon from "../assets/tonearm-minimal-white.svg";
 import x_icon from "../assets/icons/x.svg";
 import PlayerBar from "./PlayerBar.vue";
+import { use_player_queue_store } from "../stores/player_queue";
 import type {
   LyricsSearchResponse,
   LyricsSearchResult,
@@ -28,6 +29,8 @@ const props = defineProps<{
   progress_dragging: boolean;
   playback_mode_button: PlaybackModeItem;
 }>();
+
+const player_queue = use_player_queue_store();
 
 const emit = defineEmits<{
   close: [];
@@ -101,7 +104,7 @@ async function search_current_lyrics() {
   const track = props.current_track;
   lyrics_search_error.value = "";
   lyrics_search_results.value = [];
-  current_lyrics_hash.value = null;
+  current_lyrics_hash.value = track?.lyrics_cache_hash?.trim() || null;
 
   if (!track) {
     lyrics_search_error.value = "当前没有正在播放的歌曲。";
@@ -122,6 +125,7 @@ async function search_current_lyrics() {
       album: display_album(track),
       duration: track.duration ? Math.round(track.duration) : null,
       lyricsCachePath: track.lyrics_cache_path,
+      lyricsCacheHash: track.lyrics_cache_hash,
     });
     if (request_id === lyrics_search_request_id) {
       current_lyrics_hash.value = response.current_lyrics_hash ?? null;
@@ -155,11 +159,15 @@ async function use_lyrics_result(result: LyricsSearchResult) {
   lyrics_use_pending_hash.value = result.lyrics_hash;
   try {
     const used = await invoke<LyricsUseResult>("use_lyrics_search_result", {
+      trackId: track.id,
       lyricsCachePath: track.lyrics_cache_path,
       lyrics,
     });
     lyrics_lines.value = normalize_lyrics(used.lyrics);
     current_lyrics_hash.value = used.lyrics_hash;
+    if (used.track) {
+      player_queue.upsert_track(used.track);
+    }
   } catch (error) {
     lyrics_search_error.value = error instanceof Error ? error.message : String(error);
   } finally {

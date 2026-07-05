@@ -2,7 +2,8 @@ use crate::audio::{AudioCommand, AudioEngine};
 use crate::config::ConfigManager;
 use crate::decoder::{run_decoder as run_config_decoder, DecoderRunSummary};
 use crate::library::{
-    load_cached_all_directories, load_or_scan_all_directories, scan_tracks, write_library_cache,
+    load_cached_all_directories, load_or_scan_all_directories, scan_tracks,
+    update_track_lyrics_cache_hash, write_library_cache,
 };
 use crate::lyrics::LyricsSearchService;
 use crate::media_shortcuts::register_media_shortcuts as register_system_media_shortcuts;
@@ -175,20 +176,39 @@ pub(crate) async fn search_lyrics(
     album: String,
     duration: Option<u64>,
     lyrics_cache_path: String,
+    lyrics_cache_hash: Option<String>,
 ) -> Result<LyricsSearchResponse, String> {
     lyrics_search
-        .search(title, artist, album, duration, lyrics_cache_path)
+        .search(
+            title,
+            artist,
+            album,
+            duration,
+            lyrics_cache_path,
+            lyrics_cache_hash,
+        )
         .await
 }
 
 /// 使用指定搜索结果的歌词内容，写入当前歌曲固定歌词缓存路径和同名 SHA-256 文件。
 #[tauri::command]
 pub(crate) fn use_lyrics_search_result(
+    config_manager: tauri::State<'_, ConfigManager>,
     lyrics_search: tauri::State<'_, LyricsSearchService>,
+    track_id: String,
     lyrics_cache_path: String,
     lyrics: String,
 ) -> Result<LyricsUseResult, String> {
-    lyrics_search.use_lyrics(lyrics_cache_path, lyrics)
+    let mut result = lyrics_search.use_lyrics(lyrics_cache_path, lyrics)?;
+    let config = config_manager.get()?;
+    result.track = update_track_lyrics_cache_hash(
+        &config_manager,
+        &config,
+        &track_id,
+        &result.lyrics_cache_path,
+        &result.lyrics_hash,
+    )?;
+    Ok(result)
 }
 
 fn empty_playlist_bundle() -> PlaylistBundle {

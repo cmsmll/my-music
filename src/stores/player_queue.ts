@@ -35,6 +35,11 @@ export const use_player_queue_store = defineStore("player_queue", {
     set_current_track_path(path?: string | null) {
       this.current_track_path = path ?? null;
     },
+    upsert_track(track: Track) {
+      const update_track = (current: Track) => (current.id === track.id ? { ...current, ...track } : current);
+      this.library_tracks = this.library_tracks.map(update_track);
+      this.current_queue = this.current_queue.map(update_track);
+    },
     set_playback_mode(mode: PlaybackMode) {
       this.playback_mode = mode;
     },

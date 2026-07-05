@@ -46,26 +46,26 @@ const { items } = storeToRefs(notification_store);
 }
 
 .global_notification_info {
-  --notification-bg: #f4f4f5;
-  --notification-border: #e9e9eb;
+  --notification-bg: rgb(144 147 153 / 0.12);
+  --notification-border: rgb(144 147 153 / 0.18);
   --notification-text: #909399;
 }
 
 .global_notification_success {
-  --notification-bg: #f0f9eb;
-  --notification-border: #e1f3d8;
+  --notification-bg: rgb(103 194 58 / 0.12);
+  --notification-border: rgb(103 194 58 / 0.2);
   --notification-text: #67c23a;
 }
 
 .global_notification_error {
-  --notification-bg: #fef0f0;
-  --notification-border: #fde2e2;
+  --notification-bg: rgb(245 108 108 / 0.12);
+  --notification-border: rgb(245 108 108 / 0.2);
   --notification-text: #f56c6c;
 }
 
 .global_notification_warning {
-  --notification-bg: #fdf6ec;
-  --notification-border: #faecd8;
+  --notification-bg: rgb(230 162 60 / 0.14);
+  --notification-border: rgb(230 162 60 / 0.22);
   --notification-text: #e6a23c;
 }
 

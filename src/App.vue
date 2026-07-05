@@ -14,9 +14,11 @@ import {
 import repeat_one_icon from "./assets/icons/repeat-one.svg";
 import repeat_icon from "./assets/icons/repeat.svg";
 import shuffle_icon from "./assets/icons/shuffle.svg";
+import ContextMenu from "./components/ContextMenu.vue";
 import ContentArea from "./components/ContentArea.vue";
 import LibrarySidebar from "./components/LibrarySidebar.vue";
 import PlayerBar from "./components/PlayerBar.vue";
+import TrackContextMenu from "./components/TrackContextMenu.vue";
 import TopBar from "./components/TopBar.vue";
 import { use_app_config_store } from "./stores/app_config";
 import { use_library_store } from "./stores/library";
@@ -63,7 +65,7 @@ type PlayerCache = {
   updated_at: number;
 };
 
-type TrackContextMenu = {
+type TrackContextMenuState = {
   track: Track;
   x: number;
   y: number;
@@ -105,7 +107,7 @@ const selected_album = ref("");
 const selected_playlist_id = ref("my_playlist");
 const settings_open = ref(false);
 const playback_queue_open = ref(false);
-const track_context_menu = ref<TrackContextMenu | null>(null);
+const track_context_menu = ref<TrackContextMenuState | null>(null);
 const playlist_context_menu = ref<PlaylistContextMenu | null>(null);
 const pending_delete_playlist = ref<PlaylistCache | null>(null);
 const library_scan_dialog = ref<LibraryScanDialogState>({
@@ -1372,14 +1374,9 @@ async function confirm_delete_playlist() {
   }
 }
 
-function context_track_in_playlist(playlist: PlaylistCache) {
-  const track_id = track_context_menu.value?.track.id;
-  return Boolean(track_id && playlist.track_ids.includes(track_id));
-}
-
 async function add_context_track_to_playlist(playlist: PlaylistCache) {
   const track = track_context_menu.value?.track;
-  if (!track || is_missing_track(track) || context_track_in_playlist(playlist)) return;
+  if (!track || is_missing_track(track) || playlist.track_ids.includes(track.id)) return;
 
   try {
     playlists.value = await invoke<PlaylistBundle>("add_track_to_playlist", {
@@ -1693,44 +1690,22 @@ watch([current_queue, queue_source, playback_mode], () => {
       />
     </section>
 
-    <div
+    <TrackContextMenu
       v-if="track_context_menu"
-      class="track_context_menu"
-      :style="{ left: `${track_context_menu.x}px`, top: `${track_context_menu.y}px` }"
-      @click.stop
-      @contextmenu.prevent
-    >
-      <div class="track_context_menu_header">
-        <p>添加到歌单</p>
-        <button
-          v-if="context_track_can_be_removed()"
-          class="track_context_delete_button"
-          type="button"
-          title="删除记录"
-          @click="remove_context_track_record"
-        >
-          删除
-        </button>
-      </div>
-      <button
-        v-for="playlist in ordered_user_playlist_items"
-        class="track_context_playlist_button"
-        :key="playlist.id"
-        type="button"
-        :title="playlist.name"
-        :disabled="is_missing_track(track_context_menu.track) || context_track_in_playlist(playlist)"
-        @click="add_context_track_to_playlist(playlist)"
-      >
-        {{ playlist.name }}
-      </button>
-    </div>
+      :track="track_context_menu.track"
+      :x="track_context_menu.x"
+      :y="track_context_menu.y"
+      :playlists="ordered_user_playlist_items"
+      :can_remove="context_track_can_be_removed()"
+      @remove="remove_context_track_record"
+      @add_playlist="add_context_track_to_playlist"
+    />
 
-    <div
+    <ContextMenu
       v-if="playlist_context_menu"
       class="playlist_context_menu"
-      :style="{ left: `${playlist_context_menu.x}px`, top: `${playlist_context_menu.y}px` }"
-      @click.stop
-      @contextmenu.prevent
+      :x="playlist_context_menu.x"
+      :y="playlist_context_menu.y"
     >
       <button class="context_menu_button" type="button" @click="rename_context_playlist">
         重命名
@@ -1743,7 +1718,7 @@ watch([current_queue, queue_source, playback_mode], () => {
       >
         删除
       </button>
-    </div>
+    </ContextMenu>
 
     <PlayerBar
       ref="player_bar"
@@ -2098,88 +2073,8 @@ p {
   color: #a43838;
 }
 
-.track_context_menu,
-.playlist_context_menu {
-  position: fixed;
-  z-index: 1000;
-  display: grid;
-  gap: 4px;
-  border: 1px solid #eef0f4;
-  border-radius: 8px;
-  padding: 8px;
-  background: #ffffff;
-  box-shadow: 0 12px 34px rgba(19, 24, 34, 0.16);
-}
-
-.track_context_menu {
-  min-width: 190px;
-  max-width: 240px;
-}
-
 .playlist_context_menu {
   min-width: 150px;
-}
-
-.track_context_menu_header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-width: 0;
-  padding: 4px 8px 6px;
-}
-
-.track_context_menu_header p {
-  min-width: 0;
-  color: #8b919c;
-  font-size: 0.78rem;
-  font-weight: 800;
-}
-
-.track_context_delete_button {
-  flex: 0 0 auto;
-  min-height: 26px;
-  border-radius: 8px;
-  padding: 0 8px;
-  color: #b65b5b;
-  background: transparent;
-  font-size: 0.78rem;
-  font-weight: 800;
-}
-
-.track_context_delete_button:hover {
-  color: #c33131;
-  background: #fff0f0;
-}
-
-.track_context_playlist_button {
-  overflow: hidden;
-  min-height: 34px;
-  border-radius: 8px;
-  padding: 0 10px;
-  color: #1e2026;
-  background: transparent;
-  font-size: 0.92rem;
-  font-weight: 800;
-  text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.track_context_playlist_button:hover {
-  color: #426dff;
-  background: #eaf0ff;
-}
-
-.track_context_playlist_button:disabled {
-  color: #b3b8c2;
-  background: transparent;
-  cursor: default;
-}
-
-.track_context_playlist_button:disabled:hover {
-  color: #b3b8c2;
-  background: transparent;
 }
 
 .context_menu_button {

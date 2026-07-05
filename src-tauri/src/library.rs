@@ -4,7 +4,7 @@ use crate::models::{
     AppConfig, LibraryCache, MetadataSource, Track, TrackCacheEntries, TrackMetadata,
 };
 use crate::playlist::{track_map_from_tracks, write_playlist_caches};
-use crate::utils::{safe_file_name, unix_timestamp};
+use crate::utils::unix_timestamp;
 use lofty::{
     file::{AudioFile, TaggedFileExt},
     picture::MimeType,
@@ -451,7 +451,7 @@ pub(crate) fn lyrics_cache_path(path: &Path, config: &AppConfig) -> String {
 fn cache_file_stem(path: &Path) -> String {
     path.file_stem()
         .and_then(|name| name.to_str())
-        .map(safe_file_name)
+        .map(str::to_string)
         .filter(|name| !name.is_empty())
         .unwrap_or_else(|| "unknown-track".to_string())
 }

@@ -146,8 +146,6 @@ defineExpose({ render_progress });
   row-gap: 0;
   box-sizing: border-box;
   height: 86px;
-  min-height: 86px;
-  max-height: 86px;
   min-width: 0;
   padding: 0 38px;
   background: transparent;

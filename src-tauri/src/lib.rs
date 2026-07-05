@@ -15,6 +15,8 @@ mod utils;
 use audio::AudioEngine;
 use config::ConfigManager;
 use media_shortcuts::media_shortcut_plugin;
+use std::thread;
+use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -30,11 +32,16 @@ pub fn run() {
         });
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_dialog::init())
         .plugin(media_shortcut_plugin())
-        .plugin(tauri_plugin_opener::init())
         .manage(AudioEngine::new(log_dir))
         .manage(config_manager)
+        .setup(|app| {
+            let handle = app.handle().clone();
+            thread::spawn(move || {
+                initialize_deferred_modules(handle);
+            });
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::get_startup_state,
             commands::update_app_config,
@@ -62,4 +69,20 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+fn initialize_deferred_modules(handle: tauri::AppHandle) {
+    if let Some(config_manager) = handle.try_state::<ConfigManager>() {
+        if let Err(err) = config_manager.initialize_storage() {
+            eprintln!("后台初始化配置存储失败: {err}");
+        }
+    }
+
+    if let Err(err) = handle.plugin(tauri_plugin_dialog::init()) {
+        eprintln!("后台初始化文件选择插件失败: {err}");
+    }
+
+    if let Err(err) = handle.plugin(tauri_plugin_opener::init()) {
+        eprintln!("后台初始化文件打开插件失败: {err}");
+    }
 }

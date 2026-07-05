@@ -54,15 +54,11 @@ impl ConfigManager {
             .and_then(|content| parse_config(&content, &default_config))
             .unwrap_or_else(|| default_config.clone());
 
-        let manager = Self {
+        Self {
             config_path,
             default_config,
             config: Mutex::new(config),
-        };
-
-        let _ = manager.ensure_layout();
-        let _ = manager.save();
-        manager
+        }
     }
 
     pub(crate) fn get(&self) -> Result<AppConfig, String> {
@@ -74,6 +70,11 @@ impl ConfigManager {
 
     pub(crate) fn get_default(&self) -> AppConfig {
         self.default_config.clone()
+    }
+
+    pub(crate) fn initialize_storage(&self) -> Result<(), String> {
+        self.ensure_layout()?;
+        self.save()
     }
 
     pub(crate) fn update_config(&self, next_config: AppConfig) -> Result<AppConfig, String> {

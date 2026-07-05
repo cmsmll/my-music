@@ -2217,6 +2217,10 @@ p {
 .song_text strong {
   font-size: 1rem;
 }
+.table_row.active .song_text strong {
+  color: var(--theme-highlight-color, #426dff);
+}
+
 
 .song_text small,
 .album_cell {

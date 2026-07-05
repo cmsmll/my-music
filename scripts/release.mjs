@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -63,42 +63,53 @@ function run(command, args, cwd) {
     process.platform === "win32"
       ? ["/d", "/s", "/c", [command, ...args].map(quote_windows_arg).join(" ")]
       : args;
-  const result = spawnSync(executable, spawn_args, {
-    cwd,
-    encoding: "utf8",
-    maxBuffer: 1024 * 1024 * 64,
-    stdio: ["inherit", "pipe", "pipe"],
+
+  return new Promise((resolve_promise, reject) => {
+    const child = spawn(executable, spawn_args, {
+      cwd,
+      stdio: ["inherit", "pipe", "pipe"],
+    });
+
+    child.stdout.on("data", (chunk) => {
+      process.stdout.write(chunk);
+    });
+
+    child.stderr.on("data", (chunk) => {
+      process.stderr.write(chunk);
+    });
+
+    child.on("error", (error) => {
+      reject(
+        new Error(
+          [
+            `${display_command} 启动失败`,
+            `工作目录: ${cwd}`,
+            `启动器: ${executable} ${spawn_args.join(" ")}`,
+            `错误信息: ${error.message}`,
+          ].join("\n"),
+        ),
+      );
+    });
+
+    child.on("close", (status, signal) => {
+      if (status === 0) {
+        resolve_promise();
+        return;
+      }
+
+      reject(
+        new Error(
+          [
+            `${display_command} 执行失败`,
+            `工作目录: ${cwd}`,
+            `启动器: ${executable} ${spawn_args.join(" ")}`,
+            `退出码: ${status ?? "无"}`,
+            `信号: ${signal ?? "无"}`,
+          ].join("\n"),
+        ),
+      );
+    });
   });
-
-  if (result.stdout) {
-    process.stdout.write(result.stdout);
-  }
-  if (result.stderr) {
-    process.stderr.write(result.stderr);
-  }
-
-  if (result.error) {
-    throw new Error(
-      [
-        `${display_command} 启动失败`,
-        `工作目录: ${cwd}`,
-        `启动器: ${executable} ${spawn_args.join(" ")}`,
-        `错误信息: ${result.error.message}`,
-      ].join("\n"),
-    );
-  }
-
-  if (result.status !== 0) {
-    throw new Error(
-      [
-        `${display_command} 执行失败`,
-        `工作目录: ${cwd}`,
-        `启动器: ${executable} ${spawn_args.join(" ")}`,
-        `退出码: ${result.status ?? "无"}`,
-        `信号: ${result.signal ?? "无"}`,
-      ].join("\n"),
-    );
-  }
 }
 
 function restore_files(files) {
@@ -135,7 +146,7 @@ try {
   write_json(tauri_config_path, tauri_config);
 
   console.log(`版本号已更新为 ${version}`);
-  run("pnpm", ["tauri:build"], root);
+  await run("pnpm", ["tauri:build"], root);
 } catch (error) {
   try {
     restore_files(original_files);

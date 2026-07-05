@@ -343,5 +343,14 @@ defineExpose({ render_progress });
 .player_tools input {
   width: 122px;
   accent-color: var(--theme-control-color, #1e2026);
+  cursor: pointer;
+}
+
+.player_tools input::-webkit-slider-thumb {
+  cursor: pointer;
+}
+
+.player_tools input::-moz-range-thumb {
+  cursor: pointer;
 }
 </style>

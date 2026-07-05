@@ -137,9 +137,11 @@ defineExpose({ render_progress });
 
 <style>
 .player_bar {
+  --player_bar_padding: 38px;
+  --player_bar_padding_offset: -38px;
   grid-area: player;
   display: grid;
-  grid-template-columns: minmax(240px, 360px) minmax(340px, 1fr) minmax(280px, 420px);
+  grid-template-columns: minmax(0, 1fr) auto auto;
   grid-template-rows: 2px minmax(0, 1fr);
   align-items: center;
   column-gap: 28px;
@@ -147,7 +149,7 @@ defineExpose({ render_progress });
   box-sizing: border-box;
   height: 86px;
   min-width: 0;
-  padding: 0 38px;
+  padding: 0 var(--player_bar_padding);
   background: transparent;
 }
 
@@ -170,11 +172,12 @@ defineExpose({ render_progress });
   grid-column: 1 / -1;
   display: flex;
   align-items: center;
-  width: calc(100% + 76px);
+  width: auto;
   height: 14px;
+  margin-inline: var(--player_bar_padding_offset);
   align-self: stretch;
   cursor: pointer;
-  transform: translateX(-38px) translateY(-6px);
+  transform: translateY(-6px);
   touch-action: none;
   user-select: none;
   z-index: 99;
@@ -383,5 +386,35 @@ defineExpose({ render_progress });
 
 .player_tools input::-moz-range-thumb {
   cursor: pointer;
+}
+
+@media (max-width: 760px) {
+  .player_bar {
+    --player_bar_padding: 18px;
+    --player_bar_padding_offset: -18px;
+    column-gap: 10px;
+  }
+
+  .now_track {
+    gap: 10px;
+  }
+
+  .player_cover,
+  .player_cover_button {
+    width: 58px;
+    height: 58px;
+  }
+
+  .control_row {
+    gap: 12px;
+  }
+
+  .player_tools {
+    gap: 8px;
+  }
+
+  .player_tools input {
+    width: 76px;
+  }
 }
 </style>

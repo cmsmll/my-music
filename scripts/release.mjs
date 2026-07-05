@@ -48,9 +48,22 @@ function replace_required(content, pattern, replacement, label) {
   return content.replace(pattern, replacement);
 }
 
+function quote_windows_arg(value) {
+  const arg = String(value);
+  if (!/[ \t&()^|<>"]/u.test(arg)) {
+    return arg;
+  }
+  return `"${arg.replace(/"/g, '""')}"`;
+}
+
 function run(command, args, cwd) {
-  const executable = process.platform === "win32" ? `${command}.cmd` : command;
-  const result = spawnSync(executable, args, {
+  const display_command = `${command} ${args.join(" ")}`;
+  const executable = process.platform === "win32" ? (process.env.ComSpec ?? "cmd.exe") : command;
+  const spawn_args =
+    process.platform === "win32"
+      ? ["/d", "/s", "/c", [command, ...args].map(quote_windows_arg).join(" ")]
+      : args;
+  const result = spawnSync(executable, spawn_args, {
     cwd,
     encoding: "utf8",
     maxBuffer: 1024 * 1024 * 64,
@@ -67,8 +80,9 @@ function run(command, args, cwd) {
   if (result.error) {
     throw new Error(
       [
-        `${command} ${args.join(" ")} 启动失败`,
+        `${display_command} 启动失败`,
         `工作目录: ${cwd}`,
+        `启动器: ${executable} ${spawn_args.join(" ")}`,
         `错误信息: ${result.error.message}`,
       ].join("\n"),
     );
@@ -77,8 +91,9 @@ function run(command, args, cwd) {
   if (result.status !== 0) {
     throw new Error(
       [
-        `${command} ${args.join(" ")} 执行失败`,
+        `${display_command} 执行失败`,
         `工作目录: ${cwd}`,
+        `启动器: ${executable} ${spawn_args.join(" ")}`,
         `退出码: ${result.status ?? "无"}`,
         `信号: ${result.signal ?? "无"}`,
       ].join("\n"),

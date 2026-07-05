@@ -301,7 +301,7 @@ defineExpose({ render_progress });
 
 .lyrics_search_button {
   border: 1px solid transparent;
-  border-radius: 18px;
+  border-radius: 6px;
   padding: 5px 12px;
   color: rgba(245, 246, 248, 0.72);
   background: transparent;
@@ -518,7 +518,7 @@ defineExpose({ render_progress });
   max-height: min(480px, calc(100vh - 56px));
   overflow: hidden;
   border: 1px solid rgba(245, 246, 248, 0.14);
-  border-radius: 16px;
+  border-radius: 6px;
   background: rgba(28, 30, 34, 0.96);
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.38);
 }
@@ -573,7 +573,7 @@ defineExpose({ render_progress });
 
 .lyrics_result_row {
   margin: 0 14px 16px;
-  border-radius: 10px;
+  border-radius: 6px;
   padding: 12px 6px;
   color: rgba(245, 246, 248, 0.74);
   font-weight: 800;
@@ -589,7 +589,7 @@ defineExpose({ render_progress });
 .lyrics_result_row button {
   min-height: 32px;
   border: 1px solid rgba(245, 246, 248, 0.22);
-  border-radius: 16px;
+  border-radius: 6px;
   color: rgba(245, 246, 248, 0.54);
   background: transparent;
   font-weight: 900;
@@ -639,7 +639,7 @@ defineExpose({ render_progress });
     height: 76px;
     place-items: center;
     border: 1px solid transparent;
-    border-radius: 20px;
+    border-radius: 6px;
     padding: 0;
     color: rgba(245, 246, 248, 0.72);
     background: transparent;

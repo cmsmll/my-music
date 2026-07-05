@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from "vue";
+import { storeToRefs } from "pinia";
+import { use_playback_store } from "../stores/playback";
 
 type LineLyricItem = {
   key: string;
@@ -9,19 +11,18 @@ type LineLyricItem = {
 
 const props = withDefaults(defineProps<{
   lyrics: string;
-  elapsed: number;
   loading?: boolean;
   placeholder?: string[];
-  seeking?: boolean;
 }>(), {
   loading: false,
   placeholder: () => ["暂未获取到歌词"],
-  seeking: false,
 });
 
+const playback_store = use_playback_store();
+const { visual_elapsed } = storeToRefs(playback_store);
 const active_line = ref<HTMLElement | null>(null);
 const lyrics_viewport = ref<HTMLElement | null>(null);
-const last_scroll_elapsed = ref(0);
+const active_anchor_index = ref(-1);
 
 const lyric_lines = computed(() => {
   const parsed: LineLyricItem[] = [];
@@ -79,14 +80,14 @@ const visible_lines = computed(() =>
       })),
 );
 
-const active_index = computed(() => {
+function anchor_index_for_elapsed(seconds: number) {
   if (!has_timed_lyrics.value) return -1;
 
   let index = -1;
   for (let current = 0; current < lyric_lines.value.length; current += 1) {
     const time = lyric_lines.value[current].time;
     if (time === null) continue;
-    if (time <= props.elapsed + 0.08) {
+    if (time <= seconds + 0.08) {
       index = current;
     } else {
       break;
@@ -94,7 +95,27 @@ const active_index = computed(() => {
   }
   if (index >= 0) return index;
   return lyric_lines.value.findIndex((line) => line.time !== null);
-});
+}
+
+function next_timed_anchor_time(index: number) {
+  for (let current = index + 1; current < lyric_lines.value.length; current += 1) {
+    const time = lyric_lines.value[current].time;
+    if (time !== null) return time;
+  }
+  return Number.POSITIVE_INFINITY;
+}
+
+function elapsed_in_anchor(index: number, seconds: number) {
+  const line = lyric_lines.value[index];
+  if (!line || line.time === null) return false;
+
+  const first_timed_index = lyric_lines.value.findIndex((item) => item.time !== null);
+  if (index === first_timed_index && seconds < line.time) return true;
+
+  return seconds + 0.08 >= line.time && seconds < next_timed_anchor_time(index);
+}
+
+const active_index = computed(() => active_anchor_index.value);
 
 async function scroll_active_line(behavior: ScrollBehavior = "smooth") {
   await nextTick();
@@ -104,23 +125,31 @@ async function scroll_active_line(behavior: ScrollBehavior = "smooth") {
   });
 }
 
-watch(active_index, (current, previous) => {
-  const elapsed_jump = Math.abs(props.elapsed - last_scroll_elapsed.value) > 1.2;
-  const line_jump = previous >= 0 && current >= 0 && Math.abs(current - previous) > 1;
-  const behavior = props.seeking || elapsed_jump || line_jump ? "auto" : "smooth";
-  last_scroll_elapsed.value = props.elapsed;
-  void scroll_active_line(behavior);
-});
+function sync_anchor_for_elapsed(seconds: number, force = false) {
+  if (!has_timed_lyrics.value) {
+    active_anchor_index.value = -1;
+    if (lyrics_viewport.value) {
+      lyrics_viewport.value.scrollTop = 0;
+    }
+    return;
+  }
+
+  if (!force && elapsed_in_anchor(active_anchor_index.value, seconds)) return;
+
+  const next_index = anchor_index_for_elapsed(seconds);
+  if (!force && next_index === active_anchor_index.value) return;
+
+  active_anchor_index.value = next_index;
+  void scroll_active_line("auto");
+}
+
+watch(visual_elapsed, (seconds) => {
+  sync_anchor_for_elapsed(seconds);
+}, { immediate: true });
 
 watch(lyric_lines, async () => {
   await nextTick();
-  if (active_line.value) {
-    await scroll_active_line("auto");
-    return;
-  }
-  if (lyrics_viewport.value) {
-    lyrics_viewport.value.scrollTop = 0;
-  }
+  sync_anchor_for_elapsed(visual_elapsed.value, true);
 });
 </script>
 

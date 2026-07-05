@@ -104,7 +104,7 @@ const playback_store = use_playback_store();
 const app_config_store = use_app_config_store();
 const library_store = use_library_store();
 const { library_tracks: tracks, current_queue, playback_mode, queue_source } = storeToRefs(player_queue);
-const { status, current_track, progress_dragging, visual_elapsed: visual_elapsed_seconds } = storeToRefs(playback_store);
+const { status, current_track, progress_dragging } = storeToRefs(playback_store);
 const { config: app_config } = storeToRefs(app_config_store);
 const { selected_directories, library_loaded, playlists, play_statistics } = storeToRefs(library_store);
 const loading = ref(false);
@@ -1770,7 +1770,6 @@ watch([current_queue, queue_source, playback_mode], () => {
         :current_track="current_track"
         :status="status"
         :progress_dragging="progress_dragging"
-        :visual_elapsed="visual_elapsed_seconds"
         :playback_mode_button="playback_mode_button"
         @close="now_playing_open = false"
         @start_window_drag="start_window_drag"

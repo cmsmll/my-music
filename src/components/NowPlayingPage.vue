@@ -60,7 +60,13 @@ const lyrics_search_error = ref("");
 const lyrics_search_results = ref<LyricsSearchResult[]>([]);
 const current_lyrics_hash = ref<string | null>(null);
 const lyrics_use_pending_hash = ref("");
+const auto_lyrics_enabled = ref(false);
+const auto_lyrics_loading = ref(false);
+const auto_lyrics_status = ref("");
+const auto_lyrics_attempted_track_ids = ref(new Set<string>());
 let lyrics_search_request_id = 0;
+let auto_lyrics_request_id = 0;
+let lyrics_load_request_id = 0;
 
 const lyric_placeholder = [
   "暂未获取到歌词",
@@ -79,19 +85,29 @@ function normalize_lyrics(content: string) {
 }
 
 async function load_lyrics(track?: Track | null) {
+  const request_id = ++lyrics_load_request_id;
   lyrics_lines.value = [];
   const path = track?.lyrics_cache_path?.trim();
-  if (!path) return;
+  if (!path) return false;
 
   lyrics_loading.value = true;
   try {
     const content = await invoke<string | null>("read_lyrics_cache", { path });
-    lyrics_lines.value = content ? normalize_lyrics(content) : [];
+    const lines = content ? normalize_lyrics(content) : [];
+    if (request_id === lyrics_load_request_id) {
+      lyrics_lines.value = lines;
+    }
+    return lines.length > 0;
   } catch (error) {
     console.warn("读取歌词失败", error);
-    lyrics_lines.value = [];
+    if (request_id === lyrics_load_request_id) {
+      lyrics_lines.value = [];
+    }
+    return false;
   } finally {
-    lyrics_loading.value = false;
+    if (request_id === lyrics_load_request_id) {
+      lyrics_loading.value = false;
+    }
   }
 }
 
@@ -119,15 +135,7 @@ async function search_current_lyrics() {
   const request_id = ++lyrics_search_request_id;
   lyrics_search_loading.value = true;
   try {
-    const response = await invoke<LyricsSearchResponse>("search_lyrics", {
-      trackId: track.id,
-      title,
-      artist: display_artist(track),
-      album: display_album(track),
-      duration: track.duration ? Math.round(track.duration) : null,
-      lyricsCachePath: track.lyrics_cache_path,
-      lyricsCacheHash: track.lyrics_cache_hash,
-    });
+    const response = await search_lyrics_for_track(track);
     if (request_id === lyrics_search_request_id) {
       current_lyrics_hash.value = response.current_lyrics_hash ?? null;
       lyrics_search_results.value = response.results;
@@ -143,6 +151,18 @@ async function search_current_lyrics() {
   }
 }
 
+async function search_lyrics_for_track(track: Track) {
+  return await invoke<LyricsSearchResponse>("search_lyrics", {
+    trackId: track.id,
+    title: display_title(track),
+    artist: display_artist(track),
+    album: display_album(track),
+    duration: track.duration ? Math.round(track.duration) : null,
+    lyricsCachePath: track.lyrics_cache_path,
+    lyricsCacheHash: track.lyrics_cache_hash,
+  });
+}
+
 async function use_lyrics_result(result: LyricsSearchResult) {
   const track = props.current_track;
   if (!track) {
@@ -150,29 +170,32 @@ async function use_lyrics_result(result: LyricsSearchResult) {
     return;
   }
 
-  const lyrics = result.synced_lyrics || result.plain_lyrics || "";
-  if (!lyrics.trim()) {
-    lyrics_search_error.value = "此搜索结果没有可用歌词。";
-    return;
-  }
-
   lyrics_search_error.value = "";
   lyrics_use_pending_hash.value = result.lyrics_hash;
   try {
-    const used = await invoke<LyricsUseResult>("use_lyrics_search_result", {
-      trackId: track.id,
-      lyricsCachePath: track.lyrics_cache_path,
-      lyrics,
-    });
-    lyrics_lines.value = normalize_lyrics(used.lyrics);
-    current_lyrics_hash.value = used.lyrics_hash;
-    if (used.track) {
-      player_queue.upsert_track(used.track);
-    }
+    await apply_lyrics_result(track, result);
   } catch (error) {
     lyrics_search_error.value = error instanceof Error ? error.message : String(error);
   } finally {
     lyrics_use_pending_hash.value = "";
+  }
+}
+
+async function apply_lyrics_result(track: Track, result: LyricsSearchResult) {
+  const lyrics = result.synced_lyrics || result.plain_lyrics || "";
+  if (!lyrics.trim()) {
+    throw new Error("此搜索结果没有可用歌词。");
+  }
+
+  const used = await invoke<LyricsUseResult>("use_lyrics_search_result", {
+    trackId: track.id,
+    lyricsCachePath: track.lyrics_cache_path,
+    lyrics,
+  });
+  lyrics_lines.value = normalize_lyrics(used.lyrics);
+  current_lyrics_hash.value = used.lyrics_hash;
+  if (used.track) {
+    player_queue.upsert_track(used.track);
   }
 }
 
@@ -190,12 +213,92 @@ function is_current_lyrics_result(result: LyricsSearchResult) {
   return Boolean(current_lyrics_hash.value && current_lyrics_hash.value === result.lyrics_hash);
 }
 
+function toggle_auto_lyrics() {
+  auto_lyrics_enabled.value = !auto_lyrics_enabled.value;
+  if (auto_lyrics_enabled.value) {
+    void maybe_auto_load_lyrics(props.current_track, lyrics_lines.value.length > 0);
+  } else {
+    auto_lyrics_status.value = "";
+  }
+}
+
+function has_auto_attempted(track: Track) {
+  return auto_lyrics_attempted_track_ids.value.has(track.id);
+}
+
+function set_auto_attempted(track: Track, attempted: boolean) {
+  const next = new Set(auto_lyrics_attempted_track_ids.value);
+  if (attempted) {
+    next.add(track.id);
+  } else {
+    next.delete(track.id);
+  }
+  auto_lyrics_attempted_track_ids.value = next;
+}
+
+function select_auto_lyrics_result(results: LyricsSearchResult[]) {
+  return (
+    results.find((result) => {
+      const source = result.source.toLowerCase();
+      return result.source.includes("酷狗") || source.includes("kugou");
+    }) ?? results[0]
+  );
+}
+
+async function maybe_auto_load_lyrics(track?: Track | null, has_local_lyrics = lyrics_lines.value.length > 0) {
+  if (!auto_lyrics_enabled.value || !track || has_local_lyrics || has_auto_attempted(track)) return;
+  if (display_title(track) === "未知歌曲") return;
+
+  const request_id = ++auto_lyrics_request_id;
+  set_auto_attempted(track, true);
+  auto_lyrics_loading.value = true;
+  auto_lyrics_status.value = "Auto 正在搜索歌词";
+
+  try {
+    const response = await search_lyrics_for_track(track);
+    if (request_id !== auto_lyrics_request_id || props.current_track?.id !== track.id) {
+      set_auto_attempted(track, false);
+      return;
+    }
+
+    current_lyrics_hash.value = response.current_lyrics_hash ?? track.lyrics_cache_hash?.trim() ?? null;
+    const result = select_auto_lyrics_result(response.results);
+    if (!result) {
+      auto_lyrics_status.value = "Auto 未找到歌词";
+      return;
+    }
+
+    await apply_lyrics_result(track, result);
+    auto_lyrics_status.value = `Auto 已加载${result.source ? `：${result.source}` : ""}`;
+  } catch (error) {
+    console.warn("自动获取歌词失败", error);
+    if (request_id === auto_lyrics_request_id && props.current_track?.id === track.id) {
+      auto_lyrics_status.value = "Auto 获取歌词失败";
+    }
+  } finally {
+    if (request_id === auto_lyrics_request_id) {
+      auto_lyrics_loading.value = false;
+    }
+  }
+}
+
 watch(
   () => props.current_track?.id,
-  () => {
-    void load_lyrics(props.current_track);
+  async () => {
+    auto_lyrics_status.value = "";
+    const has_lyrics = await load_lyrics(props.current_track);
+    await maybe_auto_load_lyrics(props.current_track, has_lyrics);
   },
   { immediate: true },
+);
+
+watch(
+  () => auto_lyrics_enabled.value,
+  (enabled) => {
+    if (enabled) {
+      void maybe_auto_load_lyrics(props.current_track, lyrics_lines.value.length > 0);
+    }
+  },
 );
 
 function close_on_escape(event: KeyboardEvent) {
@@ -234,6 +337,15 @@ defineExpose({ render_progress });
       </button>
       <div class="now_playing_window_tools">
         <button class="lyrics_search_button" type="button" @click="open_lyrics_search">搜索歌词</button>
+        <button
+          class="lyrics_search_button lyrics_auto_button"
+          :class="{ active: auto_lyrics_enabled }"
+          type="button"
+          :title="auto_lyrics_enabled ? '关闭自动获取歌词' : '开启自动获取歌词'"
+          @click="toggle_auto_lyrics"
+        >
+          Auto
+        </button>
         <button class="window_button hover_border_control" type="button" title="最小化" @click="emit('minimize_window')">
           <span class="svg_icon" :style="icon_style(minimize_icon)" />
         </button>
@@ -288,6 +400,7 @@ defineExpose({ render_progress });
             <span>专辑：{{ display_album(current_track) }}</span>
             <span>歌手：{{ display_artist(current_track) }}</span>
           </p>
+          <small v-if="auto_lyrics_status" class="auto_lyrics_status">{{ auto_lyrics_status }}</small>
         </div>
 
         <div class="lyrics_panel">
@@ -469,6 +582,11 @@ defineExpose({ render_progress });
   color: #ffffff;
 }
 
+.lyrics_search_button.active {
+  border-color: rgba(38, 201, 107, 0.62);
+  color: #26c96b;
+}
+
 .now_playing_content {
   display: grid;
   grid-template-columns: minmax(360px, 0.94fr) minmax(420px, 1.06fr);
@@ -626,6 +744,17 @@ defineExpose({ render_progress });
 
 .track_identity p span {
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.auto_lyrics_status {
+  display: block;
+  min-height: 18px;
+  overflow: hidden;
+  color: rgba(245, 246, 248, 0.48);
+  font-size: 0.86rem;
+  font-weight: 800;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

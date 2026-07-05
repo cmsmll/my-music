@@ -271,11 +271,18 @@ defineExpose({ render_progress });
   width: 44px;
   height: 44px;
   place-items: center;
-  border: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
   padding: 0;
   color: #f5f6f8;
   background: transparent;
   cursor: pointer;
+}
+
+.now_playing_back:hover,
+.now_playing_back:focus-visible {
+  border-color: #ffffff;
+  color: #ffffff;
 }
 
 .now_playing_back span {
@@ -299,6 +306,13 @@ defineExpose({ render_progress });
   color: rgba(245, 246, 248, 0.72);
 }
 
+.now_playing_page .hover_border_control:hover,
+.now_playing_page .hover_border_control:focus-visible {
+  border-color: #ffffff;
+  border-radius: 6px;
+  color: #ffffff;
+}
+
 .lyrics_search_button {
   border: 1px solid transparent;
   border-radius: 6px;
@@ -312,7 +326,7 @@ defineExpose({ render_progress });
 
 .lyrics_search_button:hover,
 .lyrics_search_button:focus-visible {
-  border-color: rgba(245, 246, 248, 0.5);
+  border-color: #ffffff;
   color: #ffffff;
 }
 
@@ -551,7 +565,7 @@ defineExpose({ render_progress });
   height: 34px;
   place-items: center;
   border: 1px solid transparent;
-  border-radius: 50%;
+  border-radius: 6px;
   color: rgba(245, 246, 248, 0.72);
   background: transparent;
   font-size: 1.35rem;
@@ -560,7 +574,7 @@ defineExpose({ render_progress });
 }
 
 .lyrics_search_dialog header button:hover {
-  border-color: rgba(245, 246, 248, 0.36);
+  border-color: #ffffff;
   color: #ffffff;
 }
 
@@ -669,7 +683,8 @@ defineExpose({ render_progress });
 
   .compact_switch:hover,
   .compact_switch:focus-visible {
-    border-color: rgba(245, 246, 248, 0.58);
+    border-color: #ffffff;
+    border-radius: 6px;
   }
 
   .compact_switch_record {

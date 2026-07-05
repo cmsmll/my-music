@@ -722,6 +722,7 @@ defineExpose({ render_progress });
 .track_identity {
   display: grid;
   gap: 14px;
+  text-align: center;
 }
 
 .track_identity h1 {
@@ -736,6 +737,7 @@ defineExpose({ render_progress });
 
 .track_identity p {
   display: flex;
+  justify-content: center;
   gap: 28px;
   min-width: 0;
   color: rgba(245, 246, 248, 0.58);

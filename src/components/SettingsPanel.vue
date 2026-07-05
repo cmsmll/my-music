@@ -77,6 +77,22 @@ const background_image = computed(
   () => current_config.value?.style.background_image ?? "",
 );
 
+const background_image_opacity = computed({
+  get: () => current_config.value?.style.background_image_opacity ?? 1,
+  set: (value: number | string) => {
+    const opacity = Number(value);
+    app_config_store.update_style({
+      background_image_opacity: Number.isFinite(opacity)
+        ? Math.min(Math.max(opacity, 0), 1)
+        : 1,
+    });
+  },
+});
+
+const background_image_opacity_percent = computed(() =>
+  Math.round(background_image_opacity.value * 100),
+);
+
 const active_section_title = computed(
   () =>
     settings_sections.find((section) => section.key === active_section.value)
@@ -208,6 +224,15 @@ function reset_background_color() {
 function reset_background_image() {
   app_config_store.update_style({
     background_image: default_config.value?.style.background_image ?? "",
+    background_image_opacity:
+      default_config.value?.style.background_image_opacity ?? 1,
+  });
+}
+
+function reset_background_image_opacity() {
+  app_config_store.update_style({
+    background_image_opacity:
+      default_config.value?.style.background_image_opacity ?? 1,
   });
 }
 
@@ -484,6 +509,25 @@ async function choose_cache_path(entry: CacheEntry) {
                       class="svg_icon"
                       :style="icon_style(folder_open_icon)"
                     />
+                  </button>
+                </div>
+                <div class="settings_opacity_control">
+                  <span>透明度 {{ background_image_opacity_percent }}%</span>
+                  <input
+                    v-model.number="background_image_opacity"
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    title="调节背景图片透明度"
+                  />
+                  <button
+                    class="settings_default_button"
+                    type="button"
+                    title="恢复默认背景图片透明度"
+                    @click="reset_background_image_opacity"
+                  >
+                    <span class="svg_icon" :style="icon_style(system_icon)" />
                   </button>
                 </div>
               </label>

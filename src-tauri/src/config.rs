@@ -40,6 +40,7 @@ impl ConfigManager {
             style: crate::models::StyleConfig {
                 background_color: "#ffffff".to_string(),
                 background_image: String::new(),
+                background_image_opacity: 1.0,
             },
             state: crate::models::AppStateConfig {
                 width: 1280,
@@ -167,6 +168,7 @@ pub(crate) fn parse_config(content: &str, default_config: &AppConfig) -> Option<
         let style = config.style.unwrap_or(crate::models::StyleConfigFile {
             background_color: None,
             background_image: None,
+            background_image_opacity: None,
         });
         let state = config.state.unwrap_or(crate::models::AppStateConfigFile {
             width: None,
@@ -225,6 +227,9 @@ pub(crate) fn parse_config(content: &str, default_config: &AppConfig) -> Option<
                 background_image: style
                     .background_image
                     .unwrap_or_else(|| default_config.style.background_image.clone()),
+                background_image_opacity: style
+                    .background_image_opacity
+                    .unwrap_or(default_config.style.background_image_opacity),
             },
             state: crate::models::AppStateConfig {
                 width: state.width.unwrap_or(default_config.state.width),
@@ -250,6 +255,7 @@ fn sanitize_config(mut config: AppConfig) -> AppConfig {
     dedup_strings(&mut config.decoder.scan_directory);
     config.decoder.process_formats = sanitize_process_formats(&config.decoder.process_formats);
     config.state.volume = config.state.volume.clamp(0.0, 1.5);
+    config.style.background_image_opacity = config.style.background_image_opacity.clamp(0.0, 1.0);
     config.state.width = config.state.width.max(480);
     config.state.height = config.state.height.max(360);
     config.state.sidebar_width = config.state.sidebar_width.clamp(72, 420);

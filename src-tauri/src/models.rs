@@ -71,6 +71,7 @@ pub(crate) struct DecoderConfig {
 pub(crate) struct StyleConfig {
     pub(crate) background_color: String,
     pub(crate) background_image: String,
+    pub(crate) background_image_opacity: f32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -118,6 +119,7 @@ pub(crate) struct DecoderConfigFile {
 pub(crate) struct StyleConfigFile {
     pub(crate) background_color: Option<String>,
     pub(crate) background_image: Option<String>,
+    pub(crate) background_image_opacity: Option<f32>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

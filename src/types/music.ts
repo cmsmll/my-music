@@ -65,6 +65,7 @@ export type DecoderRunSummary = {
 export type StyleConfig = {
   background_color: string;
   background_image: string;
+  background_image_opacity: number;
 };
 
 export type AppStateConfig = {

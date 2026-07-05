@@ -239,10 +239,15 @@ const app_background_image = computed(() => {
   return image_path ? `url("${convertFileSrc(image_path)}")` : "none";
 });
 
+const app_background_image_opacity = computed(() =>
+  Math.min(Math.max(app_config.value?.style.background_image_opacity ?? 1, 0), 1),
+);
+
 const app_shell_style = computed(() => ({
   "--sidebar_width": `${sidebar_width.value}px`,
   "--app_background_color": app_background_color.value,
   "--app_background_image": app_background_image.value,
+  "--app_background_image_opacity": `${app_background_image_opacity.value}`,
 }));
 
 const playback_mode_button = computed(() => {
@@ -1855,6 +1860,7 @@ button:focus-visible {
 }
 
 .app_shell {
+  position: relative;
   display: grid;
   grid-template-areas:
     "sidebar workspace"
@@ -1862,12 +1868,27 @@ button:focus-visible {
   grid-template-columns: var(--sidebar_width, 250px) minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr) 86px;
   height: 100vh;
+  overflow: hidden;
   color: #1e2026;
   background-color: var(--app_background_color, #ffffff);
+}
+
+.app_shell::before {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  content: "";
   background-image: var(--app_background_image, none);
   background-position: center;
   background-size: cover;
   background-repeat: no-repeat;
+  opacity: var(--app_background_image_opacity, 1);
+  pointer-events: none;
+}
+
+.app_shell > * {
+  position: relative;
+  z-index: 1;
 }
 
 .tool_button,
@@ -2810,6 +2831,63 @@ p {
 .settings_color_picker::-webkit-color-swatch {
   border: 0;
   border-radius: 6px;
+}
+
+.settings_opacity_control {
+  display: grid;
+  grid-template-columns: 92px minmax(120px, 1fr) 40px;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.settings_opacity_control > span {
+  margin: 0;
+  color: #8b919c;
+  font-size: 0.82rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.settings_opacity_control input[type="range"] {
+  width: 100%;
+  height: 40px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  accent-color: #426dff;
+}
+
+.settings_opacity_control input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background: #e5e8ef;
+}
+
+.settings_opacity_control input[type="range"]::-webkit-slider-thumb {
+  width: 16px;
+  height: 16px;
+  margin-top: -5px;
+  border: 3px solid #ffffff;
+  border-radius: 50%;
+  background: #426dff;
+  box-shadow: 0 2px 8px rgba(66, 109, 255, 0.28);
+  -webkit-appearance: none;
+}
+
+.settings_opacity_control input[type="range"]::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: #e5e8ef;
+}
+
+.settings_opacity_control input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border: 3px solid #ffffff;
+  border-radius: 50%;
+  background: #426dff;
+  box-shadow: 0 2px 8px rgba(66, 109, 255, 0.28);
 }
 
 .settings_default_button,

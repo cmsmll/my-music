@@ -351,6 +351,7 @@ function reset_playlist_drag() {
   gap: 16px;
   width: 100%;
   min-height: 48px;
+  border: 1px solid transparent;
   border-radius: 8px;
   padding: 0 22px;
   color: var(--theme-title-color, #1e2026);
@@ -368,13 +369,15 @@ function reset_playlist_drag() {
 }
 
 .nav_item.active {
+  border-color: var(--theme-highlight-color, #426dff);
   color: var(--theme-highlight-color, #426dff);
-  background: #eaf0ff;
+  background: transparent;
 }
 
 .nav_item:hover {
+  border-color: var(--theme-highlight-color, #426dff);
   color: var(--theme-highlight-color, #426dff);
-  background: #eaf0ff;
+  background: transparent;
 }
 
 .nav_item.dragging {

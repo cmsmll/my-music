@@ -1966,6 +1966,33 @@ p {
   min-height: 0;
   overflow: auto;
   padding: 0 12px 18px 0;
+  scrollbar-color: rgba(136, 150, 176, 0.38) transparent;
+  scrollbar-width: thin;
+}
+
+.track_table::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.track_table::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.track_table::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: rgba(136, 150, 176, 0.42);
+  background-clip: content-box;
+}
+
+.track_table::-webkit-scrollbar-thumb:hover {
+  background: rgba(66, 109, 255, 0.58);
+  background-clip: content-box;
+}
+
+.track_table::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 .virtual_track_spacer {

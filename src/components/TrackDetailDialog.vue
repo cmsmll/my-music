@@ -84,8 +84,10 @@ onBeforeUnmount(() => {
 
 .track_detail_dialog {
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 18px;
   width: min(620px, 100%);
+  height: min(720px, calc(100vh - 48px));
   max-height: min(720px, calc(100vh - 48px));
   overflow: hidden;
   border: 1px solid #eef0f4;
@@ -141,6 +143,7 @@ onBeforeUnmount(() => {
 
 .track_detail_dialog dl {
   display: grid;
+  align-content: start;
   gap: 8px;
   min-height: 0;
   overflow-y: auto;

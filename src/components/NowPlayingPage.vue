@@ -259,18 +259,19 @@ defineExpose({ render_progress });
 }
 
 .record_stage {
-  position: relative;
   display: grid;
-  justify-items: center;
-  align-items: end;
+  grid-template-areas: "turntable";
+  place-items: center;
   width: min(32vw, 430px);
   min-width: 320px;
-  height: min(50vh, 520px);
+  aspect-ratio: 0.76;
   min-height: 0;
 }
 
 .record_disc {
-  position: relative;
+  grid-area: turntable;
+  align-self: end;
+  justify-self: center;
   display: grid;
   width: min(88%, 380px);
   min-width: 260px;
@@ -289,14 +290,16 @@ defineExpose({ render_progress });
 }
 
 .record_grooves {
-  position: absolute;
-  inset: 6%;
+  grid-area: 1 / 1;
+  width: 88%;
+  aspect-ratio: 1;
+  place-self: center;
   border-radius: 50%;
   background: repeating-radial-gradient(circle, transparent 0 5px, rgba(255, 255, 255, 0.035) 6px 7px);
 }
 
 .record_label {
-  position: relative;
+  grid-area: 1 / 1;
   z-index: 1;
   display: grid;
   overflow: hidden;
@@ -320,14 +323,14 @@ defineExpose({ render_progress });
 }
 
 .tonearm {
-  position: absolute;
-  top: -24%;
-  left: 48%;
+  grid-area: turntable;
+  align-self: start;
+  justify-self: center;
   z-index: 2;
   width: min(72%, 310px);
   aspect-ratio: 520 / 300;
   pointer-events: none;
-  transform: translate(-14%, 0) rotate(-4deg);
+  transform: translate(9%, -8%) rotate(-4deg);
   transform-origin: 14.23% 25.33%;
   transition:
     transform 520ms cubic-bezier(0.2, 0.9, 0.28, 1),
@@ -336,7 +339,7 @@ defineExpose({ render_progress });
 }
 
 .tonearm_playing {
-  transform: translate(-14%, 0) rotate(43deg);
+  transform: translate(9%, -8%) rotate(43deg);
   filter: drop-shadow(0 7px 9px rgba(0, 0, 0, 0.34));
 }
 
@@ -478,8 +481,6 @@ defineExpose({ render_progress });
   }
 
   .tonearm {
-    top: -18%;
-    left: 48%;
     width: min(76%, 260px);
   }
 

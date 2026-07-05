@@ -46,9 +46,9 @@ const { items } = storeToRefs(notification_store);
 }
 
 .global_notification_info {
-  --notification-bg: rgb(144 147 153 / 0.12);
-  --notification-border: rgb(144 147 153 / 0.18);
-  --notification-text: #909399;
+  --notification-bg: rgb(64 158 255 / 0.12);
+  --notification-border: rgb(64 158 255 / 0.2);
+  --notification-text: #409eff;
 }
 
 .global_notification_success {

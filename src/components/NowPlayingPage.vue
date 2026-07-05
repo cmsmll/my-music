@@ -7,6 +7,7 @@ import maximize_icon from "../assets/icons/maximize.svg";
 import minimize_icon from "../assets/icons/minimize.svg";
 import tonearm_icon from "../assets/tonearm-minimal-white.svg";
 import x_icon from "../assets/icons/x.svg";
+import LineLyricsRenderer from "./LineLyricsRenderer.vue";
 import PlayerBar from "./PlayerBar.vue";
 import { use_app_config_store } from "../stores/app_config";
 import { use_notification_store } from "../stores/notifications";
@@ -56,6 +57,7 @@ const emit = defineEmits<{
 
 const player_bar = ref<PlayerBarExpose | null>(null);
 const lyrics_loading = ref(false);
+const lyrics_text = ref("");
 const lyrics_lines = ref<string[]>([]);
 const compact_panel = ref<"record" | "lyrics">("record");
 const lyrics_search_open = ref(false);
@@ -74,9 +76,6 @@ const lyric_placeholder = [
   "可以重新加载曲库，或检查音频文件是否包含内嵌歌词。",
 ];
 
-const display_lyrics = computed(() =>
-  lyrics_lines.value.length ? lyrics_lines.value : lyric_placeholder,
-);
 
 const auto_lyrics_enabled = computed({
   get() {
@@ -96,6 +95,7 @@ function normalize_lyrics(content: string) {
 
 async function load_lyrics(track?: Track | null) {
   const request_id = ++lyrics_load_request_id;
+  lyrics_text.value = "";
   lyrics_lines.value = [];
   const path = track?.lyrics_cache_path?.trim();
   if (!path) return false;
@@ -105,12 +105,14 @@ async function load_lyrics(track?: Track | null) {
     const content = await invoke<string | null>("read_lyrics_cache", { path });
     const lines = content ? normalize_lyrics(content) : [];
     if (request_id === lyrics_load_request_id) {
+      lyrics_text.value = content ?? "";
       lyrics_lines.value = lines;
     }
     return lines.length > 0;
   } catch (error) {
     console.warn("读取歌词失败", error);
     if (request_id === lyrics_load_request_id) {
+      lyrics_text.value = "";
       lyrics_lines.value = [];
     }
     return false;
@@ -202,6 +204,7 @@ async function apply_lyrics_result(track: Track, result: LyricsSearchResult) {
     lyricsCachePath: track.lyrics_cache_path,
     lyrics,
   });
+  lyrics_text.value = used.lyrics;
   lyrics_lines.value = normalize_lyrics(used.lyrics);
   current_lyrics_hash.value = used.lyrics_hash;
   if (used.track) {
@@ -404,17 +407,12 @@ defineExpose({ render_progress });
           </p>
         </div>
 
-        <div class="lyrics_panel">
-          <p v-if="lyrics_loading" class="lyrics_hint">正在读取歌词...</p>
-          <p
-            v-for="(line, index) in display_lyrics"
-            v-else
-            :key="`${line}-${index}`"
-            :class="{ lyrics_hint: !lyrics_lines.length }"
-          >
-            {{ line }}
-          </p>
-        </div>
+        <LineLyricsRenderer
+          :lyrics="lyrics_text"
+          :elapsed="status.elapsed"
+          :loading="lyrics_loading"
+          :placeholder="lyric_placeholder"
+        />
       </section>
 
       <button
@@ -749,31 +747,6 @@ defineExpose({ render_progress });
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.lyrics_panel {
-  display: grid;
-  align-content: start;
-  gap: 18px;
-  height: min(44vh, 430px);
-  overflow-y: auto;
-  color: rgba(245, 246, 248, 0.48);
-  font-size: clamp(1.2rem, 1.6vw, 1.7rem);
-  font-weight: 900;
-  line-height: 1.55;
-  scrollbar-width: none;
-}
-
-.lyrics_panel::-webkit-scrollbar {
-  display: none;
-}
-
-.lyrics_panel p {
-  margin: 0;
-}
-
-.lyrics_panel .lyrics_hint {
-  color: rgba(245, 246, 248, 0.36);
 }
 
 .lyrics_search_overlay {

@@ -10,10 +10,6 @@ const tauri_config_path = resolve(root, "src-tauri", "tauri.conf.json");
 
 const bump = process.argv[2] ?? "patch";
 
-function read_json(path) {
-  return JSON.parse(readFileSync(path, "utf8"));
-}
-
 function write_json(path, value) {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
 }
@@ -56,29 +52,84 @@ function run(command, args, cwd) {
   const executable = process.platform === "win32" ? `${command}.cmd` : command;
   const result = spawnSync(executable, args, {
     cwd,
-    stdio: "inherit",
+    encoding: "utf8",
+    maxBuffer: 1024 * 1024 * 64,
+    stdio: ["inherit", "pipe", "pipe"],
   });
 
+  if (result.stdout) {
+    process.stdout.write(result.stdout);
+  }
+  if (result.stderr) {
+    process.stderr.write(result.stderr);
+  }
+
+  if (result.error) {
+    throw new Error(
+      [
+        `${command} ${args.join(" ")} 启动失败`,
+        `工作目录: ${cwd}`,
+        `错误信息: ${result.error.message}`,
+      ].join("\n"),
+    );
+  }
+
   if (result.status !== 0) {
-    throw new Error(`${command} ${args.join(" ")} 执行失败`);
+    throw new Error(
+      [
+        `${command} ${args.join(" ")} 执行失败`,
+        `工作目录: ${cwd}`,
+        `退出码: ${result.status ?? "无"}`,
+        `信号: ${result.signal ?? "无"}`,
+      ].join("\n"),
+    );
   }
 }
 
-const package_json = read_json(package_path);
-const version = next_version(package_json.version, bump);
+function restore_files(files) {
+  for (const file of files) {
+    writeFileSync(file.path, file.content);
+  }
+}
 
-package_json.version = version;
-write_json(package_path, package_json);
+const original_files = [
+  { path: package_path, content: readFileSync(package_path, "utf8") },
+  { path: cargo_path, content: readFileSync(cargo_path, "utf8") },
+  { path: tauri_config_path, content: readFileSync(tauri_config_path, "utf8") },
+];
 
-const cargo_toml = readFileSync(cargo_path, "utf8");
-writeFileSync(
-  cargo_path,
-  replace_required(cargo_toml, /^(version\s*=\s*)"[^"]+"/m, `$1"${version}"`, "Cargo.toml"),
-);
+try {
+  const package_json = JSON.parse(original_files[0].content);
+  const version = next_version(package_json.version, bump);
 
-const tauri_config = read_json(tauri_config_path);
-tauri_config.version = version;
-write_json(tauri_config_path, tauri_config);
+  package_json.version = version;
+  write_json(package_path, package_json);
 
-console.log(`版本号已更新为 ${version}`);
-run("pnpm", ["tauri:build"], root);
+  writeFileSync(
+    cargo_path,
+    replace_required(
+      original_files[1].content,
+      /^(version\s*=\s*)"[^"]+"/m,
+      `$1"${version}"`,
+      "Cargo.toml",
+    ),
+  );
+
+  const tauri_config = JSON.parse(original_files[2].content);
+  tauri_config.version = version;
+  write_json(tauri_config_path, tauri_config);
+
+  console.log(`版本号已更新为 ${version}`);
+  run("pnpm", ["tauri:build"], root);
+} catch (error) {
+  try {
+    restore_files(original_files);
+    console.error("发布失败，版本号已回退到执行前状态。");
+  } catch (restore_error) {
+    console.error("发布失败，并且版本号回退失败，请手动检查版本文件。");
+    console.error(restore_error);
+  }
+
+  console.error(error instanceof Error ? error.message : error);
+  process.exitCode = 1;
+}

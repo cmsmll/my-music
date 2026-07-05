@@ -146,23 +146,11 @@ onBeforeUnmount(() => {
   overflow-y: auto;
   margin: 0;
   padding-right: 4px;
-  scrollbar-color: rgba(136, 150, 176, 0.38) transparent;
-  scrollbar-width: thin;
+  scrollbar-width: none;
 }
 
 .track_detail_dialog dl::-webkit-scrollbar {
-  width: 10px;
-}
-
-.track_detail_dialog dl::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.track_detail_dialog dl::-webkit-scrollbar-thumb {
-  border: 3px solid transparent;
-  border-radius: 999px;
-  background: rgba(136, 150, 176, 0.42);
-  background-clip: content-box;
+  display: none;
 }
 
 .track_detail_dialog dl > div {

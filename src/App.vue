@@ -1775,29 +1775,31 @@ watch([current_queue, queue_source, playback_mode], () => {
       @open_now_playing="now_playing_open = true"
     />
 
-    <NowPlayingPage
-      v-if="now_playing_open"
-      ref="player_bar"
-      :current_track="current_track"
-      :status="status"
-      :progress_dragging="progress_dragging"
-      :playback_mode_button="playback_mode_button"
-      @close="now_playing_open = false"
-      @start_window_drag="start_window_drag"
-      @minimize_window="minimize_window"
-      @toggle_maximize_window="toggle_maximize_window"
-      @close_window="close_window"
-      @begin_progress_drag="begin_progress_drag"
-      @drag_progress="drag_progress"
-      @end_progress_drag="end_progress_drag"
-      @cancel_progress_drag="cancel_progress_drag"
-      @previous_track="previous_track"
-      @toggle_playback="toggle_playback"
-      @next_track="next_track"
-      @open_queue="playback_queue_open = true"
-      @cycle_playback_mode="cycle_playback_mode"
-      @change_volume="change_volume"
-    />
+    <Transition name="now_playing_slide">
+      <NowPlayingPage
+        v-if="now_playing_open"
+        ref="player_bar"
+        :current_track="current_track"
+        :status="status"
+        :progress_dragging="progress_dragging"
+        :playback_mode_button="playback_mode_button"
+        @close="now_playing_open = false"
+        @start_window_drag="start_window_drag"
+        @minimize_window="minimize_window"
+        @toggle_maximize_window="toggle_maximize_window"
+        @close_window="close_window"
+        @begin_progress_drag="begin_progress_drag"
+        @drag_progress="drag_progress"
+        @end_progress_drag="end_progress_drag"
+        @cancel_progress_drag="cancel_progress_drag"
+        @previous_track="previous_track"
+        @toggle_playback="toggle_playback"
+        @next_track="next_track"
+        @open_queue="playback_queue_open = true"
+        @cycle_playback_mode="cycle_playback_mode"
+        @change_volume="change_volume"
+      />
+    </Transition>
 
     <PlaybackQueuePanel
       v-if="playback_queue_open"
@@ -1974,6 +1976,29 @@ p {
   background: transparent;
 }
 
+.now_playing_slide-enter-active,
+.now_playing_slide-leave-active {
+  transition:
+    transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 220ms ease;
+  will-change: transform, opacity;
+}
+
+.now_playing_slide-enter-from {
+  opacity: 0.8;
+  transform: translateY(100%);
+}
+
+.now_playing_slide-enter-to,
+.now_playing_slide-leave-from {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.now_playing_slide-leave-to {
+  opacity: 0.82;
+  transform: translateY(100%);
+}
 
 .tool_button .svg_icon,
 .window_button .svg_icon,

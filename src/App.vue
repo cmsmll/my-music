@@ -2101,7 +2101,8 @@ p {
 
 .table_row:hover,
 .table_row.active {
-  background: #f5f7ff;
+  /* background: #f5f7ff; */
+  border: 1px solid var(--theme-title-color, #1e2026);
 }
 
 .table_row.missing,

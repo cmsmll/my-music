@@ -120,6 +120,7 @@ async function search_current_lyrics() {
   lyrics_search_loading.value = true;
   try {
     const response = await invoke<LyricsSearchResponse>("search_lyrics", {
+      trackId: track.id,
       title,
       artist: display_artist(track),
       album: display_album(track),

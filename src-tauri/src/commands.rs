@@ -171,6 +171,7 @@ pub(crate) fn read_lyrics_cache(path: String) -> Result<Option<String>, String> 
 #[tauri::command]
 pub(crate) async fn search_lyrics(
     lyrics_search: tauri::State<'_, LyricsSearchService>,
+    track_id: String,
     title: String,
     artist: String,
     album: String,
@@ -180,6 +181,7 @@ pub(crate) async fn search_lyrics(
 ) -> Result<LyricsSearchResponse, String> {
     lyrics_search
         .search(
+            track_id,
             title,
             artist,
             album,
@@ -190,7 +192,7 @@ pub(crate) async fn search_lyrics(
         .await
 }
 
-/// 使用指定搜索结果的歌词内容，写入当前歌曲固定歌词缓存路径和同名 SHA-256 文件。
+/// 使用指定搜索结果的歌词内容，写入当前歌曲固定歌词缓存路径，并同步歌曲缓存中的歌词哈希。
 #[tauri::command]
 pub(crate) fn use_lyrics_search_result(
     config_manager: tauri::State<'_, ConfigManager>,

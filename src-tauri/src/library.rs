@@ -1,10 +1,10 @@
 use crate::config::ConfigManager;
-use crate::lyrics::{current_lyrics_hash, lyrics_hash, write_hash_sidecar};
+use crate::lyrics::{current_lyrics_hash, lyrics_hash};
 use crate::models::{
     AppConfig, LibraryCache, MetadataSource, Track, TrackCacheEntries, TrackMetadata,
 };
 use crate::playlist::{track_map_from_tracks, write_playlist_caches};
-use crate::utils::{short_hash, unix_timestamp};
+use crate::utils::{safe_file_name, unix_timestamp};
 use lofty::{
     file::{AudioFile, TaggedFileExt},
     picture::MimeType,
@@ -337,7 +337,7 @@ pub(crate) fn cache_cover(
     let extension = extension_for_mime(mime);
     let cache_path = PathBuf::from(&config.cache.cover_cache_dir).join(format!(
         "{}.{}",
-        short_hash(&audio_path.to_string_lossy()),
+        cache_file_stem(audio_path),
         extension
     ));
 
@@ -370,7 +370,6 @@ pub(crate) fn cache_lyrics(lyrics: &str, lyrics_cache_path: &str) -> Result<Cach
     }
     fs::write(&path, lyrics).map_err(|err| format!("无法写入歌词缓存: {err}"))?;
     let hash = lyrics_hash(lyrics);
-    write_hash_sidecar(&path, &hash)?;
     Ok(CachedLyrics {
         path: path.to_string_lossy().to_string(),
         hash,
@@ -444,9 +443,17 @@ pub(crate) fn extension_for_mime(mime: &str) -> &'static str {
 
 pub(crate) fn lyrics_cache_path(path: &Path, config: &AppConfig) -> String {
     PathBuf::from(&config.cache.lyrics_cache_dir)
-        .join(format!("{}.lrc", short_hash(&path.to_string_lossy())))
+        .join(format!("{}.lrc", cache_file_stem(path)))
         .to_string_lossy()
         .to_string()
+}
+
+fn cache_file_stem(path: &Path) -> String {
+    path.file_stem()
+        .and_then(|name| name.to_str())
+        .map(safe_file_name)
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| "unknown-track".to_string())
 }
 
 pub(crate) fn parse_artist_and_title(file_name: &str) -> (String, String) {

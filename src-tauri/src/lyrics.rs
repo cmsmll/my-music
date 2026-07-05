@@ -2,12 +2,7 @@ use crate::models::{LyricsSearchResponse, LyricsSearchResult, LyricsUseResult};
 use lyrix::{Lyrix, MusicPlayer};
 use moka::future::Cache;
 use sha2::{Digest, Sha256};
-use std::{
-    fs,
-    path::{Path, PathBuf},
-    sync::Arc,
-    time::Duration,
-};
+use std::{fs, path::PathBuf, sync::Arc, time::Duration};
 
 const LYRICS_CACHE_CAPACITY: u64 = 10;
 const PROVIDER_TIMEOUT_SECONDS: u64 = 12;
@@ -32,6 +27,7 @@ impl LyricsSearchService {
 
     pub(crate) async fn search(
         &self,
+        track_id: String,
         title: String,
         artist: String,
         album: String,
@@ -46,7 +42,13 @@ impl LyricsSearchService {
 
         let artist = known_value(&artist, "未知歌手");
         let album = known_value(&album, "未知专辑");
-        let cache_key = cache_key(&title, artist.as_deref(), album.as_deref(), duration);
+        let cache_key = cache_key(
+            &track_id,
+            &title,
+            artist.as_deref(),
+            album.as_deref(),
+            duration,
+        );
         let lyrix = self.lyrix.clone();
         let current_hash = match lyrics_cache_hash
             .as_deref()
@@ -92,7 +94,6 @@ impl LyricsSearchService {
 
         fs::write(&path, &lyrics).map_err(|err| format!("无法写入歌词缓存: {err}"))?;
         let lyrics_hash = lyrics_hash(&lyrics);
-        write_hash_sidecar(&path, &lyrics_hash)?;
 
         Ok(LyricsUseResult {
             lyrics_cache_path: path.to_string_lossy().to_string(),
@@ -272,21 +273,8 @@ pub(crate) fn current_lyrics_hash(lyrics_cache_path: &str) -> Result<Option<Stri
         return Ok(None);
     }
 
-    let hash_path = hash_sidecar_path(&path);
-    if hash_path.is_file() {
-        let hash = fs::read_to_string(&hash_path)
-            .map_err(|err| format!("无法读取歌词哈希缓存: {err}"))?
-            .trim()
-            .to_string();
-        if !hash.is_empty() {
-            return Ok(Some(hash));
-        }
-    }
-
     let lyrics = fs::read_to_string(&path).map_err(|err| format!("无法读取歌词缓存: {err}"))?;
-    let hash = lyrics_hash(&lyrics);
-    write_hash_sidecar(&path, &hash)?;
-    Ok(Some(hash))
+    Ok(Some(lyrics_hash(&lyrics)))
 }
 
 pub(crate) fn lyrics_hash(lyrics: &str) -> String {
@@ -294,24 +282,18 @@ pub(crate) fn lyrics_hash(lyrics: &str) -> String {
     digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-pub(crate) fn write_hash_sidecar(lyrics_path: &Path, hash: &str) -> Result<(), String> {
-    let hash_path = hash_sidecar_path(lyrics_path);
-    if let Some(parent) = hash_path.parent() {
-        fs::create_dir_all(parent).map_err(|err| format!("无法创建歌词哈希目录: {err}"))?;
-    }
-    fs::write(&hash_path, hash).map_err(|err| format!("无法写入歌词哈希缓存: {err}"))
-}
-
-fn hash_sidecar_path(lyrics_path: &Path) -> PathBuf {
-    PathBuf::from(format!("{}.sha256", lyrics_path.to_string_lossy()))
-}
-
 fn cache_key(
+    track_id: &str,
     title: &str,
     artist: Option<&str>,
     album: Option<&str>,
     duration: Option<u64>,
 ) -> String {
+    let track_id = track_id.trim();
+    if !track_id.is_empty() {
+        return format!("track:{track_id}");
+    }
+
     format!(
         "{}|{}|{}|{}",
         title.trim().to_lowercase(),

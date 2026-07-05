@@ -353,7 +353,7 @@ function reset_playlist_drag() {
   min-height: 48px;
   border-radius: 8px;
   padding: 0 22px;
-  color: #202329;
+  color: var(--theme-title-color, #1e2026);
   background: transparent;
   font-size: 1.05rem;
   font-weight: 700;
@@ -369,7 +369,7 @@ function reset_playlist_drag() {
 
 .nav_item:hover,
 .nav_item.active {
-  color: var(--theme-highlight-color, #426dff);
+  color: var(--theme-title-color, #1e2026);
   background: #eaf0ff;
 }
 
@@ -436,7 +436,7 @@ function reset_playlist_drag() {
   border: 0;
   outline: 0;
   padding: 0;
-  color: #202329;
+  color: var(--theme-title-color, #1e2026);
   background: transparent;
   font-size: 1.05rem;
   font-weight: 700;

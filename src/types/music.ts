@@ -112,8 +112,16 @@ export type LyricsSearchResult = {
   artist_name: string;
   album_name: string;
   duration?: number | null;
+  lyrics_hash: string;
+  is_current: boolean;
   synced_lyrics?: string | null;
   plain_lyrics?: string | null;
+};
+
+export type LyricsUseResult = {
+  lyrics_cache_path: string;
+  lyrics_hash: string;
+  lyrics: string;
 };
 
 export type ViewKey = "all" | "artists" | "albums" | "stats" | "recent" | "user_playlist";

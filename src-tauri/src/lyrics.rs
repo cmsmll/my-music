@@ -1,7 +1,13 @@
-use crate::models::LyricsSearchResult;
+use crate::models::{LyricsSearchResult, LyricsUseResult};
 use lyrix::{Lyrix, MusicPlayer};
 use moka::future::Cache;
-use std::{sync::Arc, time::Duration};
+use sha2::{Digest, Sha256};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::Duration,
+};
 
 const LYRICS_CACHE_CAPACITY: u64 = 10;
 const PROVIDER_TIMEOUT_SECONDS: u64 = 12;
@@ -30,6 +36,7 @@ impl LyricsSearchService {
         artist: String,
         album: String,
         duration: Option<u64>,
+        lyrics_cache_path: String,
     ) -> Result<Vec<LyricsSearchResult>, String> {
         let title = title.trim().to_string();
         if title.is_empty() || title == "未知歌曲" {
@@ -40,13 +47,47 @@ impl LyricsSearchService {
         let album = known_value(&album, "未知专辑");
         let cache_key = cache_key(&title, artist.as_deref(), album.as_deref(), duration);
         let lyrix = self.lyrix.clone();
+        let current_hash = current_lyrics_hash(&lyrics_cache_path)?;
 
-        self.cache
+        let results = self
+            .cache
             .try_get_with(cache_key, async move {
                 search_from_providers(lyrix, title, artist, album, duration).await
             })
             .await
-            .map_err(|err| err.to_string())
+            .map_err(|err| err.to_string())?;
+
+        Ok(mark_current_results(results, current_hash.as_deref()))
+    }
+
+    pub(crate) fn use_lyrics(
+        &self,
+        lyrics_cache_path: String,
+        lyrics: String,
+    ) -> Result<LyricsUseResult, String> {
+        let lyrics = lyrics.trim().to_string();
+        if lyrics.is_empty() {
+            return Err("歌词内容为空，无法使用".to_string());
+        }
+
+        let path = PathBuf::from(lyrics_cache_path.trim());
+        if path.as_os_str().is_empty() {
+            return Err("歌词缓存路径为空".to_string());
+        }
+
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).map_err(|err| format!("无法创建歌词缓存目录: {err}"))?;
+        }
+
+        fs::write(&path, &lyrics).map_err(|err| format!("无法写入歌词缓存: {err}"))?;
+        let lyrics_hash = lyrics_hash(&lyrics);
+        write_hash_sidecar(&path, &lyrics_hash)?;
+
+        Ok(LyricsUseResult {
+            lyrics_cache_path: path.to_string_lossy().to_string(),
+            lyrics_hash,
+            lyrics,
+        })
     }
 }
 
@@ -135,6 +176,12 @@ fn map_lyrics_result(
         .or(fallback_duration);
     let synced_lyrics = format_lrc(&data.lines);
     let plain_lyrics = format_plain_lyrics(&data.lines);
+    let lyrics_for_hash = if !synced_lyrics.is_empty() {
+        synced_lyrics.as_str()
+    } else {
+        plain_lyrics.as_str()
+    };
+    let lyrics_hash = lyrics_hash(lyrics_for_hash);
     let id = format!(
         "{}:{}:{}:{}",
         player.display_name(),
@@ -150,6 +197,8 @@ fn map_lyrics_result(
         artist_name,
         album_name,
         duration,
+        lyrics_hash,
+        is_current: false,
         synced_lyrics: (!synced_lyrics.is_empty()).then_some(synced_lyrics),
         plain_lyrics: (!plain_lyrics.is_empty()).then_some(plain_lyrics),
     })
@@ -199,6 +248,63 @@ fn format_lrc_time(milliseconds: u32) -> String {
 fn known_value(value: &str, unknown_value: &str) -> Option<String> {
     let value = value.trim();
     (!value.is_empty() && value != unknown_value).then(|| value.to_string())
+}
+
+fn mark_current_results(
+    mut results: Vec<LyricsSearchResult>,
+    current_hash: Option<&str>,
+) -> Vec<LyricsSearchResult> {
+    for result in &mut results {
+        result.is_current = current_hash
+            .map(|hash| hash == result.lyrics_hash)
+            .unwrap_or(false);
+    }
+    results
+}
+
+fn current_lyrics_hash(lyrics_cache_path: &str) -> Result<Option<String>, String> {
+    let lyrics_cache_path = lyrics_cache_path.trim();
+    if lyrics_cache_path.is_empty() {
+        return Ok(None);
+    }
+
+    let path = PathBuf::from(lyrics_cache_path);
+    if !path.is_file() {
+        return Ok(None);
+    }
+
+    let hash_path = hash_sidecar_path(&path);
+    if hash_path.is_file() {
+        let hash = fs::read_to_string(&hash_path)
+            .map_err(|err| format!("无法读取歌词哈希缓存: {err}"))?
+            .trim()
+            .to_string();
+        if !hash.is_empty() {
+            return Ok(Some(hash));
+        }
+    }
+
+    let lyrics = fs::read_to_string(&path).map_err(|err| format!("无法读取歌词缓存: {err}"))?;
+    let hash = lyrics_hash(&lyrics);
+    write_hash_sidecar(&path, &hash)?;
+    Ok(Some(hash))
+}
+
+fn lyrics_hash(lyrics: &str) -> String {
+    let digest = Sha256::digest(lyrics.trim().as_bytes());
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+fn write_hash_sidecar(lyrics_path: &Path, hash: &str) -> Result<(), String> {
+    let hash_path = hash_sidecar_path(lyrics_path);
+    if let Some(parent) = hash_path.parent() {
+        fs::create_dir_all(parent).map_err(|err| format!("无法创建歌词哈希目录: {err}"))?;
+    }
+    fs::write(&hash_path, hash).map_err(|err| format!("无法写入歌词哈希缓存: {err}"))
+}
+
+fn hash_sidecar_path(lyrics_path: &Path) -> PathBuf {
+    PathBuf::from(format!("{}.sha256", lyrics_path.to_string_lossy()))
 }
 
 fn cache_key(

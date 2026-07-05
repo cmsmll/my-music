@@ -7,8 +7,8 @@ use crate::library::{
 use crate::lyrics::LyricsSearchService;
 use crate::media_shortcuts::register_media_shortcuts as register_system_media_shortcuts;
 use crate::models::{
-    AppConfig, AppStartup, LibraryRefreshResult, LyricsSearchResult, PlayStatistics,
-    PlayTrackResult, PlaybackStatus, PlaylistBundle, Track,
+    AppConfig, AppStartup, LibraryRefreshResult, LyricsSearchResult, LyricsUseResult,
+    PlayStatistics, PlayTrackResult, PlaybackStatus, PlaylistBundle, Track,
 };
 use crate::playlist::{
     empty_playlist, ensure_unique_playlist_name, load_my_playlist_caches, load_playlist_bundle,
@@ -174,8 +174,21 @@ pub(crate) async fn search_lyrics(
     artist: String,
     album: String,
     duration: Option<u64>,
+    lyrics_cache_path: String,
 ) -> Result<Vec<LyricsSearchResult>, String> {
-    lyrics_search.search(title, artist, album, duration).await
+    lyrics_search
+        .search(title, artist, album, duration, lyrics_cache_path)
+        .await
+}
+
+/// 使用指定搜索结果的歌词内容，写入当前歌曲固定歌词缓存路径和同名 SHA-256 文件。
+#[tauri::command]
+pub(crate) fn use_lyrics_search_result(
+    lyrics_search: tauri::State<'_, LyricsSearchService>,
+    lyrics_cache_path: String,
+    lyrics: String,
+) -> Result<LyricsUseResult, String> {
+    lyrics_search.use_lyrics(lyrics_cache_path, lyrics)
 }
 
 fn empty_playlist_bundle() -> PlaylistBundle {

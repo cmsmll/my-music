@@ -56,6 +56,7 @@ pub fn run() {
             commands::get_playlist_bundle,
             commands::read_lyrics_cache,
             commands::search_lyrics,
+            commands::use_lyrics_search_result,
             commands::add_track_to_playlist,
             commands::remove_track_from_playlist,
             commands::create_user_playlist,

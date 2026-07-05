@@ -274,8 +274,17 @@ pub(crate) struct LyricsSearchResult {
     pub(crate) artist_name: String,
     pub(crate) album_name: String,
     pub(crate) duration: Option<u64>,
+    pub(crate) lyrics_hash: String,
+    pub(crate) is_current: bool,
     pub(crate) synced_lyrics: Option<String>,
     pub(crate) plain_lyrics: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct LyricsUseResult {
+    pub(crate) lyrics_cache_path: String,
+    pub(crate) lyrics_hash: String,
+    pub(crate) lyrics: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

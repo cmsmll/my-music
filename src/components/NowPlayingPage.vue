@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import maximize_icon from "../assets/icons/maximize.svg";
 import minimize_icon from "../assets/icons/minimize.svg";
+import tonearm_icon from "../assets/tonearm-minimal-white.svg";
 import x_icon from "../assets/icons/x.svg";
 import PlayerBar from "./PlayerBar.vue";
 import type { PlaybackModeItem, PlaybackStatus, Track } from "../types/music";
@@ -129,9 +130,7 @@ defineExpose({ render_progress });
     <main class="now_playing_content">
       <section class="record_stage" aria-label="歌曲封面">
         <div class="tonearm" :class="{ tonearm_playing: status.playing && current_track }">
-          <span class="tonearm_head" />
-          <span class="tonearm_body" />
-          <span class="tonearm_needle" />
+          <img :src="tonearm_icon" alt="" />
         </div>
         <div class="record_disc" :class="{ spinning_cover: status.playing && current_track }">
           <div class="record_grooves" />
@@ -263,26 +262,30 @@ defineExpose({ render_progress });
   position: relative;
   display: grid;
   justify-items: center;
-  align-items: center;
-  min-width: 0;
+  align-items: end;
+  width: min(42vw, 560px);
+  min-width: 360px;
+  height: min(58vh, 660px);
   min-height: 0;
 }
 
 .record_disc {
   position: relative;
   display: grid;
-  width: min(36vw, 470px);
+  width: min(100%, 540px);
   min-width: 300px;
   aspect-ratio: 1;
   place-items: center;
   border-radius: 50%;
   background:
-    radial-gradient(circle, transparent 0 27%, rgba(0, 0, 0, 0.72) 28% 100%),
-    repeating-radial-gradient(circle, #1f2022 0 3px, #0e0f11 4px 7px);
+    radial-gradient(circle, transparent 0 26%, rgba(0, 0, 0, 0.82) 27% 100%),
+    repeating-radial-gradient(circle, #1b1c1d 0 2px, #101112 3px 5px);
   box-shadow:
+    0 0 0 22px rgba(255, 255, 255, 0.045),
+    0 0 0 25px rgba(0, 0, 0, 0.18),
     0 28px 70px rgba(0, 0, 0, 0.38),
-    inset 0 0 0 16px rgba(255, 255, 255, 0.03),
-    inset 0 0 0 24px rgba(0, 0, 0, 0.28);
+    inset 0 0 0 15px rgba(255, 255, 255, 0.028),
+    inset 0 0 0 24px rgba(0, 0, 0, 0.32);
 }
 
 .record_grooves {
@@ -297,7 +300,7 @@ defineExpose({ render_progress });
   z-index: 1;
   display: grid;
   overflow: hidden;
-  width: 52%;
+  width: 50%;
   aspect-ratio: 1;
   place-items: center;
   border: 10px solid rgba(0, 0, 0, 0.24);
@@ -318,75 +321,30 @@ defineExpose({ render_progress });
 
 .tonearm {
   position: absolute;
-  top: 4%;
-  right: 16%;
+  top: 0;
+  left: 43%;
   z-index: 2;
-  width: 230px;
-  height: 142px;
+  width: min(72%, 370px);
+  aspect-ratio: 520 / 300;
   pointer-events: none;
-  transform: translateY(-13px) rotate(-9deg);
-  transform-origin: 32px 30px;
+  transform: translate(-14%, -1%) rotate(-4deg);
+  transform-origin: 14.23% 25.33%;
   transition:
-    transform 420ms cubic-bezier(0.2, 0.9, 0.28, 1),
+    transform 520ms cubic-bezier(0.2, 0.9, 0.28, 1),
     filter 420ms ease;
   filter: drop-shadow(0 16px 18px rgba(0, 0, 0, 0.28));
 }
 
 .tonearm_playing {
-  transform: translateY(0) rotate(13deg);
+  transform: translate(-14%, -1%) rotate(38deg);
   filter: drop-shadow(0 7px 9px rgba(0, 0, 0, 0.34));
 }
 
-.tonearm_head {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 28px;
-  height: 28px;
-  border: 8px solid #f4f5f7;
-  border-radius: 50%;
-  box-shadow: 0 0 0 10px rgba(255, 255, 255, 0.04);
-}
-
-.tonearm_body {
-  position: absolute;
-  top: 22px;
-  left: 22px;
-  width: 190px;
-  height: 86px;
-  border-top: 10px solid #f4f5f7;
-  border-right: 10px solid #f4f5f7;
-  border-radius: 0 0 32px 0;
-  transform: skewX(22deg);
-  transition: border-color 240ms ease;
-}
-
-.tonearm_body::after {
-  position: absolute;
-  right: -18px;
-  bottom: -18px;
-  width: 32px;
-  height: 22px;
-  border-radius: 5px;
-  background: #f4f5f7;
-  content: "";
-}
-
-.tonearm_needle {
-  position: absolute;
-  right: -2px;
-  bottom: 14px;
-  width: 9px;
-  height: 38px;
-  border-radius: 6px;
-  background: linear-gradient(180deg, #f4f5f7 0 62%, #26282d 63% 100%);
-  transform: rotate(-22deg) translateY(-12px);
-  transform-origin: 50% 0;
-  transition: transform 420ms cubic-bezier(0.2, 0.9, 0.28, 1);
-}
-
-.tonearm_playing .tonearm_needle {
-  transform: rotate(-22deg) translateY(0);
+.tonearm img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .now_playing_info {
@@ -520,8 +478,8 @@ defineExpose({ render_progress });
   }
 
   .tonearm {
-    right: 22%;
-    scale: 0.72;
+    left: 44%;
+    width: min(76%, 300px);
   }
 
   .track_identity p {

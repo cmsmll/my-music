@@ -43,7 +43,8 @@ impl ConfigManager {
                 background_image_opacity: 1.0,
                 title_color: "#1e2026".to_string(),
                 subtitle_color: "#8b919c".to_string(),
-                control_color: "#426dff".to_string(),
+                highlight_color: "#426dff".to_string(),
+                control_color: "#1e2026".to_string(),
             },
             state: crate::models::AppStateConfig {
                 width: 1280,
@@ -174,6 +175,7 @@ pub(crate) fn parse_config(content: &str, default_config: &AppConfig) -> Option<
             background_image_opacity: None,
             title_color: None,
             subtitle_color: None,
+            highlight_color: None,
             control_color: None,
         });
         let state = config.state.unwrap_or(crate::models::AppStateConfigFile {
@@ -182,6 +184,9 @@ pub(crate) fn parse_config(content: &str, default_config: &AppConfig) -> Option<
             volume: None,
             sidebar_width: None,
         });
+
+        let style_has_highlight_color = style.highlight_color.is_some();
+        let legacy_highlight_color = style.control_color.clone();
 
         sanitize_config(AppConfig {
             music_directory: config
@@ -242,9 +247,17 @@ pub(crate) fn parse_config(content: &str, default_config: &AppConfig) -> Option<
                 subtitle_color: style
                     .subtitle_color
                     .unwrap_or_else(|| default_config.style.subtitle_color.clone()),
-                control_color: style
-                    .control_color
-                    .unwrap_or_else(|| default_config.style.control_color.clone()),
+                highlight_color: style
+                    .highlight_color
+                    .or(legacy_highlight_color)
+                    .unwrap_or_else(|| default_config.style.highlight_color.clone()),
+                control_color: if style_has_highlight_color {
+                    style
+                        .control_color
+                        .unwrap_or_else(|| default_config.style.control_color.clone())
+                } else {
+                    default_config.style.control_color.clone()
+                },
             },
             state: crate::models::AppStateConfig {
                 width: state.width.unwrap_or(default_config.state.width),

@@ -109,7 +109,7 @@ function playlist_disabled(playlist: PlaylistCache) {
 }
 
 .track_context_detail_button {
-  color: var(--theme-control-color, #426dff);
+  color: var(--theme-highlight-color, #426dff);
 }
 
 .track_context_detail_button:hover {
@@ -131,7 +131,7 @@ function playlist_disabled(playlist: PlaylistCache) {
 }
 
 .track_context_playlist_button:hover {
-  color: var(--theme-control-color, #426dff);
+  color: var(--theme-highlight-color, #426dff);
   background: #eaf0ff;
 }
 

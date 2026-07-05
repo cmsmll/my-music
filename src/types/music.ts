@@ -68,6 +68,7 @@ export type StyleConfig = {
   background_image_opacity: number;
   title_color: string;
   subtitle_color: string;
+  highlight_color: string;
   control_color: string;
 };
 

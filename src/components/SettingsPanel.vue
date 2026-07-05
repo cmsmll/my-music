@@ -87,8 +87,15 @@ const subtitle_color = computed({
   },
 });
 
+const highlight_color = computed({
+  get: () => current_config.value?.style.highlight_color ?? "#426dff",
+  set: (value: string) => {
+    app_config_store.update_style({ highlight_color: value });
+  },
+});
+
 const control_color = computed({
-  get: () => current_config.value?.style.control_color ?? "#426dff",
+  get: () => current_config.value?.style.control_color ?? "#1e2026",
   set: (value: string) => {
     app_config_store.update_style({ control_color: value });
   },
@@ -254,9 +261,15 @@ function reset_subtitle_color() {
   });
 }
 
+function reset_highlight_color() {
+  app_config_store.update_style({
+    highlight_color: default_config.value?.style.highlight_color ?? "#426dff",
+  });
+}
+
 function reset_control_color() {
   app_config_store.update_style({
-    control_color: default_config.value?.style.control_color ?? "#426dff",
+    control_color: default_config.value?.style.control_color ?? "#1e2026",
   });
 }
 
@@ -559,6 +572,26 @@ async function choose_cache_path(entry: CacheEntry) {
                     class="settings_color_picker"
                     type="color"
                     title="选择副标题颜色"
+                  />
+                </div>
+              </label>
+              <label>
+                <span>高亮色</span>
+                <div class="settings_input_row">
+                  <input :value="highlight_color" readonly />
+                  <button
+                    class="settings_default_button"
+                    type="button"
+                    title="恢复默认高亮色"
+                    @click="reset_highlight_color"
+                  >
+                    <span class="svg_icon" :style="icon_style(system_icon)" />
+                  </button>
+                  <input
+                    v-model="highlight_color"
+                    class="settings_color_picker"
+                    type="color"
+                    title="选择高亮色"
                   />
                 </div>
               </label>

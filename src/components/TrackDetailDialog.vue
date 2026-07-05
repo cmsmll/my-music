@@ -131,7 +131,7 @@ onBeforeUnmount(() => {
   min-height: 34px;
   border-radius: 8px;
   padding: 0 12px;
-  color: var(--theme-control-color, #426dff);
+  color: var(--theme-highlight-color, #426dff);
   background: #eaf0ff;
   font-size: 0.9rem;
   font-weight: 800;

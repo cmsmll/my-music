@@ -80,7 +80,7 @@ const emit = defineEmits<{
 }
 
 .scan_icon.loading {
-  color: var(--theme-control-color, #426dff);
+  color: var(--theme-highlight-color, #426dff);
   background: #eaf0ff;
 }
 
@@ -98,7 +98,7 @@ const emit = defineEmits<{
   width: 22px;
   height: 22px;
   border: 3px solid rgba(66, 109, 255, 0.2);
-  border-top-color: var(--theme-control-color, #426dff);
+  border-top-color: var(--theme-highlight-color, #426dff);
   border-radius: 50%;
   animation: scan_spin 0.75s linear infinite;
 }
@@ -145,7 +145,7 @@ const emit = defineEmits<{
   border-radius: 8px;
   padding: 0 16px;
   color: #ffffff;
-  background: var(--theme-control-color, #426dff);
+  background: var(--theme-highlight-color, #426dff);
   font-size: 0.92rem;
   font-weight: 900;
   cursor: pointer;

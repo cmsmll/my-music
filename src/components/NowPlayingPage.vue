@@ -9,7 +9,7 @@ import tonearm_icon from "../assets/tonearm-minimal-white.svg";
 import x_icon from "../assets/icons/x.svg";
 import PlayerBar from "./PlayerBar.vue";
 import type { PlaybackModeItem, PlaybackStatus, Track } from "../types/music";
-import { cover_src, display_album, display_artist, display_title, format_duration, icon_style } from "../utils/track";
+import { cover_src, display_album, display_artist, display_title, icon_style } from "../utils/track";
 
 type PlayerBarExpose = {
   render_progress: (percent: number, seconds: number) => void;
@@ -44,6 +44,7 @@ const player_bar = ref<PlayerBarExpose | null>(null);
 const lyrics_loading = ref(false);
 const lyrics_lines = ref<string[]>([]);
 const compact_panel = ref<"record" | "lyrics">("record");
+const lyrics_search_open = ref(false);
 
 const lyric_placeholder = [
   "暂未获取到歌词",
@@ -87,7 +88,12 @@ watch(
 );
 
 function close_on_escape(event: KeyboardEvent) {
-  if (event.key === "Escape") emit("close");
+  if (event.key !== "Escape") return;
+  if (lyrics_search_open.value) {
+    lyrics_search_open.value = false;
+    return;
+  }
+  emit("close");
 }
 
 onMounted(() => {
@@ -116,7 +122,7 @@ defineExpose({ render_progress });
         <span />
       </button>
       <div class="now_playing_window_tools">
-        <span>播放器模式</span>
+        <button class="lyrics_search_button" type="button" @click="lyrics_search_open = true">搜索歌词</button>
         <button class="window_button hover_border_control" type="button" title="最小化" @click="emit('minimize_window')">
           <span class="svg_icon" :style="icon_style(minimize_icon)" />
         </button>
@@ -149,7 +155,13 @@ defineExpose({ render_progress });
         <div class="tonearm" :class="{ tonearm_playing: status.playing && current_track }">
           <img :src="tonearm_icon" alt="" />
         </div>
-        <div class="record_disc" :class="{ spinning_cover: status.playing && current_track }">
+        <div
+          class="record_disc"
+          :class="{
+            now_playing_record_spin: current_track,
+            now_playing_record_spin_running: status.playing && current_track,
+          }"
+        >
           <div class="record_grooves" />
           <div class="record_label">
             <img v-if="current_track?.cover_cache_path" :src="cover_src(current_track)" alt="" />
@@ -164,14 +176,7 @@ defineExpose({ render_progress });
           <p>
             <span>专辑：{{ display_album(current_track) }}</span>
             <span>歌手：{{ display_artist(current_track) }}</span>
-            <span>时长：{{ format_duration(current_track?.duration) }}</span>
           </p>
-        </div>
-
-        <div class="info_tabs" aria-label="播放信息">
-          <button class="active" type="button">歌词</button>
-          <button type="button" disabled>百科</button>
-          <button type="button" disabled>相似推荐</button>
         </div>
 
         <div class="lyrics_panel">
@@ -197,6 +202,25 @@ defineExpose({ render_progress });
         <span class="svg_icon" :style="icon_style(compact_right_icon)" />
       </button>
     </main>
+
+    <div v-if="lyrics_search_open" class="lyrics_search_overlay" @click.self="lyrics_search_open = false">
+      <section class="lyrics_search_dialog" role="dialog" aria-modal="true" aria-label="搜索歌词">
+        <header>
+          <strong>搜索歌词</strong>
+          <button type="button" title="关闭" @click="lyrics_search_open = false">×</button>
+        </header>
+        <div class="lyrics_result_head">
+          <span>歌词来源</span>
+          <span>歌词名称</span>
+          <span>操作</span>
+        </div>
+        <div class="lyrics_result_row">
+          <span>占位来源</span>
+          <strong>{{ display_title(current_track) }}</strong>
+          <button type="button" disabled>下载</button>
+        </div>
+      </section>
+    </div>
 
     <PlayerBar
       ref="player_bar"
@@ -275,6 +299,23 @@ defineExpose({ render_progress });
   color: rgba(245, 246, 248, 0.72);
 }
 
+.lyrics_search_button {
+  border: 1px solid transparent;
+  border-radius: 18px;
+  padding: 5px 12px;
+  color: rgba(245, 246, 248, 0.72);
+  background: transparent;
+  font-size: 0.96rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.lyrics_search_button:hover,
+.lyrics_search_button:focus-visible {
+  border-color: rgba(245, 246, 248, 0.5);
+  color: #ffffff;
+}
+
 .now_playing_content {
   display: grid;
   grid-template-columns: minmax(360px, 0.94fr) minmax(420px, 1.06fr);
@@ -321,6 +362,16 @@ defineExpose({ render_progress });
     0 28px 70px rgba(0, 0, 0, 0.38),
     inset 0 0 0 8px rgba(255, 255, 255, 0.024),
     inset 0 0 0 14px rgba(0, 0, 0, 0.32);
+}
+
+.now_playing_record_spin {
+  animation: cover_spin 16s linear infinite;
+  animation-play-state: paused;
+  will-change: transform;
+}
+
+.now_playing_record_spin_running {
+  animation-play-state: running;
 }
 
 .record_grooves {
@@ -426,35 +477,6 @@ defineExpose({ render_progress });
   white-space: nowrap;
 }
 
-.info_tabs {
-  display: flex;
-  width: max-content;
-  max-width: 100%;
-  gap: 4px;
-  border-radius: 22px;
-  padding: 4px;
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.info_tabs button {
-  border: 0;
-  border-radius: 18px;
-  padding: 5px 14px;
-  color: rgba(245, 246, 248, 0.68);
-  background: transparent;
-  font-size: 0.95rem;
-  font-weight: 900;
-}
-
-.info_tabs button.active {
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.16);
-}
-
-.info_tabs button:disabled {
-  cursor: default;
-}
-
 .lyrics_panel {
   display: grid;
   align-content: start;
@@ -478,6 +500,99 @@ defineExpose({ render_progress });
 
 .lyrics_panel .lyrics_hint {
   color: rgba(245, 246, 248, 0.36);
+}
+
+.lyrics_search_overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 880;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  background: rgba(10, 11, 13, 0.48);
+}
+
+.lyrics_search_dialog {
+  display: grid;
+  width: min(560px, 100%);
+  max-height: min(480px, calc(100vh - 56px));
+  overflow: hidden;
+  border: 1px solid rgba(245, 246, 248, 0.14);
+  border-radius: 16px;
+  background: rgba(28, 30, 34, 0.96);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.38);
+}
+
+.lyrics_search_dialog header,
+.lyrics_result_head,
+.lyrics_result_row {
+  display: grid;
+  grid-template-columns: 1fr minmax(0, 1.4fr) 90px;
+  align-items: center;
+  gap: 14px;
+}
+
+.lyrics_search_dialog header {
+  grid-template-columns: minmax(0, 1fr) 36px;
+  padding: 18px 20px 12px;
+}
+
+.lyrics_search_dialog header strong {
+  overflow: hidden;
+  color: #ffffff;
+  font-size: 1.16rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lyrics_search_dialog header button {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  color: rgba(245, 246, 248, 0.72);
+  background: transparent;
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.lyrics_search_dialog header button:hover {
+  border-color: rgba(245, 246, 248, 0.36);
+  color: #ffffff;
+}
+
+.lyrics_result_head {
+  padding: 12px 20px;
+  color: rgba(245, 246, 248, 0.48);
+  font-size: 0.88rem;
+  font-weight: 900;
+}
+
+.lyrics_result_row {
+  margin: 0 14px 16px;
+  border-radius: 10px;
+  padding: 12px 6px;
+  color: rgba(245, 246, 248, 0.74);
+  font-weight: 800;
+}
+
+.lyrics_result_row strong {
+  overflow: hidden;
+  color: #ffffff;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lyrics_result_row button {
+  min-height: 32px;
+  border: 1px solid rgba(245, 246, 248, 0.22);
+  border-radius: 16px;
+  color: rgba(245, 246, 248, 0.54);
+  background: transparent;
+  font-weight: 900;
 }
 
 .now_playing_page .player_bar {

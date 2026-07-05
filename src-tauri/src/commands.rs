@@ -20,6 +20,7 @@ use crate::utils::{safe_cache_name, short_hash, unix_timestamp, write_json_cache
 use std::{
     fs,
     path::{Path, PathBuf},
+    thread,
 };
 
 /// 获取应用启动所需的配置、曲库缓存、歌单缓存和播放统计。
@@ -125,13 +126,16 @@ pub(crate) fn register_media_shortcuts(app: tauri::AppHandle) {
 
 /// 按配置中的解码器扫描目录和输出目录执行解码，并返回本次处理统计。
 #[tauri::command]
-pub(crate) async fn run_decoder(
+pub(crate) fn run_decoder(
     config_manager: tauri::State<'_, ConfigManager>,
 ) -> Result<DecoderRunSummary, String> {
     let config = config_manager.get()?;
-    tauri::async_runtime::spawn_blocking(move || run_config_decoder(&config))
-        .await
-        .map_err(|err| format!("解码线程执行失败: {err}"))
+    thread::Builder::new()
+        .name("music-decoder".to_string())
+        .spawn(move || run_config_decoder(&config))
+        .map_err(|err| format!("解码线程启动失败: {err}"))?
+        .join()
+        .map_err(|_| "解码线程异常退出".to_string())
 }
 
 /// 读取曲库重载后生成的歌单缓存。

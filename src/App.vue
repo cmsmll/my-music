@@ -162,7 +162,6 @@ let listening_started_at = 0;
 let closing_window = false;
 let error_message_timer: number | undefined;
 let app_window_shown = false;
-let pending_window_min_size: PhysicalSize | null = null;
 
 const sidebar_min_width = 72;
 const sidebar_max_width = 420;
@@ -524,9 +523,11 @@ async function apply_config_state(config: AppConfig) {
       const frame_delta = await get_window_frame_delta();
       const outer_width = content_width + frame_delta.width;
       const outer_height = content_height + frame_delta.height;
-      pending_window_min_size = new PhysicalSize(
-        app_min_width + frame_delta.width,
-        app_min_height + frame_delta.height,
+      await app_window.setMinSize(
+        new PhysicalSize(
+          app_min_width + frame_delta.width,
+          app_min_height + frame_delta.height,
+        ),
       );
       await app_window.setSize(new PhysicalSize(outer_width, outer_height));
       await center_app_window(outer_width, outer_height);
@@ -574,23 +575,10 @@ async function show_app_window() {
   app_window_shown = true;
   try {
     await app_window.show();
-    apply_pending_window_min_size();
     schedule_deferred_startup_work();
   } catch (error) {
     console.warn("无法显示窗口", error);
   }
-}
-
-function apply_pending_window_min_size() {
-  const min_size = pending_window_min_size;
-  if (!min_size) return;
-  pending_window_min_size = null;
-
-  window.setTimeout(() => {
-    void app_window.setMinSize(min_size).catch((error) => {
-      console.warn("无法同步窗口最小尺寸", error);
-    });
-  }, 0);
 }
 
 function schedule_deferred_startup_work() {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import maximize_icon from "../assets/icons/maximize.svg";
 import minimize_icon from "../assets/icons/minimize.svg";
@@ -81,6 +81,18 @@ watch(
   },
   { immediate: true },
 );
+
+function close_on_escape(event: KeyboardEvent) {
+  if (event.key === "Escape") emit("close");
+}
+
+onMounted(() => {
+  window.addEventListener("keydown", close_on_escape);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("keydown", close_on_escape);
+});
 
 function render_progress(percent: number, seconds: number) {
   player_bar.value?.render_progress(percent, seconds);

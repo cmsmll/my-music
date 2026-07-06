@@ -98,6 +98,7 @@ pub(crate) struct StyleConfig {
     pub(crate) title_color: String,
     pub(crate) subtitle_color: String,
     pub(crate) highlight_color: String,
+    pub(crate) border_color: String,
     pub(crate) show_border: bool,
 }
 
@@ -151,6 +152,7 @@ pub(crate) struct StyleConfigFile {
     pub(crate) title_color: Option<String>,
     pub(crate) subtitle_color: Option<String>,
     pub(crate) highlight_color: Option<String>,
+    pub(crate) border_color: Option<String>,
     pub(crate) control_color: Option<String>,
     pub(crate) show_border: Option<bool>,
 }

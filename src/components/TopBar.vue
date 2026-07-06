@@ -72,7 +72,7 @@ const emit = defineEmits<{
   justify-content: center;
   align-items: center;
   grid-template-columns: 1fr 260px;
-  border-bottom: var(--app_border_width, 2px) solid var(--progress_track_background, rgba(128, 128, 128, 0.18));
+  border-bottom: var(--app_border_width, 2px) solid var(--theme-border-color, #e8e8e8);
   padding-right: 28px;
   cursor: move;
   user-select: none;
@@ -88,7 +88,7 @@ const emit = defineEmits<{
   width: 60%;
   min-width: 300px;
   height: 52px;
-  border: 2px solid var(--progress_track_background, rgba(128, 128, 128, 0.18));
+  border: var(--app_border_width, 2px) solid var(--theme-border-color, #e8e8e8);
   border-radius: 8px;
   padding: 0 18px;
   color: #858b96;

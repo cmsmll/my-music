@@ -273,6 +273,10 @@ const theme_highlight_color = computed(
   () => app_config.value?.style.highlight_color?.trim() || "#22a05a",
 );
 
+const theme_border_color = computed(
+  () => app_config.value?.style.border_color?.trim() || "#e8e8e8",
+);
+
 const app_border_width = computed(() =>
   (app_config.value?.style.show_border ?? true) ? "2px" : "0px",
 );
@@ -286,6 +290,7 @@ const app_shell_style = computed(() => ({
   "--theme-title-color": theme_title_color.value,
   "--theme-subtitle-color": theme_subtitle_color.value,
   "--theme-highlight-color": theme_highlight_color.value,
+  "--theme-border-color": theme_border_color.value,
   "--theme-control-color": theme_title_color.value,
 }));
 
@@ -293,6 +298,7 @@ watchEffect(() => {
   document.documentElement.style.setProperty("--theme-title-color", theme_title_color.value);
   document.documentElement.style.setProperty("--theme-subtitle-color", theme_subtitle_color.value);
   document.documentElement.style.setProperty("--theme-highlight-color", theme_highlight_color.value);
+  document.documentElement.style.setProperty("--theme-border-color", theme_border_color.value);
   document.documentElement.style.setProperty("--theme-control-color", theme_title_color.value);
 });
 
@@ -1919,7 +1925,6 @@ button:focus-visible {
   min-width: 600px;
   min-height: 700px;
   overflow: hidden;
-  --progress_track_background: rgba(128, 128, 128, 0.18);
   color: var(--theme-title-color, #1e2026);
   background-color: var(--app_background_color, #ffffff);
 }
@@ -2152,6 +2157,7 @@ p {
 
 .table_row {
   min-height: 74px;
+  border: var(--app_border_width, 2px) solid transparent;
   border-radius: 8px;
   padding: 8px 0;
   color: var(--theme-title-color, #1e2026);
@@ -2162,7 +2168,7 @@ p {
 .table_row:hover,
 .table_row.active {
   /* background: #f5f7ff; */
-  border: 1px solid var(--theme-title-color, #1e2026);
+  border-color: var(--theme-border-color, #e8e8e8);
 }
 
 .table_row.missing,

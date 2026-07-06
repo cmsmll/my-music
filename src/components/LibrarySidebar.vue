@@ -293,7 +293,7 @@ function reset_playlist_drag() {
   flex-direction: column;
   position: relative;
   min-height: 0;
-  border-right: var(--app_border_width, 2px) solid var(--progress_track_background, rgba(128, 128, 128, 0.18));
+  border-right: var(--app_border_width, 2px) solid var(--theme-border-color, #e8e8e8);
   background: transparent;
 }
 

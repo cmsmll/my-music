@@ -60,6 +60,7 @@ export type StyleConfig = {
   title_color: string;
   subtitle_color: string;
   highlight_color: string;
+  border_color: string;
   show_border: boolean;
 };
 

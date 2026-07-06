@@ -94,6 +94,13 @@ const highlight_color = computed({
   },
 });
 
+const border_color = computed({
+  get: () => current_config.value?.style.border_color ?? "#e8e8e8",
+  set: (value: string) => {
+    app_config_store.update_style({ border_color: value });
+  },
+});
+
 const show_border = computed({
   get: () => current_config.value?.style.show_border ?? true,
   set: (value: boolean) => {
@@ -264,6 +271,12 @@ function reset_subtitle_color() {
 function reset_highlight_color() {
   app_config_store.update_style({
     highlight_color: default_config.value?.style.highlight_color ?? "#22a05a",
+  });
+}
+
+function reset_border_color() {
+  app_config_store.update_style({
+    border_color: default_config.value?.style.border_color ?? "#e8e8e8",
   });
 }
 
@@ -586,6 +599,26 @@ async function choose_cache_path(entry: CacheEntry) {
                     class="settings_color_picker"
                     type="color"
                     title="选择高亮色"
+                  />
+                </div>
+              </label>
+              <label>
+                <span>边框色</span>
+                <div class="settings_input_row">
+                  <input :value="border_color" readonly />
+                  <button
+                    class="settings_default_button hover_border_control"
+                    type="button"
+                    title="恢复默认边框色"
+                    @click="reset_border_color"
+                  >
+                    <span class="svg_icon" :style="icon_style(system_icon)" />
+                  </button>
+                  <input
+                    v-model="border_color"
+                    class="settings_color_picker"
+                    type="color"
+                    title="选择边框色"
                   />
                 </div>
               </label>

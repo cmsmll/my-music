@@ -44,6 +44,7 @@ impl ConfigManager {
                 title_color: "#1e2026".to_string(),
                 subtitle_color: "#8b919c".to_string(),
                 highlight_color: "#22a05a".to_string(),
+                border_color: "#e8e8e8".to_string(),
                 show_border: true,
             },
             state: crate::models::AppStateConfig {
@@ -177,6 +178,7 @@ pub(crate) fn parse_config(content: &str, default_config: &AppConfig) -> Option<
             title_color: None,
             subtitle_color: None,
             highlight_color: None,
+            border_color: None,
             control_color: None,
             show_border: None,
         });
@@ -253,6 +255,9 @@ pub(crate) fn parse_config(content: &str, default_config: &AppConfig) -> Option<
                     .highlight_color
                     .or(legacy_highlight_color)
                     .unwrap_or_else(|| default_config.style.highlight_color.clone()),
+                border_color: style
+                    .border_color
+                    .unwrap_or_else(|| default_config.style.border_color.clone()),
                 show_border: style
                     .show_border
                     .unwrap_or(default_config.style.show_border),

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, useId, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from "vue";
 import { storeToRefs } from "pinia";
 import { use_playback_store } from "../stores/playback";
 
@@ -23,6 +23,7 @@ const { visual_elapsed } = storeToRefs(playback_store);
 const lyrics_viewport = ref<HTMLElement | null>(null);
 const active_anchor_index = ref(-1);
 const lyric_anchor_prefix = useId();
+let scroll_animation_frame: number | undefined;
 
 const lyric_lines = computed(() => {
   const parsed: LineLyricItem[] = [];
@@ -121,18 +122,67 @@ function lyric_anchor_id(index: number) {
   return `${lyric_anchor_prefix}-line-${index}`;
 }
 
-async function scroll_active_line(behavior: ScrollBehavior = "smooth") {
+function cancel_scroll_animation() {
+  if (scroll_animation_frame === undefined) return;
+  window.cancelAnimationFrame(scroll_animation_frame);
+  scroll_animation_frame = undefined;
+}
+
+function ease_out_cubic(progress: number) {
+  return 1 - (1 - progress) ** 3;
+}
+
+function scroll_to_anchor(anchor: HTMLElement, animate: boolean) {
+  const viewport = lyrics_viewport.value;
+  if (!viewport) return;
+
+  const viewport_rect = viewport.getBoundingClientRect();
+  const anchor_rect = anchor.getBoundingClientRect();
+  const max_scroll_top = Math.max(viewport.scrollHeight - viewport.clientHeight, 0);
+  const target_top = Math.min(
+    Math.max(
+      viewport.scrollTop + anchor_rect.top - viewport_rect.top - viewport.clientHeight / 2 + anchor_rect.height / 2,
+      0,
+    ),
+    max_scroll_top,
+  );
+
+  cancel_scroll_animation();
+  if (!animate) {
+    viewport.scrollTop = target_top;
+    return;
+  }
+
+  const start_top = viewport.scrollTop;
+  const distance = target_top - start_top;
+  if (Math.abs(distance) < 1) return;
+
+  const duration = 220;
+  const started_at = performance.now();
+  const step = (now: number) => {
+    const progress = Math.min((now - started_at) / duration, 1);
+    viewport.scrollTop = start_top + distance * ease_out_cubic(progress);
+    if (progress < 1) {
+      scroll_animation_frame = window.requestAnimationFrame(step);
+      return;
+    }
+    scroll_animation_frame = undefined;
+  };
+  scroll_animation_frame = window.requestAnimationFrame(step);
+}
+
+async function scroll_active_line(animate = true) {
   await nextTick();
   const anchor = document.getElementById(lyric_anchor_id(active_anchor_index.value));
-  anchor?.scrollIntoView({
-    block: "center",
-    behavior,
-  });
+  if (anchor) {
+    scroll_to_anchor(anchor, animate);
+  }
 }
 
 function sync_anchor_for_elapsed(seconds: number, force = false) {
   if (!has_timed_lyrics.value) {
     active_anchor_index.value = -1;
+    cancel_scroll_animation();
     if (lyrics_viewport.value) {
       lyrics_viewport.value.scrollTop = 0;
     }
@@ -145,7 +195,7 @@ function sync_anchor_for_elapsed(seconds: number, force = false) {
   if (!force && next_index === active_anchor_index.value) return;
 
   active_anchor_index.value = next_index;
-  void scroll_active_line("auto");
+  void scroll_active_line(!force);
 }
 
 watch(visual_elapsed, (seconds) => {
@@ -155,6 +205,10 @@ watch(visual_elapsed, (seconds) => {
 watch(lyric_lines, async () => {
   await nextTick();
   sync_anchor_for_elapsed(visual_elapsed.value, true);
+});
+
+onBeforeUnmount(() => {
+  cancel_scroll_animation();
 });
 </script>
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, nextTick, ref, useId, watch } from "vue";
 import { storeToRefs } from "pinia";
 import { use_playback_store } from "../stores/playback";
 
@@ -20,9 +20,9 @@ const props = withDefaults(defineProps<{
 
 const playback_store = use_playback_store();
 const { visual_elapsed } = storeToRefs(playback_store);
-const active_line = ref<HTMLElement | null>(null);
 const lyrics_viewport = ref<HTMLElement | null>(null);
 const active_anchor_index = ref(-1);
+const lyric_anchor_prefix = useId();
 
 const lyric_lines = computed(() => {
   const parsed: LineLyricItem[] = [];
@@ -117,9 +117,14 @@ function elapsed_in_anchor(index: number, seconds: number) {
 
 const active_index = computed(() => active_anchor_index.value);
 
+function lyric_anchor_id(index: number) {
+  return `${lyric_anchor_prefix}-line-${index}`;
+}
+
 async function scroll_active_line(behavior: ScrollBehavior = "smooth") {
   await nextTick();
-  active_line.value?.scrollIntoView({
+  const anchor = document.getElementById(lyric_anchor_id(active_anchor_index.value));
+  anchor?.scrollIntoView({
     block: "center",
     behavior,
   });
@@ -159,8 +164,8 @@ watch(lyric_lines, async () => {
     <template v-else>
       <p
         v-for="(line, index) in visible_lines"
+        :id="lyric_anchor_id(index)"
         :key="line.key"
-        :ref="index === active_index ? (element) => { active_line = element as HTMLElement | null; } : undefined"
         class="line_lyrics_row"
         :class="{
           active: index === active_index,

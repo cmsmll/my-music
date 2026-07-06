@@ -5,7 +5,6 @@ export const use_ui_store = defineStore("ui", {
     settings_open: false,
     playback_queue_open: false,
     now_playing_open: false,
-    now_playing_mounted: false,
   }),
   actions: {
     open_settings() {
@@ -21,7 +20,6 @@ export const use_ui_store = defineStore("ui", {
       this.playback_queue_open = false;
     },
     open_now_playing() {
-      this.now_playing_mounted = true;
       this.now_playing_open = true;
     },
     close_now_playing() {

@@ -111,7 +111,7 @@ const { library_tracks: tracks, current_queue, playback_mode, queue_source } = s
 const { status, current_track, progress_dragging } = storeToRefs(playback_store);
 const { config: app_config } = storeToRefs(app_config_store);
 const { selected_directories, library_loaded, playlists, play_statistics } = storeToRefs(library_store);
-const { settings_open, playback_queue_open, now_playing_open, now_playing_mounted } = storeToRefs(ui_store);
+const { settings_open, playback_queue_open, now_playing_open } = storeToRefs(ui_store);
 const loading = ref(false);
 const query = ref("");
 const active_view = ref<ViewKey>("all");
@@ -1762,27 +1762,28 @@ watch([current_queue, queue_source, playback_mode], () => {
     />
 
     <Transition name="now_playing_slide">
-      <NowPlayingPage
-        v-if="now_playing_mounted"
-        v-show="now_playing_open"
-        ref="now_playing_player_bar"
-        :playback_mode_button="playback_mode_button"
-        @close="ui_store.close_now_playing()"
-        @start_window_drag="start_window_drag"
-        @minimize_window="minimize_window"
-        @toggle_maximize_window="toggle_maximize_window"
-        @close_window="close_window"
-        @begin_progress_drag="begin_progress_drag"
-        @drag_progress="drag_progress"
-        @end_progress_drag="end_progress_drag"
-        @cancel_progress_drag="cancel_progress_drag"
-        @previous_track="previous_track"
-        @toggle_playback="toggle_playback"
-        @next_track="next_track"
-        @open_queue="ui_store.open_playback_queue()"
-        @cycle_playback_mode="cycle_playback_mode"
-        @change_volume="change_volume"
-      />
+      <KeepAlive>
+        <NowPlayingPage
+          v-if="now_playing_open"
+          ref="now_playing_player_bar"
+          :playback_mode_button="playback_mode_button"
+          @close="ui_store.close_now_playing()"
+          @start_window_drag="start_window_drag"
+          @minimize_window="minimize_window"
+          @toggle_maximize_window="toggle_maximize_window"
+          @close_window="close_window"
+          @begin_progress_drag="begin_progress_drag"
+          @drag_progress="drag_progress"
+          @end_progress_drag="end_progress_drag"
+          @cancel_progress_drag="cancel_progress_drag"
+          @previous_track="previous_track"
+          @toggle_playback="toggle_playback"
+          @next_track="next_track"
+          @open_queue="ui_store.open_playback_queue()"
+          @cycle_playback_mode="cycle_playback_mode"
+          @change_volume="change_volume"
+        />
+      </KeepAlive>
     </Transition>
 
     <PlaybackQueuePanel

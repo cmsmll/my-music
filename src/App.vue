@@ -36,6 +36,7 @@ import { use_library_store } from "./stores/library";
 import { use_notification_store } from "./stores/notifications";
 import { use_playback_store } from "./stores/playback";
 import { use_player_queue_store } from "./stores/player_queue";
+import { use_ui_store } from "./stores/ui";
 import type {
   AppConfig,
   AppStartup,
@@ -105,19 +106,18 @@ const playback_store = use_playback_store();
 const app_config_store = use_app_config_store();
 const library_store = use_library_store();
 const notification = use_notification_store();
+const ui_store = use_ui_store();
 const { library_tracks: tracks, current_queue, playback_mode, queue_source } = storeToRefs(player_queue);
 const { status, current_track, progress_dragging } = storeToRefs(playback_store);
 const { config: app_config } = storeToRefs(app_config_store);
 const { selected_directories, library_loaded, playlists, play_statistics } = storeToRefs(library_store);
+const { settings_open, playback_queue_open, now_playing_open, now_playing_mounted } = storeToRefs(ui_store);
 const loading = ref(false);
 const query = ref("");
 const active_view = ref<ViewKey>("all");
 const selected_artist = ref("");
 const selected_album = ref("");
 const selected_playlist_id = ref("my_playlist");
-const settings_open = ref(false);
-const playback_queue_open = ref(false);
-const now_playing_open = ref(false);
 const locate_playing_track_request = ref(0);
 const track_context_menu = ref<TrackContextMenuState | null>(null);
 const track_detail_dialog = ref<Track | null>(null);
@@ -130,7 +130,8 @@ const library_scan_dialog = ref<LibraryScanDialogState>({
   message: "正在扫描音乐目录...",
   detail: "",
 });
-const player_bar = ref<PlayerBarExpose | null>(null);
+const main_player_bar = ref<PlayerBarExpose | null>(null);
+const now_playing_player_bar = ref<PlayerBarExpose | null>(null);
 const sidebar_width = ref(250);
 const sidebar_resizing = ref(false);
 let status_timer: number | undefined;
@@ -895,7 +896,8 @@ function progress_percent_for(seconds: number) {
 }
 
 function render_progress(percent: number, seconds: number) {
-  player_bar.value?.render_progress(percent, seconds);
+  main_player_bar.value?.render_progress(percent, seconds);
+  now_playing_player_bar.value?.render_progress(percent, seconds);
 }
 
 function cache_elapsed_seconds() {
@@ -1457,7 +1459,7 @@ async function play_track_from_queue(track: Track) {
 
 async function open_queue_source() {
   const source = queue_source.value;
-  playback_queue_open.value = false;
+  ui_store.close_playback_queue();
 
   if (source.type === "artist") {
     open_artist_playlist(source.id);
@@ -1676,7 +1678,7 @@ watch([current_queue, queue_source, playback_mode], () => {
         @focus_search="focus_search"
         @open_tools="decode_music_files"
         @reload_library="reload_library"
-        @open_settings="settings_open = true"
+        @open_settings="ui_store.open_settings()"
         @minimize_window="minimize_window"
         @toggle_maximize_window="toggle_maximize_window"
         @close_window="close_window"
@@ -1743,11 +1745,8 @@ watch([current_queue, queue_source, playback_mode], () => {
     </ContextMenu>
 
     <PlayerBar
-      v-if="!now_playing_open"
-      ref="player_bar"
-      :current_track="current_track"
-      :status="status"
-      :progress_dragging="progress_dragging"
+      v-show="!now_playing_open"
+      ref="main_player_bar"
       :playback_mode_button="playback_mode_button"
       @begin_progress_drag="begin_progress_drag"
       @drag_progress="drag_progress"
@@ -1756,21 +1755,19 @@ watch([current_queue, queue_source, playback_mode], () => {
       @previous_track="previous_track"
       @toggle_playback="toggle_playback"
       @next_track="next_track"
-      @open_queue="playback_queue_open = true"
+      @open_queue="ui_store.open_playback_queue()"
       @cycle_playback_mode="cycle_playback_mode"
       @change_volume="change_volume"
-      @open_now_playing="now_playing_open = true"
+      @open_now_playing="ui_store.open_now_playing()"
     />
 
     <Transition name="now_playing_slide">
       <NowPlayingPage
-        v-if="now_playing_open"
-        ref="player_bar"
-        :current_track="current_track"
-        :status="status"
-        :progress_dragging="progress_dragging"
+        v-if="now_playing_mounted"
+        v-show="now_playing_open"
+        ref="now_playing_player_bar"
         :playback_mode_button="playback_mode_button"
-        @close="now_playing_open = false"
+        @close="ui_store.close_now_playing()"
         @start_window_drag="start_window_drag"
         @minimize_window="minimize_window"
         @toggle_maximize_window="toggle_maximize_window"
@@ -1782,20 +1779,14 @@ watch([current_queue, queue_source, playback_mode], () => {
         @previous_track="previous_track"
         @toggle_playback="toggle_playback"
         @next_track="next_track"
-        @open_queue="playback_queue_open = true"
+        @open_queue="ui_store.open_playback_queue()"
         @cycle_playback_mode="cycle_playback_mode"
         @change_volume="change_volume"
       />
     </Transition>
 
     <PlaybackQueuePanel
-      v-if="playback_queue_open"
-      :queue_source="queue_source"
-      :tracks="current_queue"
-      :active_track_id="current_track?.id"
-      :status_path="status.path"
-      :is_playing="status.playing"
-      @close="playback_queue_open = false"
+      v-show="playback_queue_open"
       @open_source="open_queue_source"
       @play_track="play_track_from_queue"
     />
@@ -1803,7 +1794,7 @@ watch([current_queue, queue_source, playback_mode], () => {
     <SettingsPanel
       v-if="settings_open"
       :app_config="app_config"
-      @close="settings_open = false"
+      @close="ui_store.close_settings()"
       @choose_music_directory="choose_music_directory"
     />
 

@@ -1,41 +1,44 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import type { QueueSource, Track } from "../types/music";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { storeToRefs } from "pinia";
+import { use_playback_store } from "../stores/playback";
+import { use_player_queue_store } from "../stores/player_queue";
+import { use_ui_store } from "../stores/ui";
+import type { Track } from "../types/music";
 import { cover_src, display_artist, display_title, format_duration } from "../utils/track";
 
-const props = defineProps<{
-  queue_source: QueueSource;
-  tracks: Track[];
-  active_track_id?: string | null;
-  status_path?: string | null;
-  is_playing: boolean;
-}>();
-
 const emit = defineEmits<{
-  close: [];
   open_source: [];
   play_track: [track: Track];
 }>();
 
+const player_queue = use_player_queue_store();
+const playback_store = use_playback_store();
+const ui_store = use_ui_store();
+const { current_queue, queue_source } = storeToRefs(player_queue);
+const { current_track, status } = storeToRefs(playback_store);
+const { playback_queue_open } = storeToRefs(ui_store);
 const queue_list = ref<HTMLElement | null>(null);
 
-function queue_title() {
-  if (props.queue_source.type === "artist") return `歌手·${props.queue_source.label}`;
-  if (props.queue_source.type === "album") return `专辑·${props.queue_source.label}`;
-  return props.queue_source.label;
-}
+const queue_title = computed(() => {
+  if (queue_source.value.type === "artist") return `歌手·${queue_source.value.label}`;
+  if (queue_source.value.type === "album") return `专辑·${queue_source.value.label}`;
+  return queue_source.value.label;
+});
 
-function queue_total_duration() {
-  return props.tracks.reduce((total, track) => total + (track.duration ?? 0), 0);
-}
+const queue_total_duration = computed(() =>
+  current_queue.value.reduce((total, track) => total + (track.duration ?? 0), 0),
+);
+
+const is_playing = computed(() => status.value.playing);
 
 function track_is_active(track: Track) {
-  if (props.active_track_id) return track.id === props.active_track_id;
-  return Boolean(props.status_path && track.path === props.status_path);
+  if (current_track.value?.id) return track.id === current_track.value.id;
+  return Boolean(status.value.path && track.path === status.value.path);
 }
 
 function track_should_spin(track: Track) {
-  return props.is_playing && track_is_active(track);
+  return is_playing.value && track_is_active(track);
 }
 
 async function scroll_active_track_into_view() {
@@ -45,7 +48,7 @@ async function scroll_active_track_into_view() {
 }
 
 function close_on_escape(event: KeyboardEvent) {
-  if (event.key === "Escape") emit("close");
+  if (event.key === "Escape" && playback_queue_open.value) ui_store.close_playback_queue();
 }
 
 onMounted(() => {
@@ -58,7 +61,7 @@ onBeforeUnmount(() => {
 });
 
 watch(
-  () => [props.active_track_id, props.status_path, props.tracks.length],
+  () => [current_track.value?.id, status.value.path, current_queue.value.length, playback_queue_open.value],
   () => {
     void scroll_active_track_into_view();
   },
@@ -66,18 +69,18 @@ watch(
 </script>
 
 <template>
-  <div class="queue_overlay" @click.self="emit('close')">
+  <div class="queue_overlay" @click.self="ui_store.close_playback_queue()">
     <aside class="queue_panel" :class="{ playing: is_playing }" aria-label="播放队列">
       <header>
-        <button class="queue_title_button" type="button" :title="queue_title()" @click="emit('open_source')">
-          {{ queue_title() }}
+        <button class="queue_title_button" type="button" :title="queue_title" @click="emit('open_source')">
+          {{ queue_title }}
         </button>
-        <p>{{ tracks.length }} 首歌曲 {{ format_duration(queue_total_duration()) }}</p>
+        <p>{{ current_queue.length }} 首歌曲 {{ format_duration(queue_total_duration) }}</p>
       </header>
 
       <section ref="queue_list" class="queue_list">
         <button
-          v-for="track in tracks"
+          v-for="track in current_queue"
           :key="track.id"
           class="queue_item"
           :class="{ active: track_is_active(track) }"
@@ -95,7 +98,7 @@ watch(
           <span class="queue_duration">{{ format_duration(track.duration) }}</span>
         </button>
 
-        <p v-if="!tracks.length" class="empty_state">当前播放队列为空。</p>
+        <p v-if="!current_queue.length" class="empty_state">当前播放队列为空。</p>
       </section>
     </aside>
   </div>

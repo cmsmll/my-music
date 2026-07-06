@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from "vue";
+import { storeToRefs } from "pinia";
 import lyrics_copy_icon from "../assets/icons/lyrics-copy.svg";
 import next_icon from "../assets/icons/next.svg";
 import pause_icon from "../assets/icons/pause.svg";
@@ -7,13 +8,11 @@ import play_icon from "../assets/icons/play.svg";
 import playlist_icon from "../assets/icons/playlist.svg";
 import previous_icon from "../assets/icons/previous.svg";
 import volume_icon from "../assets/icons/volume.svg";
-import type { PlaybackModeItem, PlaybackStatus, Track } from "../types/music";
+import { use_playback_store } from "../stores/playback";
+import type { PlaybackModeItem } from "../types/music";
 import { cover_src, display_artist, display_title, format_duration, icon_style } from "../utils/track";
 
 withDefaults(defineProps<{
-  current_track?: Track | null;
-  status: PlaybackStatus;
-  progress_dragging: boolean;
   playback_mode_button: PlaybackModeItem;
   show_cover?: boolean;
 }>(), {
@@ -37,6 +36,8 @@ const emit = defineEmits<{
 const progress_fill_element = ref<HTMLElement | null>(null);
 const progress_handle_element = ref<HTMLElement | null>(null);
 const progress_tooltip_element = ref<HTMLElement | null>(null);
+const playback_store = use_playback_store();
+const { current_track, status, progress_dragging } = storeToRefs(playback_store);
 
 function render_progress(percent: number, seconds: number) {
   const safe_percent = Math.min(Math.max(percent, 0), 100);

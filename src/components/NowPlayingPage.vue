@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { storeToRefs } from "pinia";
 import { invoke } from "@tauri-apps/api/core";
 import compact_left_icon from "../assets/icons/compact-left.svg";
 import compact_right_icon from "../assets/icons/compact-right.svg";
@@ -13,12 +14,12 @@ import { use_app_config_store } from "../stores/app_config";
 import { use_notification_store } from "../stores/notifications";
 import { use_playback_store } from "../stores/playback";
 import { use_player_queue_store } from "../stores/player_queue";
+import { use_ui_store } from "../stores/ui";
 import type {
   LyricsSearchResponse,
   LyricsSearchResult,
   LyricsUseResult,
   PlaybackModeItem,
-  PlaybackStatus,
   Track,
 } from "../types/music";
 import { cover_src, display_album, display_artist, display_title, format_duration, icon_style } from "../utils/track";
@@ -27,10 +28,7 @@ type PlayerBarExpose = {
   render_progress: (percent: number, seconds: number) => void;
 };
 
-const props = defineProps<{
-  current_track?: Track | null;
-  status: PlaybackStatus;
-  progress_dragging: boolean;
+defineProps<{
   playback_mode_button: PlaybackModeItem;
 }>();
 
@@ -38,6 +36,9 @@ const player_queue = use_player_queue_store();
 const playback_store = use_playback_store();
 const app_config_store = use_app_config_store();
 const notification = use_notification_store();
+const ui_store = use_ui_store();
+const { current_track, status } = storeToRefs(playback_store);
+const { now_playing_open, playback_queue_open } = storeToRefs(ui_store);
 
 const emit = defineEmits<{
   close: [];
@@ -131,7 +132,7 @@ async function open_lyrics_search() {
 }
 
 async function search_current_lyrics() {
-  const track = props.current_track;
+  const track = current_track.value;
   lyrics_search_error.value = "";
   lyrics_search_results.value = [];
   current_lyrics_hash.value = track?.lyrics_cache_hash?.trim() || null;
@@ -178,7 +179,7 @@ async function search_lyrics_for_track(track: Track) {
 }
 
 async function use_lyrics_result(result: LyricsSearchResult) {
-  const track = props.current_track;
+  const track = current_track.value;
   if (!track) {
     lyrics_search_error.value = "当前没有正在播放的歌曲。";
     return;
@@ -232,7 +233,7 @@ function is_current_lyrics_result(result: LyricsSearchResult) {
 function toggle_auto_lyrics() {
   auto_lyrics_enabled.value = !auto_lyrics_enabled.value;
   if (auto_lyrics_enabled.value) {
-    void maybe_auto_load_lyrics(props.current_track, lyrics_lines.value.length > 0);
+    void maybe_auto_load_lyrics(current_track.value, lyrics_lines.value.length > 0);
   }
 }
 
@@ -269,7 +270,7 @@ async function maybe_auto_load_lyrics(track?: Track | null, has_local_lyrics = l
 
   try {
     const response = await search_lyrics_for_track(track);
-    if (request_id !== auto_lyrics_request_id || props.current_track?.id !== track.id) {
+    if (request_id !== auto_lyrics_request_id || current_track.value?.id !== track.id) {
       set_auto_attempted(track, false);
       return;
     }
@@ -285,17 +286,17 @@ async function maybe_auto_load_lyrics(track?: Track | null, has_local_lyrics = l
     notification.success(`Auto 已加载${result.source ? `：${result.source}` : ""}`);
   } catch (error) {
     console.warn("自动获取歌词失败", error);
-    if (request_id === auto_lyrics_request_id && props.current_track?.id === track.id) {
+    if (request_id === auto_lyrics_request_id && current_track.value?.id === track.id) {
       notification.error("Auto 获取歌词失败");
     }
   }
 }
 
 watch(
-  () => props.current_track?.id,
+  () => current_track.value?.id,
   async () => {
-    const has_lyrics = await load_lyrics(props.current_track);
-    await maybe_auto_load_lyrics(props.current_track, has_lyrics);
+    const has_lyrics = await load_lyrics(current_track.value);
+    await maybe_auto_load_lyrics(current_track.value, has_lyrics);
   },
   { immediate: true },
 );
@@ -304,13 +305,14 @@ watch(
   () => auto_lyrics_enabled.value,
   (enabled) => {
     if (enabled) {
-      void maybe_auto_load_lyrics(props.current_track, lyrics_lines.value.length > 0);
+      void maybe_auto_load_lyrics(current_track.value, lyrics_lines.value.length > 0);
     }
   },
 );
 
 function close_on_escape(event: KeyboardEvent) {
   if (event.key !== "Escape") return;
+  if (!now_playing_open.value || playback_queue_open.value) return;
   if (lyrics_search_open.value) {
     lyrics_search_open.value = false;
     return;
@@ -477,9 +479,6 @@ defineExpose({ render_progress });
 
     <PlayerBar
       ref="player_bar"
-      :current_track="current_track"
-      :status="status"
-      :progress_dragging="progress_dragging"
       :playback_mode_button="playback_mode_button"
       :show_cover="false"
       @begin_progress_drag="emit('begin_progress_drag', $event)"

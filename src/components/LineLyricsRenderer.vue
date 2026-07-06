@@ -13,9 +13,11 @@ const props = withDefaults(defineProps<{
   lyrics: string;
   loading?: boolean;
   placeholder?: string[];
+  active?: boolean;
 }>(), {
   loading: false,
   placeholder: () => ["暂未获取到歌词"],
+  active: true,
 });
 
 const playback_store = use_playback_store();
@@ -171,6 +173,12 @@ function scroll_to_anchor(anchor: HTMLElement, animate: boolean) {
   scroll_animation_frame = window.requestAnimationFrame(step);
 }
 
+function wait_for_render_frame() {
+  return new Promise<void>((resolve) => {
+    window.requestAnimationFrame(() => resolve());
+  });
+}
+
 async function scroll_active_line(animate = true) {
   await nextTick();
   const anchor = document.getElementById(lyric_anchor_id(active_anchor_index.value));
@@ -198,18 +206,27 @@ function sync_anchor_for_elapsed(seconds: number, force = false) {
   void scroll_active_line(!force);
 }
 
+async function sync_visible_anchor() {
+  await nextTick();
+  await wait_for_render_frame();
+  sync_anchor_for_elapsed(visual_elapsed.value, true);
+}
+
 watch(visual_elapsed, (seconds) => {
   sync_anchor_for_elapsed(seconds);
 }, { immediate: true });
 
-onActivated(async () => {
-  await nextTick();
-  sync_anchor_for_elapsed(visual_elapsed.value, true);
+onActivated(() => {
+  void sync_visible_anchor();
 });
 
 watch(lyric_lines, async () => {
-  await nextTick();
-  sync_anchor_for_elapsed(visual_elapsed.value, true);
+  await sync_visible_anchor();
+});
+
+watch(() => props.active, (active) => {
+  if (!active) return;
+  void sync_visible_anchor();
 });
 
 onBeforeUnmount(() => {

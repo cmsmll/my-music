@@ -416,6 +416,7 @@ defineExpose({ render_progress });
           :lyrics="lyrics_text"
           :loading="lyrics_loading"
           :placeholder="lyric_placeholder"
+          :active="compact_panel === 'lyrics'"
         />
       </section>
 

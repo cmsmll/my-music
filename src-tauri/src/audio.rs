@@ -52,6 +52,8 @@ pub(crate) struct Playback {
     last_player_pos: Duration,
     last_player_pos_changed_at: Instant,
     wake_attempts: u8,
+    forced_restart_attempts: u8,
+    next_forced_restart_at: Option<Instant>,
 }
 
 impl Playback {
@@ -63,6 +65,8 @@ impl Playback {
             last_player_pos: Duration::ZERO,
             last_player_pos_changed_at: now,
             wake_attempts: 0,
+            forced_restart_attempts: 0,
+            next_forced_restart_at: Some(now + Duration::from_millis(1_800)),
         }
     }
 
@@ -72,6 +76,17 @@ impl Playback {
         self.last_player_pos = pos;
         self.last_player_pos_changed_at = now;
         self.wake_attempts = 0;
+        self.forced_restart_attempts = 0;
+        self.next_forced_restart_at = Some(now + Duration::from_millis(1_800));
+    }
+
+    fn carry_forced_restart(&mut self, attempts: u8) {
+        self.forced_restart_attempts = attempts;
+        self.next_forced_restart_at = if attempts < MAX_FORCED_OUTPUT_RESTARTS {
+            Some(Instant::now() + Duration::from_millis(2_400))
+        } else {
+            None
+        };
     }
 }
 
@@ -95,6 +110,8 @@ struct OutputDevice {
     id: String,
     name: String,
 }
+
+const MAX_FORCED_OUTPUT_RESTARTS: u8 = 3;
 
 pub(crate) struct AudioEngine {
     tx: Mutex<Option<Sender<AudioCommand>>>,
@@ -266,6 +283,12 @@ fn spawn_audio_worker(
                 &thread_log_dir,
             );
             recover_from_stalled_playback(
+                &mut output,
+                &mut playback,
+                &thread_snapshot,
+                &thread_log_dir,
+            );
+            recover_from_suspect_silent_playback(
                 &mut output,
                 &mut playback,
                 &thread_snapshot,
@@ -888,6 +911,120 @@ fn stalled_playback_recovery_request(
         current_snapshot.volume,
         current_snapshot.playing,
         reason,
+    ))
+}
+
+fn recover_from_suspect_silent_playback(
+    output: &mut Option<AudioOutput>,
+    playback: &mut Option<Playback>,
+    snapshot: &Arc<Mutex<PlaybackSnapshot>>,
+    log_dir: &Path,
+) {
+    let Some((path, seconds, volume, playing, next_attempt, player_pos)) =
+        forced_output_restart_request(playback, snapshot, log_dir)
+    else {
+        return;
+    };
+
+    let reason = format!(
+        "主动重启输出流第{}次，rodio位置{}ms，状态进度{}s",
+        next_attempt,
+        player_pos.as_millis(),
+        seconds
+    );
+    write_audio_error_log(
+        log_dir,
+        "音频播放健康检查重启",
+        Some(&path),
+        Some("forced_output_restart"),
+        Some(seconds),
+        &reason,
+    );
+
+    let _ = wake_audio_engine(log_dir, Some(&path), "forced_output_restart_wakeup");
+    let rebuild = PlaybackRebuild {
+        path: &path,
+        seconds,
+        volume,
+        playing,
+        stage: "forced_output_restart",
+    };
+    if let Err(err) = rebuild_playback_at(output, playback, log_dir, rebuild) {
+        write_audio_error_log(
+            log_dir,
+            "音频播放健康检查重启失败",
+            Some(&path),
+            Some("forced_output_restart"),
+            Some(seconds),
+            &err,
+        );
+        if let Some(current) = playback.as_mut() {
+            current.carry_forced_restart(next_attempt);
+        }
+        return;
+    }
+
+    if let Some(current) = playback.as_mut() {
+        current.carry_forced_restart(next_attempt);
+    }
+    let _ = update_snapshot(snapshot, |state| {
+        state.elapsed_offset = Duration::from_secs(seconds);
+        state.started_at = Some(Instant::now());
+        state.paused_total = Duration::ZERO;
+        state.paused_at = if state.playing {
+            None
+        } else {
+            Some(Instant::now())
+        };
+    });
+}
+
+fn forced_output_restart_request(
+    playback: &mut Option<Playback>,
+    snapshot: &Arc<Mutex<PlaybackSnapshot>>,
+    log_dir: &Path,
+) -> Option<(String, u64, f32, bool, u8, Duration)> {
+    let current = playback.as_mut()?;
+    let next_restart_at = current.next_forced_restart_at?;
+    if current.player.empty()
+        || current.forced_restart_attempts >= MAX_FORCED_OUTPUT_RESTARTS
+        || Instant::now() < next_restart_at
+    {
+        return None;
+    }
+
+    let current_snapshot = match snapshot.lock().map(|snapshot| snapshot.clone()) {
+        Ok(snapshot) => snapshot,
+        Err(_) => {
+            write_audio_error_log(
+                log_dir,
+                "音频播放健康检查失败",
+                None,
+                Some("read_forced_restart_snapshot"),
+                None,
+                "audio engine state is unavailable",
+            );
+            return None;
+        }
+    };
+    if !current_snapshot.playing {
+        current.next_forced_restart_at = Some(Instant::now() + Duration::from_millis(1_000));
+        return None;
+    }
+
+    let path = current_snapshot.path.clone()?;
+    let player_pos = current.player.get_pos();
+    let seconds = elapsed_seconds(&current_snapshot).max(player_pos.as_secs());
+    let next_attempt = current.forced_restart_attempts.saturating_add(1);
+    current.forced_restart_attempts = next_attempt;
+    current.next_forced_restart_at = None;
+    Some((
+        path,
+        seconds,
+        current_snapshot.volume,
+        current_snapshot.playing,
+        next_attempt,
+        player_pos,
     ))
 }
 

@@ -7,7 +7,6 @@ const props = defineProps<{
   active_view: ViewKey;
   query: string;
   loading: boolean;
-  error_message: string;
   tracks: Track[];
   display_tracks: Track[];
   status_path?: string | null;
@@ -243,9 +242,6 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="content_area">
-    <p v-if="loading" class="status_line">正在加载曲库...</p>
-    <p v-if="error_message" class="error_line">{{ error_message }}</p>
-
     <section
       v-if="
         active_view === 'all' ||

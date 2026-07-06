@@ -33,6 +33,7 @@ import TrackContextMenu from "./components/TrackContextMenu.vue";
 import TopBar from "./components/TopBar.vue";
 import { use_app_config_store } from "./stores/app_config";
 import { use_library_store } from "./stores/library";
+import { use_notification_store } from "./stores/notifications";
 import { use_playback_store } from "./stores/playback";
 import { use_player_queue_store } from "./stores/player_queue";
 import type {
@@ -103,12 +104,12 @@ const player_queue = use_player_queue_store();
 const playback_store = use_playback_store();
 const app_config_store = use_app_config_store();
 const library_store = use_library_store();
+const notification = use_notification_store();
 const { library_tracks: tracks, current_queue, playback_mode, queue_source } = storeToRefs(player_queue);
 const { status, current_track, progress_dragging } = storeToRefs(playback_store);
 const { config: app_config } = storeToRefs(app_config_store);
 const { selected_directories, library_loaded, playlists, play_statistics } = storeToRefs(library_store);
 const loading = ref(false);
-const error_message = ref("");
 const query = ref("");
 const active_view = ref<ViewKey>("all");
 const selected_artist = ref("");
@@ -155,7 +156,6 @@ let restoring_player_cache = false;
 let listening_track_id: string | null = null;
 let listening_started_at = 0;
 let closing_window = false;
-let error_message_timer: number | undefined;
 let app_window_shown = false;
 
 const sidebar_min_width = 72;
@@ -327,27 +327,11 @@ const selected_user_playlist = computed(() => {
   );
 });
 
-function clear_error_message() {
-  if (error_message_timer) {
-    window.clearTimeout(error_message_timer);
-    error_message_timer = undefined;
-  }
-  error_message.value = "";
-}
-
 function show_error_message(error: unknown) {
-  if (error_message_timer) {
-    window.clearTimeout(error_message_timer);
-  }
-  error_message.value = String(error);
-  error_message_timer = window.setTimeout(() => {
-    error_message.value = "";
-    error_message_timer = undefined;
-  }, 5000);
+  notification.error(error instanceof Error ? error.message : String(error));
 }
 
 async function choose_music_directory() {
-  clear_error_message();
   const selected = await open({
     directory: true,
     multiple: true,
@@ -373,7 +357,6 @@ async function choose_music_directory() {
 
 async function scan_directory(directories: string[]) {
   loading.value = true;
-  clear_error_message();
   library_scan_dialog.value = {
     visible: true,
     status: "loading",
@@ -431,7 +414,6 @@ async function reload_library() {
 
 async function decode_music_files() {
   loading.value = true;
-  clear_error_message();
   const decoder_config = app_config.value?.decoder;
   const scan_directory_count = decoder_config?.scan_directory.filter((directory) => directory.trim()).length ?? 0;
   library_scan_dialog.value = {
@@ -474,7 +456,6 @@ async function decode_music_files() {
 
 async function load_startup_state() {
   loading.value = true;
-  clear_error_message();
 
   try {
     const startup = await invoke<AppStartup>("get_startup_state");
@@ -1607,7 +1588,6 @@ onBeforeUnmount(() => {
   void flush_app_config();
   if (status_timer) window.clearInterval(status_timer);
   if (progress_frame) window.cancelAnimationFrame(progress_frame);
-  if (error_message_timer) window.clearTimeout(error_message_timer);
   media_shortcut_listeners_disposed = true;
   media_shortcut_unlisteners.forEach((unlisten) => unlisten());
   media_shortcut_unlisteners = [];
@@ -1707,7 +1687,6 @@ watch([current_queue, queue_source, playback_mode], () => {
         :active_view="active_view"
         :query="query"
         :loading="loading"
-        :error_message="error_message"
         :tracks="tracks"
         :display_tracks="display_tracks"
         :status_path="status.path"
@@ -2033,7 +2012,6 @@ p {
   padding: 22px 22px 0;
 }
 
-.status_line,
 .muted {
   color: var(--theme-subtitle-color, #8b919c);
   font-size: 0.92rem;
@@ -2049,18 +2027,6 @@ p {
   font-weight: 800;
 }
 
-.status_line {
-  padding: 8px;
-}
-
-.error_line {
-  margin-bottom: 8px;
-  border-radius: 6px;
-  padding: 4px;
-  color: #b42318;
-  background: #fff1f0;
-  font-size: 0.92rem;
-}
 
 .track_table,
 .placeholder_view,

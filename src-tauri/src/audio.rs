@@ -1,6 +1,9 @@
 use crate::models::PlaybackStatus;
 use crate::utils::unix_timestamp;
-use rodio::{Decoder, DeviceSinkBuilder, Player};
+use rodio::{
+    source::{Source, Zero},
+    Decoder, DeviceSinkBuilder, MixerDeviceSink, Player,
+};
 use std::{
     fs::{File, OpenOptions},
     io::Write,
@@ -40,6 +43,10 @@ impl Default for PlaybackSnapshot {
 
 pub(crate) struct Playback {
     player: Player,
+}
+
+struct AudioOutput {
+    sink: MixerDeviceSink,
 }
 
 pub(crate) struct AudioEngine {
@@ -134,18 +141,20 @@ impl AudioEngine {
         command: impl FnOnce(Sender<Result<(), String>>) -> AudioCommand,
     ) -> Result<(), String> {
         let (reply_tx, reply_rx) = mpsc::channel();
-        self.command_sender()?.send(command(reply_tx)).map_err(|_| {
-            let reason = "音频线程已停止".to_string();
-            write_audio_error_log(
-                &self.log_dir,
-                "音频命令失败",
-                None,
-                Some("send_command"),
-                None,
-                &reason,
-            );
-            reason
-        })?;
+        self.command_sender()?
+            .send(command(reply_tx))
+            .map_err(|_| {
+                let reason = "音频线程已停止".to_string();
+                write_audio_error_log(
+                    &self.log_dir,
+                    "音频命令失败",
+                    None,
+                    Some("send_command"),
+                    None,
+                    &reason,
+                );
+                reason
+            })?;
         reply_rx.recv().map_err(|_| {
             let reason = "音频线程没有返回结果".to_string();
             write_audio_error_log(
@@ -193,25 +202,7 @@ fn spawn_audio_worker(
     let (tx, rx) = mpsc::channel();
 
     thread::spawn(move || {
-        let stream_handle = match DeviceSinkBuilder::open_default_sink() {
-            Ok(stream_handle) => stream_handle,
-            Err(err) => {
-                let reason = format!("无法打开默认音频输出设备: {err}");
-                while let Ok(command) = rx.recv() {
-                    write_audio_error_log(
-                        &thread_log_dir,
-                        "音频输出设备失败",
-                        command_track_path(&command),
-                        Some("open_default_sink"),
-                        None,
-                        &reason,
-                    );
-                    respond(command, Err(reason.clone()));
-                }
-                return;
-            }
-        };
-
+        let mut output: Option<AudioOutput> = None;
         let mut playback: Option<Playback> = None;
 
         while let Ok(command) = rx.recv() {
@@ -246,15 +237,20 @@ fn spawn_audio_worker(
                             .lock()
                             .map(|snapshot| snapshot.volume)
                             .unwrap_or(1.0);
-                        let player = Player::connect_new(stream_handle.mixer());
 
-                        if let Some(current) = playback.take() {
-                            current.player.stop();
-                        }
+                        let next_output =
+                            open_audio_output(&thread_log_dir, Some(&path), "play_open_output")?;
+                        prime_audio_output(&next_output);
+                        let player = Player::connect_new(next_output.sink.mixer());
 
                         player.append(source);
                         player.set_volume(volume);
                         player.play();
+
+                        if let Some(current) = playback.take() {
+                            current.player.stop();
+                        }
+                        output = Some(next_output);
                         playback = Some(Playback { player });
 
                         update_snapshot(&thread_snapshot, |state| {
@@ -300,6 +296,7 @@ fn spawn_audio_worker(
                     if let Some(current) = playback.take() {
                         current.player.stop();
                     }
+                    output = None;
                     let current_volume = thread_snapshot
                         .lock()
                         .map(|snapshot| snapshot.volume)
@@ -366,7 +363,13 @@ fn spawn_audio_worker(
                                 );
                                 reason
                             })?;
-                            let player = Player::connect_new(stream_handle.mixer());
+                            let next_output = open_audio_output(
+                                &thread_log_dir,
+                                Some(&path),
+                                "seek_rebuild_open_output",
+                            )?;
+                            prime_audio_output(&next_output);
+                            let player = Player::connect_new(next_output.sink.mixer());
 
                             player.append(source);
                             player.set_volume(snapshot.volume);
@@ -389,6 +392,7 @@ fn spawn_audio_worker(
                             if let Some(current) = playback.take() {
                                 current.player.stop();
                             }
+                            output = Some(next_output);
                             playback = Some(Playback { player });
                         }
 
@@ -413,24 +417,32 @@ fn spawn_audio_worker(
     tx
 }
 
-pub(crate) fn respond(command: AudioCommand, result: Result<(), String>) {
-    match command {
-        AudioCommand::Play { reply, .. }
-        | AudioCommand::Pause { reply }
-        | AudioCommand::Resume { reply }
-        | AudioCommand::Stop { reply }
-        | AudioCommand::SetVolume { reply, .. }
-        | AudioCommand::Seek { reply, .. } => {
-            let _ = reply.send(result);
-        }
-    }
+fn open_audio_output(
+    log_dir: &Path,
+    path: Option<&str>,
+    stage: &str,
+) -> Result<AudioOutput, String> {
+    let mut sink = DeviceSinkBuilder::open_default_sink().map_err(|err| {
+        let reason = format!("无法打开默认音频输出设备: {err}");
+        write_audio_error_log(
+            log_dir,
+            "音频输出设备失败",
+            path,
+            Some(stage),
+            None,
+            &reason,
+        );
+        reason
+    })?;
+    sink.log_on_drop(false);
+    Ok(AudioOutput { sink })
 }
 
-fn command_track_path(command: &AudioCommand) -> Option<&str> {
-    match command {
-        AudioCommand::Play { path, .. } => Some(path.as_str()),
-        _ => None,
-    }
+fn prime_audio_output(output: &AudioOutput) {
+    let config = output.sink.config();
+    let silence = Zero::new(config.channel_count(), config.sample_rate())
+        .take_duration(Duration::from_millis(120));
+    output.sink.mixer().add(silence);
 }
 
 pub(crate) fn update_snapshot(

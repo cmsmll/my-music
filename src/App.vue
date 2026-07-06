@@ -1744,22 +1744,24 @@ watch([current_queue, queue_source, playback_mode], () => {
       </button>
     </ContextMenu>
 
-    <PlayerBar
-      v-show="!now_playing_open"
-      ref="main_player_bar"
-      :playback_mode_button="playback_mode_button"
-      @begin_progress_drag="begin_progress_drag"
-      @drag_progress="drag_progress"
-      @end_progress_drag="end_progress_drag"
-      @cancel_progress_drag="cancel_progress_drag"
-      @previous_track="previous_track"
-      @toggle_playback="toggle_playback"
-      @next_track="next_track"
-      @open_queue="ui_store.open_playback_queue()"
-      @cycle_playback_mode="cycle_playback_mode"
-      @change_volume="change_volume"
-      @open_now_playing="ui_store.open_now_playing()"
-    />
+    <KeepAlive>
+      <PlayerBar
+        v-if="!now_playing_open"
+        ref="main_player_bar"
+        :playback_mode_button="playback_mode_button"
+        @begin_progress_drag="begin_progress_drag"
+        @drag_progress="drag_progress"
+        @end_progress_drag="end_progress_drag"
+        @cancel_progress_drag="cancel_progress_drag"
+        @previous_track="previous_track"
+        @toggle_playback="toggle_playback"
+        @next_track="next_track"
+        @open_queue="ui_store.open_playback_queue()"
+        @cycle_playback_mode="cycle_playback_mode"
+        @change_volume="change_volume"
+        @open_now_playing="ui_store.open_now_playing()"
+      />
+    </KeepAlive>
 
     <Transition name="now_playing_slide">
       <KeepAlive>
@@ -1786,11 +1788,13 @@ watch([current_queue, queue_source, playback_mode], () => {
       </KeepAlive>
     </Transition>
 
-    <PlaybackQueuePanel
-      v-show="playback_queue_open"
-      @open_source="open_queue_source"
-      @play_track="play_track_from_queue"
-    />
+    <KeepAlive>
+      <PlaybackQueuePanel
+        v-if="playback_queue_open"
+        @open_source="open_queue_source"
+        @play_track="play_track_from_queue"
+      />
+    </KeepAlive>
 
     <SettingsPanel
       v-if="settings_open"

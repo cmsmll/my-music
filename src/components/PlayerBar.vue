@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { nextTick, onActivated, ref } from "vue";
 import { storeToRefs } from "pinia";
 import lyrics_copy_icon from "../assets/icons/lyrics-copy.svg";
 import next_icon from "../assets/icons/next.svg";
@@ -52,6 +52,15 @@ function render_progress(percent: number, seconds: number) {
     progress_tooltip_element.value.textContent = format_duration(seconds);
   }
 }
+
+async function sync_current_progress() {
+  await nextTick();
+  render_progress(playback_store.progress_percent, playback_store.visual_elapsed);
+}
+
+onActivated(() => {
+  void sync_current_progress();
+});
 
 defineExpose({ render_progress });
 </script>

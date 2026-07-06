@@ -2433,10 +2433,18 @@ p {
   display: grid;
   gap: 8px;
   min-width: 0;
-  border: 1px solid #eef0f4;
+  border: var(--app_border_width, 2px) solid var(--theme-border-color, #e8e8e8);
   border-radius: 8px;
   padding: 20px;
-  background: #fbfcfe;
+  background: transparent;
+  transition:
+    border-color 160ms ease,
+    transform 160ms ease;
+}
+
+.stats_card_grid article:hover {
+  border-color: var(--theme-title-color, #1e2026);
+  transform: translateY(-1px);
 }
 
 .stats_card_grid strong {
@@ -2469,13 +2477,20 @@ p {
   align-items: center;
   gap: 16px;
   min-height: 54px;
+  border: var(--app_border_width, 2px) solid transparent;
   border-radius: 8px;
   padding: 6px 12px 6px 0;
+  color: var(--theme-title-color, #1e2026);
   background: transparent;
+  transition:
+    border-color 160ms ease,
+    transform 160ms ease;
 }
 
 .most_played_row:hover {
-  background: #f5f7ff;
+  border-color: var(--theme-border-color, #e8e8e8);
+  background: transparent;
+  transform: translateX(2px);
 }
 
 .most_played_song {
@@ -2489,6 +2504,15 @@ p {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.most_played_song strong {
+  color: var(--theme-title-color, #1e2026);
+  transition: color 160ms ease;
+}
+
+.most_played_row:hover .most_played_song strong {
+  color: var(--theme-highlight-color, #426dff);
 }
 
 .most_played_song small,

@@ -2,8 +2,7 @@ use crate::audio::{AudioCommand, AudioEngine};
 use crate::config::ConfigManager;
 use crate::decoder::{run_decoder as run_config_decoder, DecoderRunSummary};
 use crate::library::{
-    load_cached_all_directories, load_or_scan_all_directories, scan_tracks,
-    update_track_lyrics_cache_hash, write_library_cache,
+    load_cached_all_directories, reload_all_directories, update_track_lyrics_cache_hash,
 };
 use crate::lyrics::LyricsSearchService;
 use crate::media_shortcuts::register_media_shortcuts as register_system_media_shortcuts;
@@ -21,7 +20,7 @@ use crate::statistics::{read_play_statistics, record_track_listening_seconds, re
 use crate::utils::{safe_cache_name, short_hash, unix_timestamp, write_json_cache};
 use std::{
     fs,
-    path::{Path, PathBuf},
+    path::PathBuf,
     thread,
 };
 
@@ -61,7 +60,7 @@ pub(crate) fn update_app_config(
     config_manager.update_config(config)
 }
 
-/// 添加并扫描音乐目录，刷新对应目录的曲库缓存后返回完整歌曲列表。
+/// 添加音乐目录并强制重载完整曲库，所有旧歌曲缓存都会被最新扫描结果替换。
 #[tauri::command]
 pub(crate) fn scan_music_dir(
     config_manager: tauri::State<'_, ConfigManager>,
@@ -76,15 +75,8 @@ pub(crate) fn scan_music_dir(
         valid_dirs.push(root.to_string_lossy().to_string());
     }
 
-    let config = config_manager.add_music_directories(valid_dirs.clone())?;
-    for dir in &valid_dirs {
-        let root = Path::new(dir);
-        let tracks = scan_tracks(root, &config)?;
-        let cache_path = config_manager.library_cache_path(dir)?;
-        write_library_cache(&cache_path, dir, &config, &tracks)?;
-    }
-
-    load_or_scan_all_directories(&config_manager, &config)
+    let config = config_manager.add_music_directories(valid_dirs)?;
+    reload_all_directories(&config_manager, &config)
 }
 
 /// 添加并扫描音乐目录，刷新曲库、歌单和播放统计后一次性返回前端需要的数据。

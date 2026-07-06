@@ -29,7 +29,6 @@ const track_details = computed(() => {
     ["文件路径", props.track.path || "--"],
     ["封面缓存", props.track.cover_cache_path || "--"],
     ["歌词缓存", props.track.lyrics_cache_path || "--"],
-    ["歌词哈希", props.track.lyrics_cache_hash || "--"],
     ["元数据来源", props.track.metadata_source],
   ];
 });

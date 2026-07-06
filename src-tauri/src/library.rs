@@ -21,34 +21,23 @@ use std::{
 use walkdir::WalkDir;
 
 const SUPPORTED_EXTENSIONS: &[&str] = &["mp3", "flac", "wav", "ogg", "m4a", "aac"];
-pub(crate) fn load_or_scan_all_directories(
+
+pub(crate) fn reload_all_directories(
     config_manager: &ConfigManager,
     config: &AppConfig,
 ) -> Result<Vec<Track>, String> {
     let mut all_tracks = Vec::new();
 
     for dir in &config.music_directory {
-        if !Path::new(dir).is_dir() {
+        let root = Path::new(dir);
+        if !root.is_dir() {
             continue;
         }
 
         let cache_path = config_manager.library_cache_path(dir)?;
-        let mut tracks = if cache_path.exists() {
-            read_library_cache(&cache_path).unwrap_or_else(|_| {
-                let tracks = scan_tracks(Path::new(dir), config).unwrap_or_default();
-                let _ = write_library_cache(&cache_path, dir, config, &tracks);
-                tracks
-            })
-        } else {
-            let tracks = scan_tracks(Path::new(dir), config)?;
-            write_library_cache(&cache_path, dir, config, &tracks)?;
-            tracks
-        };
-
-        if fill_missing_track_cache_info(&mut tracks) {
-            let _ = write_library_cache(&cache_path, dir, config, &tracks);
-        }
-
+        clear_existing_cache(&cache_path, "旧歌曲缓存")?;
+        let tracks = scan_tracks(root, config)?;
+        write_library_cache(&cache_path, dir, config, &tracks)?;
         all_tracks.extend(tracks);
     }
 
@@ -139,6 +128,16 @@ pub(crate) fn write_library_cache(
     }
     fs::write(cache_path, content).map_err(|err| format!("无法写入歌曲缓存: {err}"))
 }
+
+fn clear_existing_cache(cache_path: &Path, label: &str) -> Result<(), String> {
+    if cache_path.is_dir() {
+        fs::remove_dir_all(cache_path).map_err(|err| format!("无法删除{label}: {err}"))?;
+    } else if cache_path.exists() {
+        fs::remove_file(cache_path).map_err(|err| format!("无法删除{label}: {err}"))?;
+    }
+    Ok(())
+}
+
 pub(crate) fn is_supported_audio(path: &Path) -> bool {
     path.extension()
         .and_then(|extension| extension.to_str())

@@ -2023,7 +2023,6 @@ p {
   font-weight: 800;
 }
 
-
 .track_table,
 .placeholder_view,
 .stats_view,
@@ -2258,7 +2257,6 @@ p {
 .table_row.active .song_text strong {
   color: var(--theme-highlight-color, #426dff);
 }
-
 
 .song_text small,
 .album_cell {
@@ -2678,7 +2676,7 @@ p {
   min-width: 0;
   border: 0;
   padding: 0;
-  color: var(--theme-title-color, #1e2026);
+  color: #1e2026;
   background: transparent;
   font-size: 1.24rem;
   font-weight: 800;
@@ -2727,7 +2725,7 @@ p {
   min-height: 58px;
   border-radius: 8px;
   padding: 8px;
-  color: var(--theme-title-color, #1e2026);
+  color: #1e2026;
   background: transparent;
   text-align: left;
   transition:
@@ -2790,6 +2788,7 @@ p {
 }
 
 .queue_text strong {
+  color: #1e2026;
   font-size: 0.94rem;
   transition: color 160ms ease;
 }
@@ -2799,9 +2798,13 @@ p {
   color: var(--theme-highlight-color, #426dff);
 }
 
-.queue_text small,
+.queue_text small {
+  color: #8b919c;
+  font-size: 0.84rem;
+}
+
 .queue_duration {
-  color: var(--theme-subtitle-color, #8b919c);
+  color: #8b919c;
   font-size: 0.84rem;
 }
 
@@ -3026,14 +3029,12 @@ p {
   place-items: center;
 }
 
-
 .settings_file_button,
 .settings_delete_button {
   display: grid;
   width: 40px;
   place-items: center;
 }
-
 
 .settings_default_button .svg_icon,
 .settings_file_button .svg_icon,

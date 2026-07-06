@@ -23,7 +23,7 @@ const { items } = storeToRefs(notification_store);
 <style scoped>
 .global_notification_layer {
   position: fixed;
-  top: 18px;
+  top: 50px;
   left: 50%;
   z-index: 2000;
   display: grid;

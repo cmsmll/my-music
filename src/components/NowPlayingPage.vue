@@ -76,9 +76,7 @@ let lyrics_load_request_id = 0;
 
 const lyric_placeholder = [
   "暂未获取到歌词",
-  "可以重新加载曲库，或检查音频文件是否包含内嵌歌词。",
 ];
-
 
 const auto_lyrics_enabled = computed({
   get() {
@@ -211,8 +209,8 @@ async function apply_lyrics_result(track: Track, result: LyricsSearchResult) {
   lyrics_lines.value = normalize_lyrics(used.lyrics);
   current_lyrics_hash.value = used.lyrics_hash;
   if (used.track) {
-    playback_store.upsert_track(used.track);
     player_queue.upsert_track(used.track);
+    playback_store.upsert_track(used.track);
   }
 }
 
@@ -283,7 +281,8 @@ async function maybe_auto_load_lyrics(track?: Track | null, has_local_lyrics = l
     }
 
     await apply_lyrics_result(track, result);
-    notification.success(`Auto 已加载${result.source ? `：${result.source}` : ""}`);
+    let name = result.source.slice(0,2)
+    notification.success(`Auto 已加载${name ? `${name}歌词` : ""}`);
   } catch (error) {
     console.warn("自动获取歌词失败", error);
     if (request_id === auto_lyrics_request_id && current_track.value?.id === track.id) {
@@ -502,7 +501,7 @@ defineExpose({ render_progress });
   inset: 0;
   z-index: 850;
   display: grid;
-  grid-template-rows: 92px minmax(0, 1fr) 86px;
+  grid-template-rows: 60px minmax(0, 1fr) 86px;
   overflow: hidden;
   color: #f5f6f8;
   background:
@@ -515,7 +514,7 @@ defineExpose({ render_progress });
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 52px;
+  padding: 0 30px;
   cursor: move;
 }
 
@@ -614,7 +613,7 @@ defineExpose({ render_progress });
   min-width: 320px;
   aspect-ratio: 0.76;
   min-height: 0;
-  transform: translateY(-10%);
+  transform: translateY(-5%);
 }
 
 .record_disc {
@@ -777,8 +776,8 @@ defineExpose({ render_progress });
 .lyrics_search_dialog header,
 .lyrics_result_head,
 .lyrics_result_row {
-  display: grid;
-  grid-template-columns: 1fr minmax(0, 1.4fr) 90px;
+  display: flex;
+  justify-content: space-between;
   align-items: center;
   gap: 14px;
 }
@@ -931,7 +930,7 @@ defineExpose({ render_progress });
   accent-color: rgba(245, 246, 248, 0.78);
 }
 
-@media (max-width: 1120px) {
+@media (max-width: 960px) {
   .now_playing_content {
     grid-template-columns: 46px minmax(0, 1fr) 46px;
     grid-template-areas: "record_switch compact_panel lyrics_switch";

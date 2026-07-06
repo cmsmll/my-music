@@ -369,13 +369,13 @@ function reset_playlist_drag() {
 }
 
 .nav_item.active {
-  border-color: var(--theme-highlight-color, #426dff);
+  /* border-color: var(--theme-highlight-color, #426dff); */
   color: var(--theme-highlight-color, #426dff);
   background: transparent;
 }
 
 .nav_item:hover {
-  border-color: var(--theme-highlight-color, #426dff);
+  /* border-color: var(--theme-highlight-color, #426dff); */
   color: var(--theme-highlight-color, #426dff);
   background: transparent;
 }

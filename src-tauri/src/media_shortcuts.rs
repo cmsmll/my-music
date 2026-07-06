@@ -1,6 +1,6 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::Emitter;
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Shortcut, ShortcutState};
-use std::sync::atomic::{AtomicBool, Ordering};
 
 const MEDIA_PLAY_PAUSE_EVENT: &str = "media-play-pause";
 const MEDIA_PREVIOUS_EVENT: &str = "media-previous";

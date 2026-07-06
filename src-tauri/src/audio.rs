@@ -48,6 +48,31 @@ impl Default for PlaybackSnapshot {
 
 pub(crate) struct Playback {
     player: Player,
+    started_at: Instant,
+    last_player_pos: Duration,
+    last_player_pos_changed_at: Instant,
+    wake_attempts: u8,
+}
+
+impl Playback {
+    fn new(player: Player) -> Self {
+        let now = Instant::now();
+        Self {
+            player,
+            started_at: now,
+            last_player_pos: Duration::ZERO,
+            last_player_pos_changed_at: now,
+            wake_attempts: 0,
+        }
+    }
+
+    fn reset_watchdog(&mut self, pos: Duration) {
+        let now = Instant::now();
+        self.started_at = now;
+        self.last_player_pos = pos;
+        self.last_player_pos_changed_at = now;
+        self.wake_attempts = 0;
+    }
 }
 
 struct AudioOutput {
@@ -240,6 +265,12 @@ fn spawn_audio_worker(
                 &thread_snapshot,
                 &thread_log_dir,
             );
+            recover_from_stalled_playback(
+                &mut output,
+                &mut playback,
+                &thread_snapshot,
+                &thread_log_dir,
+            );
 
             let command = match rx.recv_timeout(Duration::from_millis(200)) {
                 Ok(command) => command,
@@ -282,6 +313,7 @@ fn spawn_audio_worker(
                         let next_output =
                             open_audio_output(&thread_log_dir, Some(&path), "play_open_output")?;
                         prime_audio_output(&next_output);
+                        let _ = wake_audio_engine(&thread_log_dir, Some(&path), "play_wake_output");
                         let player = Player::connect_new(next_output.sink.mixer());
 
                         player.append(source);
@@ -292,7 +324,7 @@ fn spawn_audio_worker(
                             current.player.stop();
                         }
                         output = Some(next_output);
-                        playback = Some(Playback { player });
+                        playback = Some(Playback::new(player));
 
                         update_snapshot(&thread_snapshot, |state| {
                             state.path = Some(path);
@@ -360,7 +392,7 @@ fn spawn_audio_worker(
                 }
                 AudioCommand::Seek { seconds, reply } => {
                     let result = (|| {
-                        let Some(current) = playback.as_ref() else {
+                        let Some(current) = playback.as_mut() else {
                             return Ok(());
                         };
 
@@ -434,7 +466,9 @@ fn spawn_audio_worker(
                                 current.player.stop();
                             }
                             output = Some(next_output);
-                            playback = Some(Playback { player });
+                            playback = Some(Playback::new(player));
+                        } else {
+                            current.reset_watchdog(Duration::from_secs(seconds));
                         }
 
                         update_snapshot(&thread_snapshot, |state| {
@@ -510,10 +544,25 @@ fn open_audio_output(
 }
 
 fn prime_audio_output(output: &AudioOutput) {
-    let warmup = SineWave::new(440.0)
-        .amplify(0.000_001)
-        .take_duration(Duration::from_millis(180));
+    let warmup = SineWave::new(18_000.0)
+        .amplify(0.001)
+        .take_duration(Duration::from_millis(900));
     output.sink.mixer().add(warmup);
+}
+
+fn wake_audio_engine(log_dir: &Path, path: Option<&str>, stage: &str) -> Result<(), String> {
+    let wake_output = open_audio_output(log_dir, path, stage)?;
+    let wakeup = SineWave::new(18_000.0)
+        .amplify(0.001)
+        .take_duration(Duration::from_millis(900));
+    wake_output.sink.mixer().add(wakeup);
+
+    thread::spawn(move || {
+        thread::sleep(Duration::from_millis(1_000));
+        drop(wake_output);
+    });
+
+    Ok(())
 }
 
 fn default_output_device(
@@ -723,6 +772,132 @@ fn recover_from_default_device_change(
     });
 }
 
+fn recover_from_stalled_playback(
+    output: &mut Option<AudioOutput>,
+    playback: &mut Option<Playback>,
+    snapshot: &Arc<Mutex<PlaybackSnapshot>>,
+    log_dir: &Path,
+) {
+    let Some((path, seconds, volume, playing, reason)) =
+        stalled_playback_recovery_request(playback, snapshot, log_dir)
+    else {
+        return;
+    };
+
+    write_audio_error_log(
+        log_dir,
+        "音频播放自检停滞",
+        Some(&path),
+        Some("player_position_stalled"),
+        Some(seconds),
+        &reason,
+    );
+
+    let _ = wake_audio_engine(log_dir, Some(&path), "stalled_playback_wakeup");
+    let rebuild = PlaybackRebuild {
+        path: &path,
+        seconds,
+        volume,
+        playing,
+        stage: "stalled_playback_rebuild",
+    };
+    if let Err(err) = rebuild_playback_at(output, playback, log_dir, rebuild) {
+        write_audio_error_log(
+            log_dir,
+            "音频播放自检恢复失败",
+            Some(&path),
+            Some("stalled_playback_rebuild"),
+            Some(seconds),
+            &err,
+        );
+        if let Some(current) = playback.as_mut() {
+            current.last_player_pos_changed_at = Instant::now();
+        }
+        return;
+    }
+
+    let _ = update_snapshot(snapshot, |state| {
+        state.elapsed_offset = Duration::from_secs(seconds);
+        state.started_at = Some(Instant::now());
+        state.paused_total = Duration::ZERO;
+        state.paused_at = if state.playing {
+            None
+        } else {
+            Some(Instant::now())
+        };
+    });
+}
+
+fn stalled_playback_recovery_request(
+    playback: &mut Option<Playback>,
+    snapshot: &Arc<Mutex<PlaybackSnapshot>>,
+    log_dir: &Path,
+) -> Option<(String, u64, f32, bool, String)> {
+    let current = playback.as_mut()?;
+    if current.player.empty() || current.started_at.elapsed() < Duration::from_millis(1_500) {
+        return None;
+    }
+
+    let current_snapshot = match snapshot.lock().map(|snapshot| snapshot.clone()) {
+        Ok(snapshot) => snapshot,
+        Err(_) => {
+            write_audio_error_log(
+                log_dir,
+                "音频播放自检失败",
+                None,
+                Some("read_stalled_snapshot"),
+                None,
+                "audio engine state is unavailable",
+            );
+            return None;
+        }
+    };
+    if !current_snapshot.playing {
+        return None;
+    }
+
+    let player_pos = current.player.get_pos();
+    if duration_changed(
+        player_pos,
+        current.last_player_pos,
+        Duration::from_millis(50),
+    ) {
+        current.last_player_pos = player_pos;
+        current.last_player_pos_changed_at = Instant::now();
+        current.wake_attempts = 0;
+        return None;
+    }
+    if current.last_player_pos_changed_at.elapsed() < Duration::from_millis(1_500) {
+        return None;
+    }
+
+    current.wake_attempts = current.wake_attempts.saturating_add(1);
+    current.last_player_pos_changed_at = Instant::now();
+
+    let path = current_snapshot.path.clone()?;
+    let seconds = elapsed_seconds(&current_snapshot);
+    let reason = format!(
+        "rodio位置停在{}ms，状态进度{}s，尝试恢复第{}次",
+        player_pos.as_millis(),
+        seconds,
+        current.wake_attempts
+    );
+    Some((
+        path,
+        seconds,
+        current_snapshot.volume,
+        current_snapshot.playing,
+        reason,
+    ))
+}
+
+fn duration_changed(current: Duration, previous: Duration, threshold: Duration) -> bool {
+    current
+        .checked_sub(previous)
+        .or_else(|| previous.checked_sub(current))
+        .is_some_and(|delta| delta >= threshold)
+}
+
 fn drain_stream_error(output: Option<&AudioOutput>) -> Option<String> {
     let output = output?;
     let mut latest_error = None;
@@ -794,7 +969,7 @@ fn rebuild_playback_at(
         current.player.stop();
     }
     *output = Some(next_output);
-    *playback = Some(Playback { player });
+    *playback = Some(Playback::new(player));
     Ok(())
 }
 

@@ -53,7 +53,7 @@ import type {
   Track,
   ViewKey,
 } from "./types/music";
-import { display_album, display_artist, is_missing_track } from "./utils/track";
+import { display_album, display_artist, display_title, is_missing_track } from "./utils/track";
 
 const ConfirmDialog = defineAsyncComponent(() => import("./components/ConfirmDialog.vue"));
 const LibraryScanDialog = defineAsyncComponent(() => import("./components/LibraryScanDialog.vue"));
@@ -177,10 +177,18 @@ const display_tracks = computed(() => {
   const keyword = query.value.trim().toLowerCase();
   if (!keyword) return display_tracks_for_view(active_view.value);
 
-  return tracks.value.filter((track) =>
-    `${track.title} ${track.artist} ${track.album}`.toLowerCase().includes(keyword),
-  );
+  return display_tracks_for_view(active_view.value).filter((track) => track_matches_query(track, keyword));
 });
+
+function track_matches_query(track: Track, keyword: string) {
+  if (active_view.value === "albums" && !selected_album.value) {
+    return display_album(track).toLowerCase().includes(keyword);
+  }
+  if (active_view.value === "artists" && !selected_artist.value) {
+    return display_artist(track).toLowerCase().includes(keyword);
+  }
+  return `${display_title(track)} ${display_artist(track)} ${display_album(track)}`.toLowerCase().includes(keyword);
+}
 
 const album_count = computed(() => {
   const albums = new Set(
@@ -1202,7 +1210,7 @@ function ensure_selected_playlist() {
 
 function set_queue_for_current_view() {
   if (query.value.trim()) {
-    player_queue.set_current_queue(queue_source_for_view("all"), tracks.value);
+    player_queue.set_current_queue(queue_source_for_view(active_view.value), display_tracks.value);
     return;
   }
 
@@ -1230,13 +1238,19 @@ function close_detail_playlist() {
 
 function update_query(value: string) {
   query.value = value;
-  active_view.value = "all";
-  selected_artist.value = "";
-  selected_album.value = "";
+  if (active_view.value === "stats") {
+    active_view.value = "all";
+    selected_artist.value = "";
+    selected_album.value = "";
+  }
 }
 
 function focus_search() {
-  active_view.value = "all";
+  if (active_view.value === "stats") {
+    active_view.value = "all";
+    selected_artist.value = "";
+    selected_album.value = "";
+  }
 }
 
 async function play_track_from_view(track: Track) {

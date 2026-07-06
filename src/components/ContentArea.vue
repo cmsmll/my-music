@@ -95,10 +95,6 @@ function detail_total_duration() {
 }
 
 function visible_list_matches_playback_source() {
-  const keyword = props.query.trim();
-  if (keyword) {
-    return props.playback_queue_source.type === "all";
-  }
   if (props.selected_artist) {
     return (
       props.playback_queue_source.type === "artist" &&
@@ -164,6 +160,18 @@ const most_played_tracks = computed(() =>
 
 const favorite_artist = computed(() => favorite_group("artist"));
 const favorite_album = computed(() => favorite_group("album"));
+
+const filtered_artist_items = computed(() => {
+  const keyword = props.query.trim().toLowerCase();
+  if (!keyword) return props.artist_items;
+  return props.artist_items.filter((artist) => artist.name.toLowerCase().includes(keyword));
+});
+
+const filtered_album_items = computed(() => {
+  const keyword = props.query.trim().toLowerCase();
+  if (!keyword) return props.album_items;
+  return props.album_items.filter((album) => album.name.toLowerCase().includes(keyword));
+});
 
 function favorite_group(field: "artist" | "album") {
   const groups = new Map<string, number>();
@@ -244,8 +252,7 @@ onBeforeUnmount(() => {
         active_view === 'recent' ||
         active_view === 'user_playlist' ||
         selected_artist ||
-        selected_album ||
-        query.trim()
+        selected_album
       "
       class="track_table_view"
       aria-label="歌曲列表"
@@ -307,7 +314,7 @@ onBeforeUnmount(() => {
     <section v-else-if="active_view === 'albums'" class="placeholder_view">
       <div class="placeholder_grid">
         <button
-          v-for="album in album_items"
+          v-for="album in filtered_album_items"
           :key="album.name"
           class="album_tile media_tile"
           type="button"
@@ -322,12 +329,13 @@ onBeforeUnmount(() => {
         </button>
       </div>
       <p v-if="!tracks.length" class="empty_state">添加音乐目录后会在这里展示专辑。</p>
+      <p v-else-if="!filtered_album_items.length" class="empty_state">没有找到匹配的专辑。</p>
     </section>
 
     <section v-else-if="active_view === 'artists'" class="placeholder_view">
       <div class="artist_grid">
         <button
-          v-for="artist in artist_items"
+          v-for="artist in filtered_artist_items"
           :key="artist.name"
           class="artist_tile media_tile"
           type="button"
@@ -342,6 +350,7 @@ onBeforeUnmount(() => {
         </button>
       </div>
       <p v-if="!tracks.length" class="empty_state">添加音乐目录后会在这里展示歌手。</p>
+      <p v-else-if="!filtered_artist_items.length" class="empty_state">没有找到匹配的歌手。</p>
     </section>
 
     <section v-else-if="active_view === 'stats'" class="stats_view">

@@ -1,5 +1,11 @@
 import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
+import { readFileSync } from "node:fs";
+
+const package_json = JSON.parse(
+  readFileSync(new URL("./package.json", import.meta.url), "utf8"),
+) as { version?: string };
+const app_version = package_json.version ?? "0.0.0";
 
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
@@ -11,6 +17,7 @@ export default defineConfig(async () => ({
     __VUE_OPTIONS_API__: "false",
     __VUE_PROD_DEVTOOLS__: "false",
     __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: "false",
+    __APP_VERSION__: JSON.stringify(app_version),
   },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`

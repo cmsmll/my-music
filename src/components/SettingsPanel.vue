@@ -44,6 +44,8 @@ const settings_sections: { key: SettingsSectionKey; title: string }[] = [
 
 const app_config_store = use_app_config_store();
 const active_section = ref<SettingsSectionKey>("library");
+const app_version = __APP_VERSION__;
+const github_url = "https://github.com/cmsmll/my-music";
 
 const current_config = computed(
   () => app_config_store.config ?? props.app_config ?? null,
@@ -698,6 +700,14 @@ async function choose_cache_path(entry: CacheEntry) {
               <label>
                 <span>软件名称</span>
                 <input value="my-music" readonly />
+              </label>
+              <label>
+                <span>版本信息</span>
+                <input :value="app_version" readonly />
+              </label>
+              <label>
+                <span>GitHub 地址</span>
+                <input :value="github_url" readonly />
               </label>
               <label>
                 <span>运行环境</span>

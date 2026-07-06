@@ -2885,6 +2885,8 @@ p {
   padding: 10px 12px;
   color: #505763;
   background: transparent;
+  outline: none;
+  box-shadow: none;
 }
 
 .settings_input_row {
@@ -2892,6 +2894,22 @@ p {
   grid-template-columns: minmax(0, 1fr) 40px 40px;
   gap: 8px;
   min-width: 0;
+}
+
+.path_list p:hover,
+.path_list p:active,
+.path_list p:focus,
+.path_list p:focus-visible,
+.settings_section input:hover,
+.settings_section input:active,
+.settings_section input:focus,
+.settings_section input:focus-visible,
+.settings_section .settings_radio_option:hover,
+.settings_section .settings_radio_option:active,
+.settings_section .settings_radio_option:focus-within {
+  border-color: #e5e8ef;
+  outline: none;
+  box-shadow: none;
 }
 
 .settings_section .settings_color_picker {
@@ -3021,6 +3039,8 @@ p {
   background: transparent;
   font-size: 0.88rem;
   font-weight: 800;
+  outline: none;
+  box-shadow: none;
 }
 
 .settings_default_button {
@@ -3041,6 +3061,23 @@ p {
 .settings_delete_button .svg_icon {
   width: 18px;
   height: 18px;
+}
+
+.settings_section .settings_default_button:hover,
+.settings_section .settings_default_button:active,
+.settings_section .settings_default_button:focus,
+.settings_section .settings_default_button:focus-visible,
+.settings_section .settings_file_button:hover,
+.settings_section .settings_file_button:active,
+.settings_section .settings_file_button:focus,
+.settings_section .settings_file_button:focus-visible,
+.settings_section .settings_delete_button:hover,
+.settings_section .settings_delete_button:active,
+.settings_section .settings_delete_button:focus,
+.settings_section .settings_delete_button:focus-visible {
+  border-color: #e5e8ef;
+  outline: none;
+  box-shadow: none;
 }
 
 .settings_section label {

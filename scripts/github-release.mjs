@@ -14,6 +14,21 @@ function read_json(path) {
   return JSON.parse(readFileSync(path, "utf8"));
 }
 
+function output_text(value) {
+  if (typeof value === "string") return value;
+  if (Buffer.isBuffer(value)) return value.toString("utf8");
+  return "";
+}
+
+function command_error_message(command, args, result) {
+  const output = [output_text(result.stdout), output_text(result.stderr)]
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+  const error = result.error?.message ? `\n${result.error.message}` : "";
+  return `${command} ${args.join(" ")} 执行失败${output ? `\n${output}` : ""}${error}`;
+}
+
 function capture(command, args) {
   const result = spawnSync(command, args, {
     cwd: root,
@@ -21,12 +36,11 @@ function capture(command, args) {
     shell: false,
   });
 
-  if (result.status !== 0) {
-    const output = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
-    throw new Error(`${command} ${args.join(" ")} 执行失败${output ? `\n${output}` : ""}`);
+  if (result.error || result.status !== 0) {
+    throw new Error(command_error_message(command, args, result));
   }
 
-  return result.stdout.trim();
+  return output_text(result.stdout).trim();
 }
 
 function run(command, args) {
@@ -41,8 +55,8 @@ function run(command, args) {
     shell: false,
   });
 
-  if (result.status !== 0) {
-    throw new Error(`${command} ${args.join(" ")} 执行失败`);
+  if (result.error || result.status !== 0) {
+    throw new Error(command_error_message(command, args, result));
   }
 }
 
@@ -54,9 +68,9 @@ function try_capture(command, args) {
   });
 
   return {
-    ok: result.status === 0,
-    output: result.stdout.trim(),
-    error: result.stderr.trim(),
+    ok: !result.error && result.status === 0,
+    output: output_text(result.stdout).trim(),
+    error: [output_text(result.stderr), result.error?.message ?? ""].filter(Boolean).join("\n").trim(),
   };
 }
 

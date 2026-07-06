@@ -2037,7 +2037,7 @@ p {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 0 12px 18px 0;
+  padding: 0 0 18px;
 }
 
 .track_table_view {

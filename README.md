@@ -1,57 +1,105 @@
 # My Music
 
-My Music 是一个基于 Tauri 2、Vue 3 和 Rust 实现的本地音乐播放器。项目目标是提供一个轻量、响应快、数据可控的桌面音乐管理工具：前端负责现代化播放器界面和交互状态，Rust 负责曲库扫描、元数据解析、音频播放、缓存生成、解码处理和日志记录。
+My Music 是一个基于 Tauri 2、Vue 3、Pinia 和 Rust 的本地音乐播放器。项目以本地曲库为核心：前端负责播放器界面、歌单交互、播放页、歌词展示和配置表单，Rust 后端负责配置与缓存、曲库扫描、元数据提取、音频播放、解码器、歌词搜索和日志记录。
+
+项目当前更偏向个人本地音乐管理工具：所有配置、曲库缓存、封面、歌词、播放统计和日志都保存在本机，不依赖在线音乐服务完成基础播放。
 
 ## 技术栈
 
 - 桌面框架：Tauri 2
-- 前端框架：Vue 3 + TypeScript + Vite
+- 前端：Vue 3 + TypeScript + Vite
 - 状态管理：Pinia
-- 后端核心：Rust
+- 后端：Rust
 - 音频播放：rodio 0.22.2
 - 音频元数据：lofty
+- 歌词搜索：Lyrix + moka 缓存
 - 本地配置：TOML
-- 本地缓存：JSON + 独立封面/歌词缓存文件
+- 本地缓存：JSON + 独立封面/歌词文件
 
-## 主要功能
+## 已实现功能
 
-- 本地曲库：支持配置多个音乐目录，手动重载曲库。
-- 歌曲列表：展示歌曲名、歌手、专辑、时长、封面等信息。
-- 元数据解析：优先读取音频内嵌标签，缺失时回退到 `歌手-歌名` 文件名规则。
-- 封面与歌词缓存：封面和歌词会解析为独立文件保存，不使用 base64 存储。
-- 播放控制：播放、暂停、上一首、下一首、音量、进度拖拽和进度跳转。
-- 播放模式：随机播放、循环播放、单曲循环。
-- 播放队列：侧边栏展示当前播放列表，可跳转当前来源页面。
-- 曲库视图：全部、歌手、专辑、统计、最近播放、用户歌单。
-- 歌手/专辑页：按歌手或专辑聚合歌曲，展示封面、数量和总时长。
-- 歌单管理：新建、重命名、删除、拖拽排序，歌曲右键添加或移除。
-- 最近播放：自动记录播放过的歌曲。
-- 播放统计：累计播放、聆听时长、最爱歌手、最爱专辑、最常播放歌曲。
-- 设置页面：管理音乐库、解码器、缓存、样式和关于信息。
-- 窗口状态：保存窗口宽高、音量、侧边栏宽度等运行状态。
-- 系统热键：支持播放/暂停、上一首、下一首等媒体快捷键。
+### 曲库
 
-## 解码器
+- 支持配置多个音乐目录。
+- 启动时读取配置和已有缓存，不自动扫描目录。
+- 手动点击“重载”后重新扫描配置中的音乐目录，并强制更新“全部”、歌手、专辑、统计等系统缓存。
+- 支持歌曲名、歌手、专辑、时长、文件大小、码率、采样率、封面、歌词路径等信息。
+- 元数据优先读取音频内嵌标签，缺失时按 `歌手-歌名` 文件名规则回退，解析不出来时显示未知歌手。
+- 封面和歌词以独立文件缓存，不使用 base64 写入歌曲列表缓存。
+- 歌曲详情弹窗可查看文件路径、大小、格式相关信息。
 
-解码器用于扫描并处理加密或普通音频文件。当前支持配置扫描目录、输出目录和处理格式，默认处理格式为：
+### 播放器
+
+- 支持播放、暂停、上一首、下一首、停止、音量、进度拖拽、进度跳转。
+- 播放模式支持随机播放、列表循环、单曲循环。
+- 支持系统媒体快捷键：播放/暂停、上一首、下一首。
+- 播放队列以侧边栏显示当前队列，打开时定位到当前歌曲。
+- 播放页从底部进入，保留公共播放控制条，展示唱片/唱臂动效、歌曲信息和歌词。
+- 歌词按行解析和高亮，进度跳转时歌词会跟随定位。
+- 后端播放核心使用专属音频线程，基于 `DeviceSinkBuilder::open_default_sink()` 打开当前默认输出设备，并在默认设备变化时重建播放输出。
+
+### 歌单
+
+- 内置“最近播放”和“我的歌单”。
+- 支持新建、重命名、删除用户歌单。
+- 支持用户歌单拖拽排序，排序写入歌单自身 metadata 的 `index`。
+- 歌曲右键可添加到歌单；已存在的歌曲按钮会置灰。
+- 最近播放和用户歌单可通过右键菜单移除歌曲记录，不删除音频文件。
+- 用户歌单缓存独立保存，不受曲库重载影响；失效 ID 会保留并在界面中以缺失歌曲显示。
+
+### 歌手、专辑和统计
+
+- 歌手页按歌手聚合歌曲，展示封面、歌曲数量和总时长。
+- 专辑页按专辑聚合歌曲，展示封面、歌曲数量和总时长。
+- 进入歌手/专辑详情后可播放对应列表。
+- 统计页包含音乐统计、播放统计和最常播放列表。
+- 音乐统计包含歌曲总数、歌手数量、专辑数量、总时长、总大小。
+- 播放统计包含累计播放、聆听时长、最爱歌手、最爱专辑。
+
+### 歌词
+
+- 支持读取歌词缓存目录中的同名 `.lrc` 文件。
+- 播放页可搜索歌词，搜索结果会显示来源、歌曲名、歌手、专辑和时长。
+- 歌词搜索结果通过 moka 缓存，减少重复请求。
+- 使用歌词时会写入歌词缓存文件，并同步歌曲缓存中的 `lyrics_cache_hash`。
+- Auto 歌词开关支持持久化，开启后会自动尝试搜索并加载歌词。
+
+### 解码器
+
+解码器用于批量处理配置目录中的音频文件，当前支持：
+
+- KGM/KGMA 解码
+- NCM 解码
+- MP3/FLAC 复制到输出目录
+- 处理成功后将源文件重置为 0 字节
+- 解码记录、跳过原因、失败原因写入日志
+
+默认处理格式：
 
 ```text
 mp3,flac,kgm,kgma,ncm
 ```
 
-当前实现包括：
+解码和曲库重载是两个独立操作：
 
-- KGM/KGMA 解码
-- NCM 解码
-- MP3/FLAC 复制到输出目录
-- 成功处理后将源文件重置为 0 字节
-- 解码过程、跳过原因和失败信息写入日志
+- “解码”只扫描解码器配置中的目录，并输出到解码器输出目录。
+- “重载”只扫描音乐库配置中的目录，不会自动执行解码。
 
-解码和曲库重载是两个独立操作：点击“解码”只处理解码目录，点击“重载”只扫描配置的音乐目录。
+### 设置和主题
 
-## 配置与缓存
+- 设置页按“音乐库、解码器、缓存、样式、关于”分类。
+- 音乐库可管理扫描目录。
+- 解码器可管理输出目录、处理格式和扫描目录。
+- 缓存页可管理曲库缓存、封面缓存、歌词缓存、我的歌单缓存、日志目录和播放统计文件。
+- 样式支持背景颜色、背景图片、背景图片透明度、标题色、副标题色、高亮色、边框色和是否显示边框。
+- 状态类配置不在设置页显示，包括窗口宽高、音量、侧边栏宽度和 Auto 歌词开关。
+- 前端配置变更使用 1 秒防抖同步到后端 `config.toml`。
 
-程序启动时会在可执行文件所在目录读取或生成 `config.toml`。配置采用下划线命名风格，主要结构包括：
+## 配置文件
+
+程序启动时会在可执行文件所在目录读取或生成 `config.toml`。配置字段使用下划线命名。
+
+当前主要结构：
 
 ```toml
 music_directory = []
@@ -62,48 +110,100 @@ process_formats = "mp3,flac,kgm,kgma,ncm"
 scan_directory = []
 
 [cache]
-library_cache_dir = ""
-cover_cache_dir = ""
-lyrics_cache_dir = ""
-my_playlist_cache_dir = ""
-log_dir = ""
-play_statistics_cache_path = ""
+library_cache_dir = "library-cache"
+cover_cache_dir = "cover-cache"
+lyrics_cache_dir = "lyrics-cache"
+my_playlist_cache_dir = "my-playlist-cache"
+log_dir = "logs"
+play_statistics_cache_path = "library-cache/play-statistics.json"
 
 [style]
-background_color = ""
+background_color = "#ffffff"
 background_image = ""
+background_image_opacity = 1.0
+title_color = "#1e2026"
+subtitle_color = "#8b919c"
+highlight_color = "#22a05a"
+border_color = "#e8e8e8"
+show_border = true
 
 [state]
-width = 1200
-height = 600
+width = 1280
+height = 820
 volume = 1.0
 sidebar_width = 250
+auto_lyrics_enabled = false
 ```
 
-曲库缓存会按音乐目录生成对应 JSON 文件；封面、歌词、歌单、播放统计和日志使用独立目录或文件保存。用户歌单缓存不受曲库重载影响，内部保存歌曲 ID 引用，失效歌曲会在界面中以浅红色背景显示。
+说明：
+
+- `music_directory` 是音乐库扫描目录数组。
+- `decoder.scan_directory` 是解码器扫描目录数组。
+- `decoder.output_dir` 为空时不会执行解码。
+- `cache` 下统一管理缓存目录和统计文件路径。
+- `state` 是运行状态，不在设置页面直接展示。
+
+## 缓存设计
+
+曲库缓存以“全部”为核心数据源，其他列表通过歌曲 ID 引用它。
+
+- `all_playlist.json`：全部曲库核心缓存，`tracks` 是以歌曲 ID 为 key 的对象。
+- `all_tracks_playlist.json`：全部歌曲列表视图缓存。
+- `artists_playlist.json`：歌手聚合缓存。
+- `albums_playlist.json`：专辑聚合缓存。
+- `recent_playlist.json`：最近播放缓存。
+- `my-playlist-cache/*.json`：用户歌单缓存。
+- `cover-cache/*`：封面文件缓存。
+- `lyrics-cache/*`：歌词文件缓存。
+- `play-statistics.json`：播放统计缓存。
+- `logs/audio.log`：音频播放和跳转错误日志。
+
+曲库重载会更新系统生成的数据：全部、歌手、专辑、统计等。用户歌单只保存歌曲 ID 引用，不会因为重载曲库被清空。
 
 ## 项目结构
 
 ```text
 src/
-  components/            Vue 组件
-  stores/                Pinia 状态
-  types/                 前端类型定义
-  utils/                 前端工具函数
+  components/                 Vue 组件
+    ContentArea.vue           主内容区：全部、歌手、专辑、统计、歌单
+    LibrarySidebar.vue        左侧曲库和歌单导航
+    PlayerBar.vue             公共底部播放器
+    NowPlayingPage.vue        播放详情页和歌词搜索
+    PlaybackQueuePanel.vue    播放队列侧栏
+    SettingsPanel.vue         设置页
+  stores/                     Pinia 状态
+    app_config.ts             配置和防抖保存
+    library.ts                曲库、歌单、统计
+    playback.ts               当前歌曲、播放状态、进度
+    player_queue.ts           当前播放队列和播放模式
+    ui.ts                     弹窗和页面显示状态
+  types/                      前端类型定义
+  utils/                      前端工具函数
 
 src-tauri/src/
-  audio.rs               播放引擎
-  commands.rs            Tauri 命令入口
-  config.rs              配置读写和默认值
-  decoder.rs             解码器调度与日志
-  kgm.rs                 KGM/KGMA 解码
-  ncm.rs                 NCM 解码
-  library.rs             曲库扫描和元数据解析
-  playlist.rs            歌单缓存
-  scanner.rs             解码扫描器
-  statistics.rs          播放统计
-  media_shortcuts.rs     系统媒体快捷键
+  audio.rs                    音频播放引擎
+  commands.rs                 Tauri 命令入口
+  config.rs                   配置读写、默认值和兼容旧配置
+  decoder.rs                  解码器调度
+  kgm.rs                      KGM/KGMA 解码
+  ncm.rs                      NCM 解码
+  library.rs                  曲库扫描和元数据解析
+  lyrics.rs                   歌词搜索、缓存和使用
+  playlist.rs                 歌单缓存和最近播放
+  scanner.rs                  解码扫描器
+  statistics.rs               播放统计
+  media_shortcuts.rs          系统媒体快捷键
+  models.rs                   前后端数据模型
 ```
+
+## 启动流程
+
+1. Rust 创建 `ConfigManager`，读取或生成 `config.toml`。
+2. Tauri 注册音频引擎、歌词搜索服务和配置管理。
+3. 启动后前端调用 `get_startup_state`，加载配置、已有曲库缓存、歌单缓存和播放统计。
+4. 窗口根据配置中的宽高居中显示。
+5. 文件选择和文件打开插件在 setup 中延迟初始化。
+6. 曲库不会自动重载，需要用户手动点击“重载”。
 
 ## 开发
 
@@ -113,44 +213,22 @@ src-tauri/src/
 pnpm install
 ```
 
-启动前端开发服务：
-
-```bash
-pnpm dev
-```
-
 启动 Tauri 开发模式：
 
 ```bash
 pnpm tauri dev
 ```
 
-## 构建
+只启动前端开发服务：
 
-前端生产构建：
+```bash
+pnpm dev
+```
+
+前端类型检查和生产构建：
 
 ```bash
 pnpm build
-```
-
-打包桌面应用：
-
-```bash
-pnpm release
-```
-
-`pnpm release` 默认递增 patch 版本，并同步更新 `package.json`、`src-tauri/Cargo.toml` 和 `src-tauri/tauri.conf.json` 后执行 Tauri 打包。也可以指定版本类型或明确版本号：
-
-```bash
-pnpm release minor
-pnpm release major
-pnpm release 1.2.3
-```
-
-如果只想打包、不更新版本号：
-
-```bash
-pnpm tauri:build
 ```
 
 Rust 检查：
@@ -161,8 +239,37 @@ cargo check
 cargo clippy
 ```
 
-Release 构建已开启 Rust 优化配置，包括 LTO、单 codegen unit、strip 和 `panic = "abort"`。
+## 构建和发布
+
+只更新版本号：
+
+```bash
+pnpm release
+```
+
+可指定版本更新类型或明确版本号：
+
+```bash
+pnpm release patch
+pnpm release minor
+pnpm release major
+pnpm release 1.2.3
+```
+
+更新版本号并打包：
+
+```bash
+pnpm release:build
+```
+
+不更新版本号，直接打包：
+
+```bash
+pnpm tauri:build
+```
+
+Release 构建已开启 Rust 优化配置，包括 LTO、单 codegen unit、strip、`panic = "abort"` 和关闭 debug/incremental。
 
 ## 说明
 
-本项目专注本地音乐管理和播放，不依赖在线音乐服务。音频文件、配置、缓存和日志都保存在本地，适合用于个人本地曲库整理、播放和后续扩展。
+这个项目目前主要面向 Windows 桌面环境开发和测试。Tauri 配置已关闭系统标题栏，窗口最小尺寸在 `tauri.conf.json` 中额外补偿了无标题栏窗口的系统占用尺寸。基础播放、曲库缓存、歌单、歌词和解码器都以本地文件为中心，适合继续扩展更多本地音乐管理能力。

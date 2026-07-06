@@ -1,7 +1,11 @@
 use crate::models::PlaybackStatus;
 use crate::utils::unix_timestamp;
 use rodio::{
-    cpal::{self, traits::HostTrait, StreamError},
+    cpal::{
+        self,
+        traits::{DeviceTrait, HostTrait},
+        StreamError,
+    },
     source::{SineWave, Source},
     Decoder, DeviceSinkBuilder, MixerDeviceSink, Player,
 };
@@ -49,6 +53,8 @@ pub(crate) struct Playback {
 struct AudioOutput {
     sink: MixerDeviceSink,
     stream_errors: Receiver<String>,
+    device_id: String,
+    device_name: String,
 }
 
 struct PlaybackRebuild<'a> {
@@ -57,6 +63,12 @@ struct PlaybackRebuild<'a> {
     volume: f32,
     playing: bool,
     stage: &'a str,
+}
+
+struct OutputDevice {
+    device: cpal::Device,
+    id: String,
+    name: String,
 }
 
 pub(crate) struct AudioEngine {
@@ -217,6 +229,12 @@ fn spawn_audio_worker(
 
         loop {
             recover_from_stream_error(
+                &mut output,
+                &mut playback,
+                &thread_snapshot,
+                &thread_log_dir,
+            );
+            recover_from_default_device_change(
                 &mut output,
                 &mut playback,
                 &thread_snapshot,
@@ -445,23 +463,10 @@ fn open_audio_output(
     path: Option<&str>,
     stage: &str,
 ) -> Result<AudioOutput, String> {
-    let default_device = cpal::default_host()
-        .default_output_device()
-        .ok_or_else(|| {
-            let reason = "找不到默认音频输出设备".to_string();
-            write_audio_error_log(
-                log_dir,
-                "音频输出设备失败",
-                path,
-                Some(stage),
-                None,
-                &reason,
-            );
-            reason
-        })?;
+    let default_device = default_output_device(log_dir, path, stage)?;
 
     let (stream_error_tx, stream_errors) = mpsc::channel();
-    let mut sink = DeviceSinkBuilder::from_device(default_device)
+    let mut sink = DeviceSinkBuilder::from_device(default_device.device)
         .map_err(|err| {
             let reason = format!("无法读取默认音频输出设备配置: {err}");
             write_audio_error_log(
@@ -499,6 +504,8 @@ fn open_audio_output(
     Ok(AudioOutput {
         sink,
         stream_errors,
+        device_id: default_device.id,
+        device_name: default_device.name,
     })
 }
 
@@ -507,6 +514,60 @@ fn prime_audio_output(output: &AudioOutput) {
         .amplify(0.000_001)
         .take_duration(Duration::from_millis(180));
     output.sink.mixer().add(warmup);
+}
+
+fn default_output_device(
+    log_dir: &Path,
+    path: Option<&str>,
+    stage: &str,
+) -> Result<OutputDevice, String> {
+    let device = cpal::default_host()
+        .default_output_device()
+        .ok_or_else(|| {
+            let reason = "找不到默认音频输出设备".to_string();
+            write_audio_error_log(
+                log_dir,
+                "音频输出设备失败",
+                path,
+                Some(stage),
+                None,
+                &reason,
+            );
+            reason
+        })?;
+
+    let id = device.id().map_err(|err| {
+        let reason = format!("无法读取默认音频输出设备ID: {err}");
+        write_audio_error_log(
+            log_dir,
+            "音频输出设备失败",
+            path,
+            Some(stage),
+            None,
+            &reason,
+        );
+        reason
+    })?;
+    let name = device
+        .description()
+        .map(|description| description.name().to_string())
+        .unwrap_or_else(|_| "未知音频设备".to_string());
+
+    Ok(OutputDevice {
+        device,
+        id: id.to_string(),
+        name,
+    })
+}
+
+fn current_default_output_identity() -> Option<(String, String)> {
+    let device = cpal::default_host().default_output_device()?;
+    let id = device.id().ok()?.to_string();
+    let name = device
+        .description()
+        .map(|description| description.name().to_string())
+        .unwrap_or_else(|_| "未知音频设备".to_string());
+    Some((id, name))
 }
 
 fn recover_from_stream_error(
@@ -565,6 +626,85 @@ fn recover_from_stream_error(
             "音频输出流恢复失败",
             Some(&path),
             Some("stream_error_recover"),
+            Some(seconds),
+            &err,
+        );
+        return;
+    }
+
+    let _ = update_snapshot(snapshot, |state| {
+        state.elapsed_offset = Duration::from_secs(seconds);
+        state.started_at = Some(Instant::now());
+        state.paused_total = Duration::ZERO;
+        state.paused_at = if state.playing {
+            None
+        } else {
+            Some(Instant::now())
+        };
+    });
+}
+
+fn recover_from_default_device_change(
+    output: &mut Option<AudioOutput>,
+    playback: &mut Option<Playback>,
+    snapshot: &Arc<Mutex<PlaybackSnapshot>>,
+    log_dir: &Path,
+) {
+    let Some(current_output) = output.as_ref() else {
+        return;
+    };
+    let Some((default_device_id, default_device_name)) = current_default_output_identity() else {
+        return;
+    };
+    if default_device_id == current_output.device_id {
+        return;
+    }
+
+    let Ok(current_snapshot) = snapshot.lock().map(|snapshot| snapshot.clone()) else {
+        write_audio_error_log(
+            log_dir,
+            "默认音频输出设备切换失败",
+            None,
+            Some("read_device_change_snapshot"),
+            None,
+            "audio engine state is unavailable",
+        );
+        return;
+    };
+    let Some(path) = current_snapshot.path.clone() else {
+        return;
+    };
+
+    let seconds = elapsed_seconds(&current_snapshot);
+    let reason = format!(
+        "默认输出设备从 {}({}) 切换到 {}({})",
+        current_output.device_name,
+        current_output.device_id,
+        default_device_name,
+        default_device_id
+    );
+    write_audio_error_log(
+        log_dir,
+        "默认音频输出设备变化",
+        Some(&path),
+        Some("default_device_changed"),
+        Some(seconds),
+        &reason,
+    );
+
+    let rebuild = PlaybackRebuild {
+        path: &path,
+        seconds,
+        volume: current_snapshot.volume,
+        playing: current_snapshot.playing,
+        stage: "default_device_changed",
+    };
+    if let Err(err) = rebuild_playback_at(output, playback, log_dir, rebuild) {
+        write_audio_error_log(
+            log_dir,
+            "默认音频输出设备切换失败",
+            Some(&path),
+            Some("default_device_changed"),
             Some(seconds),
             &err,
         );

@@ -2231,6 +2231,9 @@ p {
   align-items: center;
   gap: 18px;
   min-width: 0;
+  transition:
+    transform 160ms ease,
+    color 160ms ease;
 }
 
 .cover_thumb,
@@ -2282,7 +2285,14 @@ p {
 
 .song_text strong {
   font-size: 1rem;
+  transition: color 160ms ease;
 }
+
+.table_row:hover .song_cell {
+  transform: translateX(-6px);
+}
+
+.table_row:hover .song_text strong,
 .table_row.active .song_text strong {
   color: var(--theme-highlight-color, #426dff);
 }
@@ -2734,6 +2744,13 @@ p {
   color: var(--theme-title-color, #1e2026);
   background: transparent;
   text-align: left;
+  transition:
+    transform 160ms ease,
+    background-color 160ms ease;
+}
+
+.queue_item:hover {
+  transform: translateX(-6px);
 }
 
 .queue_item:hover,
@@ -2788,8 +2805,10 @@ p {
 
 .queue_text strong {
   font-size: 0.94rem;
+  transition: color 160ms ease;
 }
 
+.queue_item:hover .queue_text strong,
 .queue_item.active .queue_text strong {
   color: var(--theme-highlight-color, #426dff);
 }

@@ -19,11 +19,12 @@ const props = withDefaults(defineProps<{
 });
 
 const playback_store = use_playback_store();
-const { visual_elapsed } = storeToRefs(playback_store);
+const { current_track, status, visual_elapsed } = storeToRefs(playback_store);
 const lyrics_viewport = ref<HTMLElement | null>(null);
 const active_anchor_index = ref(-1);
 const lyric_anchor_prefix = useId();
 let scroll_animation_frame: number | undefined;
+let force_next_lyrics_sync = false;
 
 const lyric_lines = computed(() => {
   const parsed: LineLyricItem[] = [];
@@ -118,6 +119,10 @@ function elapsed_in_anchor(index: number, seconds: number) {
 
 const active_index = computed(() => active_anchor_index.value);
 
+const current_track_key = computed(() =>
+  current_track.value?.id ?? current_track.value?.path ?? "",
+);
+
 function lyric_anchor_id(index: number) {
   return `${lyric_anchor_prefix}-line-${index}`;
 }
@@ -126,6 +131,14 @@ function cancel_scroll_animation() {
   if (scroll_animation_frame === undefined) return;
   window.cancelAnimationFrame(scroll_animation_frame);
   scroll_animation_frame = undefined;
+}
+
+function reset_scroll_position() {
+  cancel_scroll_animation();
+  active_anchor_index.value = -1;
+  if (lyrics_viewport.value) {
+    lyrics_viewport.value.scrollTop = 0;
+  }
 }
 
 function ease_out_cubic(progress: number) {
@@ -202,9 +215,18 @@ watch(visual_elapsed, (seconds) => {
   sync_anchor_for_elapsed(seconds);
 }, { immediate: true });
 
+watch(current_track_key, async () => {
+  force_next_lyrics_sync = true;
+  reset_scroll_position();
+  await nextTick();
+  sync_anchor_for_elapsed(status.value.elapsed, true);
+});
+
 watch(lyric_lines, async () => {
   await nextTick();
-  sync_anchor_for_elapsed(visual_elapsed.value, true);
+  const seconds = force_next_lyrics_sync ? status.value.elapsed : visual_elapsed.value;
+  force_next_lyrics_sync = false;
+  sync_anchor_for_elapsed(seconds, true);
 });
 
 onBeforeUnmount(() => {

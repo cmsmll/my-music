@@ -274,7 +274,7 @@ const theme_highlight_color = computed(
 );
 
 const app_border_width = computed(() =>
-  (app_config.value?.style.show_border ?? true) ? "1px" : "0px",
+  (app_config.value?.style.show_border ?? true) ? "2px" : "0px",
 );
 
 const app_shell_style = computed(() => ({
@@ -1919,6 +1919,7 @@ button:focus-visible {
   min-width: 600px;
   min-height: 700px;
   overflow: hidden;
+  --progress_track_background: rgba(128, 128, 128, 0.18);
   color: var(--theme-title-color, #1e2026);
   background-color: var(--app_background_color, #ffffff);
 }

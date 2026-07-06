@@ -192,7 +192,7 @@ defineExpose({ render_progress });
   height: 2px;
   overflow: visible;
   border-radius: 15px;
-  background: rgba(128, 128, 128, 0.18);
+  background: var(--progress_track_background, rgba(128, 128, 128, 0.18));
 }
 
 .progress_fill {

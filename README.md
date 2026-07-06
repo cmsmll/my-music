@@ -268,6 +268,25 @@ pnpm release:build
 pnpm tauri:build
 ```
 
+发布当前版本到 GitHub Releases：
+
+```bash
+pnpm release:github
+```
+
+发布脚本会读取 `package.json`、`src-tauri/Cargo.toml` 和 `src-tauri/tauri.conf.json` 中的当前版本号，并要求三者一致。脚本只上传当前版本的 MSI 和 NSIS 构建产物：
+
+```text
+src-tauri/target/release/bundle/msi/*当前版本*.msi
+src-tauri/target/release/bundle/nsis/*当前版本*.exe
+```
+
+如果当前版本的 MSI 或 NSIS 任意一种不存在，发布会立即停止。发布前需要安装并登录 GitHub CLI：
+
+```bash
+gh auth login
+```
+
 Release 构建已开启 Rust 优化配置，包括 LTO、单 codegen unit、strip、`panic = "abort"` 和关闭 debug/incremental。
 
 ## 说明

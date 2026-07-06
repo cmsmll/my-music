@@ -26,10 +26,10 @@ const track_details = computed(() => {
     ["文件大小", format_file_size(props.track.file_size)],
     ["码率", props.track.bitrate ? `${props.track.bitrate} kbps` : "--"],
     ["采样率", props.track.sample_rate ? `${props.track.sample_rate} Hz` : "--"],
+    ["信息来源", props.track.metadata_source],
     ["文件路径", props.track.path || "--"],
     ["封面缓存", props.track.cover_cache_path || "--"],
     ["歌词缓存", props.track.lyrics_cache_path || "--"],
-    ["元数据来源", props.track.metadata_source],
   ];
 });
 

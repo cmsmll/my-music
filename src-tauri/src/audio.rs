@@ -1,7 +1,8 @@
 use crate::models::PlaybackStatus;
 use crate::utils::unix_timestamp;
 use rodio::{
-    source::{Source, Zero},
+    cpal::{self, traits::HostTrait, StreamError},
+    source::{SineWave, Source},
     Decoder, DeviceSinkBuilder, MixerDeviceSink, Player,
 };
 use std::{
@@ -9,7 +10,7 @@ use std::{
     io::Write,
     path::{Path, PathBuf},
     sync::{
-        mpsc::{self, Sender},
+        mpsc::{self, Receiver, RecvTimeoutError, Sender, TryRecvError},
         Arc, Mutex,
     },
     thread,
@@ -47,6 +48,15 @@ pub(crate) struct Playback {
 
 struct AudioOutput {
     sink: MixerDeviceSink,
+    stream_errors: Receiver<String>,
+}
+
+struct PlaybackRebuild<'a> {
+    path: &'a str,
+    seconds: u64,
+    volume: f32,
+    playing: bool,
+    stage: &'a str,
 }
 
 pub(crate) struct AudioEngine {
@@ -205,7 +215,20 @@ fn spawn_audio_worker(
         let mut output: Option<AudioOutput> = None;
         let mut playback: Option<Playback> = None;
 
-        while let Ok(command) = rx.recv() {
+        loop {
+            recover_from_stream_error(
+                &mut output,
+                &mut playback,
+                &thread_snapshot,
+                &thread_log_dir,
+            );
+
+            let command = match rx.recv_timeout(Duration::from_millis(200)) {
+                Ok(command) => command,
+                Err(RecvTimeoutError::Timeout) => continue,
+                Err(RecvTimeoutError::Disconnected) => break,
+            };
+
             match command {
                 AudioCommand::Play { path, reply } => {
                     let result = (|| {
@@ -422,27 +445,217 @@ fn open_audio_output(
     path: Option<&str>,
     stage: &str,
 ) -> Result<AudioOutput, String> {
-    let mut sink = DeviceSinkBuilder::open_default_sink().map_err(|err| {
-        let reason = format!("无法打开默认音频输出设备: {err}");
+    let default_device = cpal::default_host()
+        .default_output_device()
+        .ok_or_else(|| {
+            let reason = "找不到默认音频输出设备".to_string();
+            write_audio_error_log(
+                log_dir,
+                "音频输出设备失败",
+                path,
+                Some(stage),
+                None,
+                &reason,
+            );
+            reason
+        })?;
+
+    let (stream_error_tx, stream_errors) = mpsc::channel();
+    let mut sink = DeviceSinkBuilder::from_device(default_device)
+        .map_err(|err| {
+            let reason = format!("无法读取默认音频输出设备配置: {err}");
+            write_audio_error_log(
+                log_dir,
+                "音频输出设备失败",
+                path,
+                Some(stage),
+                None,
+                &reason,
+            );
+            reason
+        })?
+        .with_error_callback(move |err| {
+            if matches!(
+                err,
+                StreamError::DeviceNotAvailable | StreamError::StreamInvalidated
+            ) {
+                let _ = stream_error_tx.send(err.to_string());
+            }
+        })
+        .open_sink_or_fallback()
+        .map_err(|err| {
+            let reason = format!("无法打开默认音频输出设备: {err}");
+            write_audio_error_log(
+                log_dir,
+                "音频输出设备失败",
+                path,
+                Some(stage),
+                None,
+                &reason,
+            );
+            reason
+        })?;
+    sink.log_on_drop(false);
+    Ok(AudioOutput {
+        sink,
+        stream_errors,
+    })
+}
+
+fn prime_audio_output(output: &AudioOutput) {
+    let warmup = SineWave::new(440.0)
+        .amplify(0.000_001)
+        .take_duration(Duration::from_millis(180));
+    output.sink.mixer().add(warmup);
+}
+
+fn recover_from_stream_error(
+    output: &mut Option<AudioOutput>,
+    playback: &mut Option<Playback>,
+    snapshot: &Arc<Mutex<PlaybackSnapshot>>,
+    log_dir: &Path,
+) {
+    let Some(reason) = drain_stream_error(output.as_ref()) else {
+        return;
+    };
+
+    let Ok(current_snapshot) = snapshot.lock().map(|snapshot| snapshot.clone()) else {
         write_audio_error_log(
             log_dir,
-            "音频输出设备失败",
-            path,
-            Some(stage),
+            "音频输出流恢复失败",
             None,
+            Some("read_recovery_snapshot"),
+            None,
+            "audio engine state is unavailable",
+        );
+        return;
+    };
+    let Some(path) = current_snapshot.path.clone() else {
+        write_audio_error_log(
+            log_dir,
+            "音频输出流失效",
+            None,
+            Some("stream_error_callback"),
+            None,
+            &reason,
+        );
+        return;
+    };
+
+    let seconds = elapsed_seconds(&current_snapshot);
+    write_audio_error_log(
+        log_dir,
+        "音频输出流失效",
+        Some(&path),
+        Some("stream_error_callback"),
+        Some(seconds),
+        &reason,
+    );
+
+    let rebuild = PlaybackRebuild {
+        path: &path,
+        seconds,
+        volume: current_snapshot.volume,
+        playing: current_snapshot.playing,
+        stage: "stream_error_recover",
+    };
+    if let Err(err) = rebuild_playback_at(output, playback, log_dir, rebuild) {
+        write_audio_error_log(
+            log_dir,
+            "音频输出流恢复失败",
+            Some(&path),
+            Some("stream_error_recover"),
+            Some(seconds),
+            &err,
+        );
+        return;
+    }
+
+    let _ = update_snapshot(snapshot, |state| {
+        state.elapsed_offset = Duration::from_secs(seconds);
+        state.started_at = Some(Instant::now());
+        state.paused_total = Duration::ZERO;
+        state.paused_at = if state.playing {
+            None
+        } else {
+            Some(Instant::now())
+        };
+    });
+}
+
+fn drain_stream_error(output: Option<&AudioOutput>) -> Option<String> {
+    let output = output?;
+    let mut latest_error = None;
+
+    loop {
+        match output.stream_errors.try_recv() {
+            Ok(err) => latest_error = Some(err),
+            Err(TryRecvError::Empty) => return latest_error,
+            Err(TryRecvError::Disconnected) => {
+                return latest_error.or_else(|| Some("音频输出错误回调已断开".to_string()));
+            }
+        }
+    }
+}
+
+fn rebuild_playback_at(
+    output: &mut Option<AudioOutput>,
+    playback: &mut Option<Playback>,
+    log_dir: &Path,
+    request: PlaybackRebuild<'_>,
+) -> Result<(), String> {
+    let path = request.path;
+    let seconds = request.seconds;
+    let file = File::open(path).map_err(|err| {
+        let reason = format!("无法打开音频文件: {err}");
+        write_audio_error_log(
+            log_dir,
+            "音频播放恢复失败",
+            Some(path),
+            Some("recover_open_file"),
+            Some(seconds),
             &reason,
         );
         reason
     })?;
-    sink.log_on_drop(false);
-    Ok(AudioOutput { sink })
-}
+    let source = Decoder::try_from(file).map_err(|err| {
+        let reason = format!("无法解码音频文件: {err}");
+        write_audio_error_log(
+            log_dir,
+            "音频播放恢复失败",
+            Some(path),
+            Some("recover_decode_file"),
+            Some(seconds),
+            &reason,
+        );
+        reason
+    })?;
+    let next_output = open_audio_output(log_dir, Some(path), request.stage)?;
+    prime_audio_output(&next_output);
+    let player = Player::connect_new(next_output.sink.mixer());
 
-fn prime_audio_output(output: &AudioOutput) {
-    let config = output.sink.config();
-    let silence = Zero::new(config.channel_count(), config.sample_rate())
-        .take_duration(Duration::from_millis(120));
-    output.sink.mixer().add(silence);
+    player.append(source);
+    player.set_volume(request.volume);
+    if seconds > 0 {
+        player
+            .try_seek(Duration::from_secs(seconds))
+            .map_err(|err| {
+                write_seek_error_log(log_dir, path, "recover_player", seconds, &err.to_string());
+                format!("无法恢复播放进度: {err}")
+            })?;
+    }
+    if request.playing {
+        player.play();
+    } else {
+        player.pause();
+    }
+
+    if let Some(current) = playback.take() {
+        current.player.stop();
+    }
+    *output = Some(next_output);
+    *playback = Some(Playback { player });
+    Ok(())
 }
 
 pub(crate) fn update_snapshot(

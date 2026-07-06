@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onActivated, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onActivated, onBeforeUnmount, onMounted, ref } from "vue";
 import { storeToRefs } from "pinia";
 import { use_playback_store } from "../stores/playback";
 import { use_player_queue_store } from "../stores/player_queue";
@@ -53,7 +53,6 @@ function close_on_escape(event: KeyboardEvent) {
 
 onMounted(() => {
   window.addEventListener("keydown", close_on_escape);
-  void scroll_active_track_into_view();
 });
 
 onActivated(() => {
@@ -63,13 +62,6 @@ onActivated(() => {
 onBeforeUnmount(() => {
   window.removeEventListener("keydown", close_on_escape);
 });
-
-watch(
-  () => [current_track.value?.id, status.value.path, current_queue.value.length, playback_queue_open.value],
-  () => {
-    void scroll_active_track_into_view();
-  },
-);
 </script>
 
 <template>

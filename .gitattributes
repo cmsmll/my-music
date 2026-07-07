@@ -1,0 +1,26 @@
+# Normalize text files to LF in the repository.
+* text=auto eol=lf
+
+# Windows command scripts should keep CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Treat binary assets as binary so Git never rewrites them.
+*.ico binary
+*.icns binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.mp3 binary
+*.flac binary
+*.wav binary
+*.ogg binary
+*.msi binary
+*.exe binary
+*.dll binary
+*.zip binary
+*.7z binary
+*.tar binary
+*.gz binary

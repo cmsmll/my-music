@@ -2535,7 +2535,7 @@ dependencies = [
 
 [[package]]
 name = "my-music"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "aes 0.9.1",
  "base64 0.22.1",

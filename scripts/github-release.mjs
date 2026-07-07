@@ -8,6 +8,7 @@ const package_path = resolve(root, "package.json");
 const cargo_path = resolve(root, "src-tauri", "Cargo.toml");
 const tauri_config_path = resolve(root, "src-tauri", "tauri.conf.json");
 const bundle_root = resolve(root, "src-tauri", "target", "release", "bundle");
+const release_notes_root = resolve(root, "release-notes");
 const dry_run = process.argv.includes("--dry-run");
 
 function read_json(path) {
@@ -147,6 +148,15 @@ function ensure_artifacts(version) {
   return [...msi, ...nsis];
 }
 
+function find_release_notes(tag, version) {
+  const candidates = [
+    resolve(release_notes_root, `${tag}.md`),
+    resolve(release_notes_root, `${version}.md`),
+  ];
+
+  return candidates.find((path) => existsSync(path));
+}
+
 function ensure_gh_available() {
   const version = try_capture("gh", ["--version"]);
   if (!version.ok) {
@@ -182,23 +192,22 @@ function ensure_tag(tag) {
   }
 }
 
-function publish_release(tag, version, artifacts) {
+function publish_release(tag, version, artifacts, release_notes_path) {
   const release = try_capture("gh", ["release", "view", tag]);
   if (release.ok) {
+    if (release_notes_path) {
+      run("gh", ["release", "edit", tag, "--notes-file", release_notes_path]);
+    }
     run("gh", ["release", "upload", tag, ...artifacts, "--clobber"]);
     return;
   }
 
-  run("gh", [
-    "release",
-    "create",
-    tag,
-    ...artifacts,
-    "--title",
-    tag,
-    "--notes",
-    `Release ${version}`,
-  ]);
+  const args = ["release", "create", tag, ...artifacts, "--title", tag];
+  if (release_notes_path) {
+    args.push("--notes-file", release_notes_path);
+  }
+
+  run("gh", args);
 }
 
 try {
@@ -207,17 +216,23 @@ try {
   const version = read_versions();
   const tag = `v${version}`;
   const artifacts = ensure_artifacts(version);
+  const release_notes_path = find_release_notes(tag, version);
 
   ensure_gh_available();
 
   console.log(`准备发布 ${tag}`);
+  if (release_notes_path) {
+    console.log(`将使用更新说明: ${release_notes_path}`);
+  } else {
+    console.log(`未找到 ${tag}.md 或 ${version}.md，发布时不携带更新说明。`);
+  }
   console.log("将上传以下构建产物:");
   for (const artifact of artifacts) {
     console.log(`- ${artifact}`);
   }
 
   ensure_tag(tag);
-  publish_release(tag, version, artifacts);
+  publish_release(tag, version, artifacts, release_notes_path);
 
   console.log(`GitHub Release ${tag} 发布完成。`);
 } catch (error) {

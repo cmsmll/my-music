@@ -271,7 +271,11 @@ const theme_subtitle_color = computed(
 );
 
 const theme_highlight_color = computed(
-  () => app_config.value?.style.highlight_color?.trim() || "#22a05a",
+  () => app_config.value?.style.highlight_color?.trim() || "#3bce82",
+);
+
+const theme_lyrics_color = computed(
+  () => app_config.value?.style.lyrics_color?.trim() || "#3bce82",
 );
 
 const theme_border_color = computed(
@@ -291,6 +295,7 @@ const app_shell_style = computed(() => ({
   "--theme-title-color": theme_title_color.value,
   "--theme-subtitle-color": theme_subtitle_color.value,
   "--theme-highlight-color": theme_highlight_color.value,
+  "--theme-lyrics-color": theme_lyrics_color.value,
   "--theme-border-color": theme_border_color.value,
   "--theme-control-color": theme_title_color.value,
 }));
@@ -299,6 +304,7 @@ watchEffect(() => {
   document.documentElement.style.setProperty("--theme-title-color", theme_title_color.value);
   document.documentElement.style.setProperty("--theme-subtitle-color", theme_subtitle_color.value);
   document.documentElement.style.setProperty("--theme-highlight-color", theme_highlight_color.value);
+  document.documentElement.style.setProperty("--theme-lyrics-color", theme_lyrics_color.value);
   document.documentElement.style.setProperty("--theme-border-color", theme_border_color.value);
   document.documentElement.style.setProperty("--theme-control-color", theme_title_color.value);
 });

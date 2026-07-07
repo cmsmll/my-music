@@ -90,9 +90,16 @@ const subtitle_color = computed({
 });
 
 const highlight_color = computed({
-  get: () => current_config.value?.style.highlight_color ?? "#22a05a",
+  get: () => current_config.value?.style.highlight_color ?? "#3bce82",
   set: (value: string) => {
     app_config_store.update_style({ highlight_color: value });
+  },
+});
+
+const lyrics_color = computed({
+  get: () => current_config.value?.style.lyrics_color ?? "#3bce82",
+  set: (value: string) => {
+    app_config_store.update_style({ lyrics_color: value });
   },
 });
 
@@ -272,7 +279,13 @@ function reset_subtitle_color() {
 
 function reset_highlight_color() {
   app_config_store.update_style({
-    highlight_color: default_config.value?.style.highlight_color ?? "#22a05a",
+    highlight_color: default_config.value?.style.highlight_color ?? "#3bce82",
+  });
+}
+
+function reset_lyrics_color() {
+  app_config_store.update_style({
+    lyrics_color: default_config.value?.style.lyrics_color ?? "#3bce82",
   });
 }
 
@@ -601,6 +614,26 @@ async function choose_cache_path(entry: CacheEntry) {
                     class="settings_color_picker"
                     type="color"
                     title="选择高亮色"
+                  />
+                </div>
+              </label>
+              <label>
+                <span>歌词色</span>
+                <div class="settings_input_row">
+                  <input :value="lyrics_color" readonly />
+                  <button
+                    class="settings_default_button hover_border_control"
+                    type="button"
+                    title="恢复默认歌词色"
+                    @click="reset_lyrics_color"
+                  >
+                    <span class="svg_icon" :style="icon_style(system_icon)" />
+                  </button>
+                  <input
+                    v-model="lyrics_color"
+                    class="settings_color_picker"
+                    type="color"
+                    title="选择歌词色"
                   />
                 </div>
               </label>

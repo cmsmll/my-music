@@ -19,32 +19,36 @@ use crate::playlist::{
 use crate::statistics::{read_play_statistics, record_track_listening_seconds, record_track_play};
 use crate::utils::{safe_cache_name, short_hash, unix_timestamp, write_json_cache};
 use std::{fs, path::PathBuf};
+use tauri::Manager;
 
 /// 获取应用启动所需的配置、曲库缓存、歌单缓存和播放统计。
 ///
 /// 启动阶段只读取已有缓存，不扫描音乐目录，也不刷新任何缓存文件。
 #[tauri::command]
-pub(crate) fn get_startup_state(
-    config_manager: tauri::State<'_, ConfigManager>,
-) -> Result<AppStartup, String> {
-    let config = config_manager.get()?;
-    let tracks = load_cached_all_directories(&config_manager, &config)?;
-    let playlists = load_playlist_bundle(&config).unwrap_or_else(|err| {
-        eprintln!("读取启动歌单缓存失败: {err}");
-        empty_playlist_bundle()
-    });
-    let play_statistics = read_play_statistics(&config).unwrap_or_else(|err| {
-        eprintln!("读取启动播放统计失败: {err}");
-        PlayStatistics::default()
-    });
+pub(crate) async fn get_startup_state(app: tauri::AppHandle) -> Result<AppStartup, String> {
+    tokio::task::spawn_blocking(move || {
+        let config_manager = app.state::<ConfigManager>();
+        let config = config_manager.get()?;
+        let tracks = load_cached_all_directories(&config_manager, &config)?;
+        let playlists = load_playlist_bundle(&config).unwrap_or_else(|err| {
+            eprintln!("读取启动歌单缓存失败: {err}");
+            empty_playlist_bundle()
+        });
+        let play_statistics = read_play_statistics(&config).unwrap_or_else(|err| {
+            eprintln!("读取启动播放统计失败: {err}");
+            PlayStatistics::default()
+        });
 
-    Ok(AppStartup {
-        config,
-        default_config: config_manager.get_default(),
-        tracks,
-        playlists,
-        play_statistics,
+        Ok(AppStartup {
+            config,
+            default_config: config_manager.get_default(),
+            tracks,
+            playlists,
+            play_statistics,
+        })
     })
+    .await
+    .map_err(|_| "启动状态加载任务异常退出".to_string())?
 }
 
 /// 保存前端修改后的应用配置，并确保相关缓存、日志和解码输出目录存在。
@@ -58,36 +62,40 @@ pub(crate) fn update_app_config(
 
 /// 添加音乐目录并强制重载完整曲库，所有旧歌曲缓存都会被最新扫描结果替换。
 #[tauri::command]
-pub(crate) fn scan_music_dir(
-    config_manager: tauri::State<'_, ConfigManager>,
+pub(crate) async fn scan_music_dir(
+    app: tauri::AppHandle,
     dirs: Vec<String>,
 ) -> Result<Vec<Track>, String> {
-    let mut valid_dirs = Vec::new();
-    for dir in dirs {
-        let root = PathBuf::from(&dir);
-        if !root.is_dir() {
-            return Err(format!("请选择有效的音乐文件夹: {dir}"));
-        }
-        valid_dirs.push(root.to_string_lossy().to_string());
-    }
-
-    let config = config_manager.add_music_directories(valid_dirs)?;
-    reload_all_directories(&config_manager, &config)
+    tokio::task::spawn_blocking(move || {
+        let config_manager = app.state::<ConfigManager>();
+        let valid_dirs = validate_music_dirs(dirs)?;
+        let config = config_manager.add_music_directories(valid_dirs)?;
+        reload_all_directories(&config_manager, &config)
+    })
+    .await
+    .map_err(|_| "曲库扫描任务异常退出".to_string())?
 }
 
 /// 添加并扫描音乐目录，刷新曲库、歌单和播放统计后一次性返回前端需要的数据。
 #[tauri::command]
-pub(crate) fn reload_music_library(
-    config_manager: tauri::State<'_, ConfigManager>,
+pub(crate) async fn reload_music_library(
+    app: tauri::AppHandle,
     dirs: Vec<String>,
 ) -> Result<LibraryRefreshResult, String> {
-    let tracks = scan_music_dir(config_manager.clone(), dirs)?;
-    let config = config_manager.get()?;
-    Ok(LibraryRefreshResult {
-        tracks,
-        playlists: load_playlist_bundle(&config)?,
-        play_statistics: read_play_statistics(&config)?,
+    tokio::task::spawn_blocking(move || {
+        let config_manager = app.state::<ConfigManager>();
+        let valid_dirs = validate_music_dirs(dirs)?;
+        let config = config_manager.add_music_directories(valid_dirs)?;
+        let tracks = reload_all_directories(&config_manager, &config)?;
+        let config = config_manager.get()?;
+        Ok(LibraryRefreshResult {
+            tracks,
+            playlists: load_playlist_bundle(&config)?,
+            play_statistics: read_play_statistics(&config)?,
+        })
     })
+    .await
+    .map_err(|_| "曲库重载任务异常退出".to_string())?
 }
 
 /// 只保存新的音乐目录配置，不扫描曲库、不刷新歌曲缓存。
@@ -179,23 +187,41 @@ pub(crate) async fn search_lyrics(
 
 /// 使用指定搜索结果的歌词内容，写入当前歌曲固定歌词缓存路径，并同步歌曲缓存中的歌词哈希。
 #[tauri::command]
-pub(crate) fn use_lyrics_search_result(
-    config_manager: tauri::State<'_, ConfigManager>,
+pub(crate) async fn use_lyrics_search_result(
+    app: tauri::AppHandle,
     lyrics_search: tauri::State<'_, LyricsSearchService>,
     track_id: String,
     lyrics_cache_path: String,
     lyrics: String,
 ) -> Result<LyricsUseResult, String> {
-    let mut result = lyrics_search.use_lyrics(lyrics_cache_path, lyrics)?;
-    let config = config_manager.get()?;
-    result.track = update_track_lyrics_cache_hash(
-        &config_manager,
-        &config,
-        &track_id,
-        &result.lyrics_cache_path,
-        &result.lyrics_hash,
-    )?;
-    Ok(result)
+    let lyrics_search = lyrics_search.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        let config_manager = app.state::<ConfigManager>();
+        let mut result = lyrics_search.use_lyrics(lyrics_cache_path, lyrics)?;
+        let config = config_manager.get()?;
+        result.track = update_track_lyrics_cache_hash(
+            &config_manager,
+            &config,
+            &track_id,
+            &result.lyrics_cache_path,
+            &result.lyrics_hash,
+        )?;
+        Ok(result)
+    })
+    .await
+    .map_err(|_| "歌词使用任务异常退出".to_string())?
+}
+
+fn validate_music_dirs(dirs: Vec<String>) -> Result<Vec<String>, String> {
+    let mut valid_dirs = Vec::new();
+    for dir in dirs {
+        let root = PathBuf::from(&dir);
+        if !root.is_dir() {
+            return Err(format!("请选择有效的音乐文件夹: {dir}"));
+        }
+        valid_dirs.push(root.to_string_lossy().to_string());
+    }
+    Ok(valid_dirs)
 }
 
 fn empty_playlist_bundle() -> PlaylistBundle {

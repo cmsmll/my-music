@@ -171,6 +171,7 @@ pub(crate) async fn search_lyrics(
     duration: Option<u64>,
     lyrics_cache_path: String,
     lyrics_cache_hash: Option<String>,
+    force_refresh: bool,
 ) -> Result<LyricsSearchResponse, String> {
     lyrics_search
         .search(
@@ -181,6 +182,7 @@ pub(crate) async fn search_lyrics(
             duration,
             lyrics_cache_path,
             lyrics_cache_hash,
+            force_refresh,
         )
         .await
 }

@@ -34,6 +34,7 @@ impl LyricsSearchService {
         duration: Option<u64>,
         lyrics_cache_path: String,
         lyrics_cache_hash: Option<String>,
+        force_refresh: bool,
     ) -> Result<LyricsSearchResponse, String> {
         let title = title.trim().to_string();
         if title.is_empty() || title == "未知歌曲" {
@@ -60,17 +61,37 @@ impl LyricsSearchService {
         };
 
         let results = self
-            .cache
-            .try_get_with(cache_key, async move {
-                search_from_providers(lyrix, title, artist, album, duration).await
-            })
-            .await
-            .map_err(|err| err.to_string())?;
+            .search_results(cache_key, lyrix, title, artist, album, duration, force_refresh)
+            .await?;
 
         Ok(LyricsSearchResponse {
             current_lyrics_hash: current_hash,
             results,
         })
+    }
+
+    async fn search_results(
+        &self,
+        cache_key: String,
+        lyrix: Arc<Lyrix>,
+        title: String,
+        artist: Option<String>,
+        album: Option<String>,
+        duration: Option<u64>,
+        force_refresh: bool,
+    ) -> Result<Vec<LyricsSearchResult>, String> {
+        if force_refresh {
+            let results = search_from_providers(lyrix, title, artist, album, duration).await?;
+            self.cache.insert(cache_key, results.clone()).await;
+            return Ok(results);
+        }
+
+        self.cache
+            .try_get_with(cache_key, async move {
+                search_from_providers(lyrix, title, artist, album, duration).await
+            })
+            .await
+            .map_err(|err| err.to_string())
     }
 
     pub(crate) fn use_lyrics(

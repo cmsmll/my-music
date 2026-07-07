@@ -4,8 +4,11 @@ import { storeToRefs } from "pinia";
 import { invoke } from "@tauri-apps/api/core";
 import compact_left_icon from "../assets/icons/compact-left.svg";
 import compact_right_icon from "../assets/icons/compact-right.svg";
+import chevron_down_icon from "../assets/icons/chevron-down.svg";
+import icon_close_icon from "../assets/icons/icon-close.svg";
 import maximize_icon from "../assets/icons/maximize.svg";
 import minimize_icon from "../assets/icons/minimize.svg";
+import search_refresh_icon from "../assets/icons/search-refresh.svg";
 import tonearm_icon from "../assets/tonearm-minimal-white.svg";
 import x_icon from "../assets/icons/x.svg";
 import LineLyricsRenderer from "./LineLyricsRenderer.vue";
@@ -22,7 +25,7 @@ import type {
   PlaybackModeItem,
   Track,
 } from "../types/music";
-import { cover_src, display_album, display_artist, display_title, format_duration, icon_style } from "../utils/track";
+import { cover_src, display_album, display_artist, display_title, icon_style } from "../utils/track";
 
 type PlayerBarExpose = {
   render_progress: (percent: number, seconds: number) => void;
@@ -129,7 +132,7 @@ async function open_lyrics_search() {
   await search_current_lyrics();
 }
 
-async function search_current_lyrics() {
+async function search_current_lyrics(force_refresh = false) {
   const track = current_track.value;
   lyrics_search_error.value = "";
   lyrics_search_results.value = [];
@@ -148,7 +151,7 @@ async function search_current_lyrics() {
   const request_id = ++lyrics_search_request_id;
   lyrics_search_loading.value = true;
   try {
-    const response = await search_lyrics_for_track(track);
+    const response = await search_lyrics_for_track(track, force_refresh);
     if (request_id === lyrics_search_request_id) {
       current_lyrics_hash.value = response.current_lyrics_hash ?? null;
       lyrics_search_results.value = response.results;
@@ -164,7 +167,7 @@ async function search_current_lyrics() {
   }
 }
 
-async function search_lyrics_for_track(track: Track) {
+async function search_lyrics_for_track(track: Track, force_refresh = false) {
   return await invoke<LyricsSearchResponse>("search_lyrics", {
     trackId: track.id,
     title: display_title(track),
@@ -173,6 +176,7 @@ async function search_lyrics_for_track(track: Track) {
     duration: track.duration ? Math.round(track.duration) : null,
     lyricsCachePath: track.lyrics_cache_path,
     lyricsCacheHash: track.lyrics_cache_hash,
+    forceRefresh: force_refresh,
   });
 }
 
@@ -342,7 +346,7 @@ defineExpose({ render_progress });
   <section class="now_playing_page">
     <header class="now_playing_header" @mousedown="emit('start_window_drag', $event)">
       <button class="now_playing_back" type="button" title="返回" @click="emit('close')">
-        <span />
+        <span class="svg_icon" :style="icon_style(chevron_down_icon)" />
       </button>
       <div class="now_playing_window_tools">
         <button class="lyrics_search_button" type="button" @click="open_lyrics_search">搜索歌词</button>
@@ -433,9 +437,19 @@ defineExpose({ render_progress });
     <div v-if="lyrics_search_open" class="lyrics_search_overlay" @click.self="lyrics_search_open = false">
       <section class="lyrics_search_dialog" role="dialog" aria-modal="true" aria-label="搜索歌词">
         <header>
+          <button
+            class="lyrics_header_button lyrics_refresh_button"
+            type="button"
+            title="重新搜索"
+            :disabled="lyrics_search_loading"
+            @click="search_current_lyrics(true)"
+          >
+            <span class="svg_icon lyrics_refresh_icon" :style="icon_style(search_refresh_icon)" />
+          </button>
           <strong>搜索歌词</strong>
-          <span class="lyrics_search_duration">{{ format_duration(current_track?.duration) }}</span>
-          <button type="button" title="关闭" @click="lyrics_search_open = false">×</button>
+          <button class="lyrics_header_button lyrics_close_button" type="button" title="关闭" @click="lyrics_search_open = false">
+            <span class="svg_icon lyrics_close_icon" :style="icon_style(icon_close_icon)" />
+          </button>
         </header>
         <div class="lyrics_result_head">
           <span>歌词来源</span>
@@ -465,9 +479,9 @@ defineExpose({ render_progress });
               >
                 {{
                   is_current_lyrics_result(result)
-                    ? "已使用"
+                    ? "同源"
                     : lyrics_use_pending_hash === result.lyrics_hash
-                      ? "使用中"
+                      ? "同源"
                       : "使用"
                 }}
               </button>
@@ -520,8 +534,8 @@ defineExpose({ render_progress });
 
 .now_playing_back {
   display: grid;
-  width: 44px;
-  height: 44px;
+  width: 38px;
+  height: 38px;
   place-items: center;
   border: 1px solid transparent;
   border-radius: 6px;
@@ -537,14 +551,9 @@ defineExpose({ render_progress });
   color: #ffffff;
 }
 
-.now_playing_back span {
-  display: block;
-  width: 18px;
-  height: 18px;
-  border-right: 3px solid currentColor;
-  border-bottom: 3px solid currentColor;
-  transform: translateY(-5px) rotate(45deg);
-  transform-origin: center;
+.now_playing_back .svg_icon {
+  width: 20px;
+  height: 20px;
 }
 
 .now_playing_window_tools {
@@ -776,30 +785,23 @@ defineExpose({ render_progress });
 .lyrics_search_dialog header,
 .lyrics_result_head,
 .lyrics_result_row {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
   align-items: center;
   gap: 14px;
 }
 
 .lyrics_search_dialog header {
-  grid-template-columns: minmax(0, 1fr) auto 36px;
+  grid-template-columns: 36px minmax(0, 1fr) 36px;
   padding: 18px 20px 12px;
 }
 
 .lyrics_search_dialog header strong {
+  grid-column: 2;
+  justify-self: center;
   overflow: hidden;
   color: #ffffff;
   font-size: 1.16rem;
   text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.lyrics_search_duration {
-  justify-self: center;
-  color: rgba(245, 246, 248, 0.64);
-  font-size: 0.95rem;
-  font-weight: 900;
   white-space: nowrap;
 }
 
@@ -817,19 +819,62 @@ defineExpose({ render_progress });
   cursor: pointer;
 }
 
+.lyrics_search_dialog header button .svg_icon {
+  width: 17px;
+  height: 17px;
+}
+
+.lyrics_refresh_button {
+  grid-column: 1;
+}
+
+.lyrics_search_dialog header button .lyrics_refresh_icon {
+  width: 22px;
+  height: 22px;
+}
+
+.lyrics_close_button {
+  grid-column: 3;
+}
+
+.lyrics_search_dialog header button .lyrics_close_icon {
+  width: 17px;
+  height: 17px;
+}
+
+.lyrics_header_button:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+
 .lyrics_search_dialog header button:hover {
   border-color: #ffffff;
   color: #ffffff;
 }
 
+.lyrics_search_dialog header button:disabled:hover {
+  border-color: transparent;
+  color: rgba(245, 246, 248, 0.72);
+}
+
 .lyrics_result_head {
+  grid-template-columns: 86px minmax(0, 1fr) 78px;
   padding: 12px 20px;
   color: rgba(245, 246, 248, 0.48);
   font-size: 0.88rem;
   font-weight: 900;
 }
-.lyrics_result_head span:nth-child(3) {
+
+.lyrics_result_head span {
   text-align: center;
+}
+
+.lyrics_result_head span,
+.lyrics_result_row > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .lyrics_result_body {
@@ -858,6 +903,7 @@ defineExpose({ render_progress });
 }
 
 .lyrics_result_row {
+  grid-template-columns: 86px minmax(0, 1fr) 78px;
   margin: 0 0 8px;
   border-radius: 6px;
   padding: 12px 6px;
@@ -865,9 +911,17 @@ defineExpose({ render_progress });
   font-weight: 800;
 }
 
+.lyrics_result_row > span,
+.lyrics_result_row strong {
+  justify-self: center;
+  text-align: center;
+}
+
 .lyrics_result_row strong {
   display: grid;
   gap: 4px;
+  min-width: 0;
+  width: 100%;
   overflow: hidden;
   color: #ffffff;
 }
@@ -886,6 +940,8 @@ defineExpose({ render_progress });
 }
 
 .lyrics_result_row button {
+  justify-self: center;
+  width: 78px;
   min-height: 32px;
   border: 1px solid rgba(245, 246, 248, 0.22);
   border-radius: 6px;

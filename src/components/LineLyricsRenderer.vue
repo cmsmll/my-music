@@ -284,7 +284,7 @@ onBeforeUnmount(() => {
 }
 
 .line_lyrics_row.active {
-  color: var(--theme-lyrics-color, #3bce82);
+  color: var(--theme-highlight-color, #3bce82);
   opacity: 1;
   transform: scale(1.04);
 }

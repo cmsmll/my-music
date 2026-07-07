@@ -36,10 +36,11 @@ const emit = defineEmits<{
 const progress_fill_element = ref<HTMLElement | null>(null);
 const progress_handle_element = ref<HTMLElement | null>(null);
 const progress_tooltip_element = ref<HTMLElement | null>(null);
+const progress_tooltip_visible = ref(false);
 const playback_store = use_playback_store();
 const { current_track, status, progress_dragging } = storeToRefs(playback_store);
 
-function render_progress(percent: number, seconds: number) {
+function render_progress(percent: number, _seconds: number) {
   const safe_percent = Math.min(Math.max(percent, 0), 100);
   if (progress_fill_element.value) {
     progress_fill_element.value.style.transform = `scaleX(${safe_percent / 100})`;
@@ -47,15 +48,57 @@ function render_progress(percent: number, seconds: number) {
   if (progress_handle_element.value) {
     progress_handle_element.value.style.left = `${safe_percent}%`;
   }
-  if (progress_tooltip_element.value) {
-    progress_tooltip_element.value.style.left = `${safe_percent}%`;
-    progress_tooltip_element.value.textContent = format_duration(seconds);
-  }
 }
 
 async function sync_current_progress() {
   await nextTick();
   render_progress(playback_store.progress_percent, playback_store.visual_elapsed);
+}
+
+function render_progress_tooltip(event: PointerEvent) {
+  if (!progress_tooltip_element.value) return;
+
+  const duration = current_track.value?.duration ?? 0;
+  if (duration <= 0) {
+    progress_tooltip_element.value.style.left = "0%";
+    progress_tooltip_element.value.textContent = "0:00";
+    return;
+  }
+
+  const target = event.currentTarget as HTMLElement;
+  const rect = target.getBoundingClientRect();
+  const ratio = Math.min(Math.max((event.clientX - rect.left) / rect.width, 0), 1);
+  progress_tooltip_element.value.style.left = `${ratio * 100}%`;
+  progress_tooltip_element.value.textContent = format_duration(Math.round(duration * ratio));
+}
+
+function show_progress_tooltip(event: PointerEvent) {
+  progress_tooltip_visible.value = true;
+  render_progress_tooltip(event);
+}
+
+function hide_progress_tooltip() {
+  progress_tooltip_visible.value = false;
+}
+
+function begin_progress_interaction(event: PointerEvent) {
+  show_progress_tooltip(event);
+  emit("begin_progress_drag", event);
+}
+
+function move_progress_interaction(event: PointerEvent) {
+  show_progress_tooltip(event);
+  emit("drag_progress", event);
+}
+
+function end_progress_interaction(event: PointerEvent) {
+  show_progress_tooltip(event);
+  emit("end_progress_drag", event);
+}
+
+function cancel_progress_interaction(event: PointerEvent) {
+  hide_progress_tooltip();
+  emit("cancel_progress_drag", event);
 }
 
 onActivated(() => {
@@ -69,16 +112,18 @@ defineExpose({ render_progress });
   <footer class="player_bar">
     <div
       class="player_progress"
-      :class="{ dragging: progress_dragging }"
+      :class="{ dragging: progress_dragging, tooltip_visible: progress_tooltip_visible }"
       role="slider"
       :aria-valuemin="0"
       :aria-valuemax="current_track?.duration ?? 0"
       :aria-valuenow="status.elapsed"
       aria-label="播放进度"
-      @pointerdown="emit('begin_progress_drag', $event)"
-      @pointermove="emit('drag_progress', $event)"
-      @pointerup="emit('end_progress_drag', $event)"
-      @pointercancel="emit('cancel_progress_drag', $event)"
+      @pointerdown="begin_progress_interaction"
+      @pointermove="move_progress_interaction"
+      @pointerup="end_progress_interaction"
+      @pointercancel="cancel_progress_interaction"
+      @pointerenter="show_progress_tooltip"
+      @pointerleave="hide_progress_tooltip"
     >
       <div class="progress_bar_container">
         <div class="progress_track">
@@ -266,6 +311,7 @@ defineExpose({ render_progress });
   visibility: visible;
 }
 
+.player_progress.tooltip_visible .progress_tooltip,
 .player_progress.dragging .progress_tooltip {
   opacity: 1;
 }

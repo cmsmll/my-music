@@ -1213,11 +1213,21 @@ function open_artist_playlist(name: string) {
   query.value = "";
 }
 
+function open_artist_from_now_playing(name: string) {
+  open_artist_playlist(name);
+  ui_store.close_now_playing();
+}
+
 function open_album_playlist(name: string) {
   active_view.value = "albums";
   selected_album.value = name;
   selected_artist.value = "";
   query.value = "";
+}
+
+function open_album_from_now_playing(name: string) {
+  open_album_playlist(name);
+  ui_store.close_now_playing();
 }
 
 function close_detail_playlist() {
@@ -1581,6 +1591,9 @@ function close_track_context_menu_on_key(event: KeyboardEvent) {
   if (event.key === "Escape") {
     close_track_context_menu();
     close_playlist_context_menu();
+    if (selected_artist.value || selected_album.value) {
+      close_detail_playlist();
+    }
   }
 }
 
@@ -1784,6 +1797,8 @@ watch([current_queue, queue_source, playback_mode], () => {
           @open_queue="ui_store.open_playback_queue()"
           @cycle_playback_mode="cycle_playback_mode"
           @change_volume="change_volume"
+          @open_artist="open_artist_from_now_playing"
+          @open_album="open_album_from_now_playing"
         />
       </KeepAlive>
     </Transition>
@@ -2023,19 +2038,12 @@ p {
   font-weight: 800;
 }
 
-.track_table,
-.placeholder_view,
-.stats_view,
-.settings_content,
-.queue_list {
-  scrollbar-color: rgba(136, 150, 176, 0.38) transparent;
-  scrollbar-width: thin;
-}
-
 .track_table {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+}
+
+.track_table_content {
   padding: 0 0 18px;
 }
 
@@ -2044,51 +2052,6 @@ p {
   flex: 1;
   flex-direction: column;
   min-height: 0;
-}
-
-.track_table::-webkit-scrollbar,
-.placeholder_view::-webkit-scrollbar,
-.stats_view::-webkit-scrollbar,
-.settings_content::-webkit-scrollbar,
-.queue_list::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-
-.track_table::-webkit-scrollbar-track,
-.placeholder_view::-webkit-scrollbar-track,
-.stats_view::-webkit-scrollbar-track,
-.settings_content::-webkit-scrollbar-track,
-.queue_list::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.track_table::-webkit-scrollbar-thumb,
-.placeholder_view::-webkit-scrollbar-thumb,
-.stats_view::-webkit-scrollbar-thumb,
-.settings_content::-webkit-scrollbar-thumb,
-.queue_list::-webkit-scrollbar-thumb {
-  border: 3px solid transparent;
-  border-radius: 999px;
-  background: rgba(136, 150, 176, 0.42);
-  background-clip: content-box;
-}
-
-.track_table::-webkit-scrollbar-thumb:hover,
-.placeholder_view::-webkit-scrollbar-thumb:hover,
-.stats_view::-webkit-scrollbar-thumb:hover,
-.settings_content::-webkit-scrollbar-thumb:hover,
-.queue_list::-webkit-scrollbar-thumb:hover {
-  background: rgba(66, 109, 255, 0.58);
-  background-clip: content-box;
-}
-
-.track_table::-webkit-scrollbar-corner,
-.placeholder_view::-webkit-scrollbar-corner,
-.stats_view::-webkit-scrollbar-corner,
-.settings_content::-webkit-scrollbar-corner,
-.queue_list::-webkit-scrollbar-corner {
-  background: transparent;
 }
 
 .virtual_track_spacer {
@@ -2274,8 +2237,9 @@ p {
 .placeholder_view {
   flex: 1;
   min-height: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
+}
+
+.placeholder_view_content {
   padding: 18px 8px;
 }
 
@@ -2305,27 +2269,27 @@ p {
 
 .detail_header {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 14px;
   min-height: 44px;
   padding: 0 0 12px;
 }
 
-.detail_header button {
-  min-height: 32px;
-  border-radius: 8px;
-  padding: 0 12px;
-  color: var(--theme-highlight-color, #426dff);
-  background: #eaf0ff;
-  font-size: 0.9rem;
-  font-weight: 800;
-}
-
 .detail_title {
   display: grid;
   min-width: 0;
   gap: 2px;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  text-align: center;
+  cursor: pointer;
+}
+
+.detail_title:hover {
+  color: var(--theme-highlight-color, #3bce82);
 }
 
 .detail_title strong,
@@ -2395,12 +2359,14 @@ p {
 }
 
 .stats_view {
+  flex: 1;
+  min-height: 0;
+}
+
+.stats_view_content {
   display: grid;
   align-content: start;
   gap: 24px;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
   padding: 18px 8px;
 }
 
@@ -2665,8 +2631,9 @@ p {
 .settings_content {
   min-width: 0;
   min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
+}
+
+.settings_content_inner {
   padding-right: 4px;
 }
 
@@ -2711,8 +2678,9 @@ p {
 
 .queue_list {
   min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
+}
+
+.queue_list_content {
   padding-right: 6px;
 }
 

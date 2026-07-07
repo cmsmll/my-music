@@ -12,13 +12,12 @@ use std::{
 };
 pub(crate) fn write_playlist_caches(config: &AppConfig, tracks: &[Track]) -> Result<(), String> {
     let all_tracks = track_map_from_tracks(tracks);
-    let all_ids = track_ids_from_tracks(tracks);
     let generated_at = unix_timestamp();
 
     let recent_path = playlist_cache_path(config, "recent_playlist.json");
     let my_playlist_path = my_playlist_cache_path(config, "my_playlist.json");
-    let artists_path = playlist_cache_path(config, "artists_playlist.json");
-    let albums_path = playlist_cache_path(config, "albums_playlist.json");
+    let artists_path = library_playlist_cache_path(config, "artists_playlist.json");
+    let albums_path = library_playlist_cache_path(config, "albums_playlist.json");
 
     let recent = existing_playlist_or_default(
         &recent_path,
@@ -50,7 +49,7 @@ pub(crate) fn write_playlist_caches(config: &AppConfig, tracks: &[Track]) -> Res
         |track| normalized_group_name(&track.album, "未知专辑"),
     )?;
 
-    let all_playlist_path = playlist_cache_path(config, "all_playlist.json");
+    let all_playlist_path = all_playlist_cache_path(config);
     let all_playlist = AllPlaylistCache {
         id: "all".to_string(),
         name: "全部".to_string(),
@@ -69,22 +68,13 @@ pub(crate) fn write_playlist_caches(config: &AppConfig, tracks: &[Track]) -> Res
     };
 
     write_json_cache(&all_playlist_path, &all_playlist, "全部歌单缓存")?;
+    let old_all_playlist_path = playlist_cache_path(config, "all_playlist.json");
+    if old_all_playlist_path != all_playlist_path && old_all_playlist_path.exists() {
+        fs::remove_file(&old_all_playlist_path)
+            .map_err(|err| format!("无法清理旧版全部歌单缓存: {err}"))?;
+    }
     write_json_cache(&recent_path, &recent, "最近播放缓存")?;
-
-    let all_track_playlist = PlaylistCache {
-        id: "all_tracks".to_string(),
-        name: "全部歌曲".to_string(),
-        kind: "all_tracks".to_string(),
-        generated_at,
-        metadata: playlist_metadata(&all_ids, &all_tracks, 0),
-        track_ids: all_ids,
-        children: Vec::new(),
-    };
-    write_json_cache(
-        &playlist_cache_path(config, "all_tracks_playlist.json"),
-        &all_track_playlist,
-        "全部歌曲歌单缓存",
-    )?;
+    cleanup_obsolete_system_playlist(config, "all_tracks_playlist.json", "全部歌曲歌单缓存")?;
 
     Ok(())
 }
@@ -102,9 +92,9 @@ pub(crate) fn load_playlist_bundle(config: &AppConfig) -> Result<PlaylistBundle,
             .unwrap_or_else(|| empty_playlist("recent", "最近播放", "recent")),
         my_playlist,
         my_playlists,
-        artists: read_playlist_cache(&playlist_cache_path(config, "artists_playlist.json"))?
+        artists: read_system_playlist_cache(config, "artists_playlist.json")?
             .unwrap_or_else(|| empty_playlist("artists", "歌手", "artists")),
-        albums: read_playlist_cache(&playlist_cache_path(config, "albums_playlist.json"))?
+        albums: read_system_playlist_cache(config, "albums_playlist.json")?
             .unwrap_or_else(|| empty_playlist("albums", "专辑", "albums")),
     })
 }
@@ -130,15 +120,9 @@ pub(crate) fn write_group_playlists(
     }
 
     let mut children = Vec::new();
-    let aggregate_path = playlist_cache_path(config, &format!("{aggregate_id}_playlist.json"));
-    let group_root = PathBuf::from(&config.cache.library_cache_dir).join(group_dir);
-    if group_root.is_dir() {
-        fs::remove_dir_all(&group_root)
-            .map_err(|err| format!("无法清理旧版{aggregate_name}细分缓存目录: {err}"))?;
-    } else if group_root.exists() {
-        fs::remove_file(&group_root)
-            .map_err(|err| format!("无法清理旧版{aggregate_name}细分缓存文件: {err}"))?;
-    }
+    let aggregate_path =
+        library_playlist_cache_path(config, &format!("{aggregate_id}_playlist.json"));
+    cleanup_legacy_group_root(config, group_dir, aggregate_name)?;
 
     for (name, mut group_tracks) in grouped {
         group_tracks.sort_by(|a, b| a.title.cmp(&b.title).then(a.path.cmp(&b.path)));
@@ -156,14 +140,13 @@ pub(crate) fn write_group_playlists(
         children.push(playlist_summary_from_cache(&playlist, &aggregate_path));
     }
 
-    let all_ids = track_ids_from_tracks(tracks);
     let aggregate = PlaylistCache {
         id: aggregate_id.to_string(),
         name: aggregate_name.to_string(),
         kind: aggregate_id.to_string(),
         generated_at,
-        metadata: playlist_metadata(&all_ids, &all_tracks, children.len()),
-        track_ids: all_ids,
+        metadata: group_metadata(&children),
+        track_ids: Vec::new(),
         children,
     };
 
@@ -172,8 +155,51 @@ pub(crate) fn write_group_playlists(
         &aggregate,
         &format!("{aggregate_name}汇总歌单缓存"),
     )?;
+    let old_aggregate_path = playlist_cache_path(config, &format!("{aggregate_id}_playlist.json"));
+    if old_aggregate_path != aggregate_path && old_aggregate_path.exists() {
+        fs::remove_file(&old_aggregate_path)
+            .map_err(|err| format!("无法清理旧版{aggregate_name}汇总缓存: {err}"))?;
+    }
 
     Ok(aggregate)
+}
+
+fn cleanup_legacy_group_root(
+    config: &AppConfig,
+    group_dir: &str,
+    aggregate_name: &str,
+) -> Result<(), String> {
+    for root in [
+        PathBuf::from(&config.cache.library_cache_dir).join(group_dir),
+        PathBuf::from(&config.cache.playlist_cache_dir).join(group_dir),
+    ] {
+        if root.is_dir() {
+            fs::remove_dir_all(&root)
+                .map_err(|err| format!("无法清理旧版{aggregate_name}细分缓存目录: {err}"))?;
+        } else if root.exists() {
+            fs::remove_file(&root)
+                .map_err(|err| format!("无法清理旧版{aggregate_name}细分缓存文件: {err}"))?;
+        }
+    }
+
+    Ok(())
+}
+
+fn cleanup_obsolete_system_playlist(
+    config: &AppConfig,
+    file_name: &str,
+    label: &str,
+) -> Result<(), String> {
+    for path in [
+        library_playlist_cache_path(config, file_name),
+        playlist_cache_path(config, file_name),
+    ] {
+        if path.exists() {
+            fs::remove_file(&path).map_err(|err| format!("无法清理旧版{label}: {err}"))?;
+        }
+    }
+
+    Ok(())
 }
 
 pub(crate) fn existing_playlist_or_default(
@@ -258,7 +284,29 @@ pub(crate) fn playlist_summary_from_cache(
         track_count: playlist.metadata.track_count,
         total_duration: playlist.metadata.total_duration,
         cover_cache_path: playlist.metadata.cover_cache_path.clone(),
-        track_ids: playlist.track_ids.clone(),
+        track_ids: Vec::new(),
+    }
+}
+
+fn group_metadata(children: &[PlaylistSummary]) -> PlaylistMetadata {
+    let mut track_count = 0;
+    let mut total_duration = 0;
+    let mut cover_cache_path = None;
+
+    for child in children {
+        track_count += child.track_count;
+        total_duration += child.total_duration;
+        if cover_cache_path.is_none() && child.cover_cache_path.is_some() {
+            cover_cache_path = child.cover_cache_path.clone();
+        }
+    }
+
+    PlaylistMetadata {
+        track_count,
+        total_duration,
+        item_count: children.len(),
+        cover_cache_path,
+        index: 0,
     }
 }
 
@@ -270,6 +318,24 @@ pub(crate) fn read_playlist_cache(path: &Path) -> Result<Option<PlaylistCache>, 
     let playlist =
         serde_json::from_str(&content).map_err(|err| format!("无法解析歌单缓存: {err}"))?;
     Ok(Some(playlist))
+}
+
+fn read_system_playlist_cache(
+    config: &AppConfig,
+    file_name: &str,
+) -> Result<Option<PlaylistCache>, String> {
+    let path = library_playlist_cache_path(config, file_name);
+    let fallback_path = playlist_cache_path(config, file_name);
+    let mut playlist = match read_playlist_cache(&path)? {
+        Some(playlist) => Some(playlist),
+        None => read_playlist_cache(&fallback_path)?,
+    };
+
+    if let Some(playlist) = playlist.as_mut() {
+        playlist.track_ids.clear();
+    }
+
+    Ok(playlist)
 }
 
 pub(crate) fn load_my_playlist_cache(config: &AppConfig) -> Result<Option<PlaylistCache>, String> {
@@ -286,6 +352,7 @@ pub(crate) fn load_my_playlist_cache(config: &AppConfig) -> Result<Option<Playli
             playlist.name = "我的歌单".to_string();
         }
         playlist.kind = "user".to_string();
+        playlist.children.clear();
         playlist.metadata.track_count = playlist.track_ids.len();
         playlist.metadata.item_count = 0;
     }
@@ -299,7 +366,7 @@ pub(crate) fn load_my_playlist_caches(config: &AppConfig) -> Result<Vec<Playlist
         playlists.push(playlist);
     }
 
-    let root = PathBuf::from(&config.cache.my_playlist_cache_dir);
+    let root = PathBuf::from(&config.cache.playlist_cache_dir);
     if root.is_dir() {
         let entries =
             fs::read_dir(&root).map_err(|err| format!("无法读取我的歌单缓存目录: {err}"))?;
@@ -309,13 +376,14 @@ pub(crate) fn load_my_playlist_caches(config: &AppConfig) -> Result<Vec<Playlist
             if path.file_name().and_then(|name| name.to_str()) == Some("my_playlist.json") {
                 continue;
             }
-            if path.extension().and_then(|extension| extension.to_str()) != Some("json") {
+            if !is_user_playlist_cache_file(&path) {
                 continue;
             }
             if let Some(mut playlist) = read_playlist_cache(&path)? {
                 if playlist.kind.is_empty() {
                     playlist.kind = "user".to_string();
                 }
+                playlist.children.clear();
                 playlists.push(playlist);
             }
         }
@@ -339,14 +407,14 @@ pub(crate) fn user_playlist_cache_path(
         return Ok(my_playlist_cache_path(config, "my_playlist.json"));
     }
 
-    let root = PathBuf::from(&config.cache.my_playlist_cache_dir);
+    let root = PathBuf::from(&config.cache.playlist_cache_dir);
     if root.is_dir() {
         let entries =
             fs::read_dir(&root).map_err(|err| format!("无法读取我的歌单缓存目录: {err}"))?;
         for entry in entries {
             let entry = entry.map_err(|err| format!("无法读取我的歌单缓存文件: {err}"))?;
             let path = entry.path();
-            if path.extension().and_then(|extension| extension.to_str()) != Some("json") {
+            if !is_user_playlist_cache_file(&path) {
                 continue;
             }
             let Some(playlist) = read_playlist_cache(&path)? else {
@@ -381,13 +449,16 @@ pub(crate) fn update_user_playlist_metadata(
 ) {
     let index = playlist.metadata.index;
     playlist.generated_at = unix_timestamp();
+    playlist.children.clear();
     playlist.metadata = playlist_metadata(&playlist.track_ids, all_tracks, 0);
     playlist.metadata.index = index;
 }
 
 pub(crate) fn read_all_playlist_cache(config: &AppConfig) -> Result<AllPlaylistCache, String> {
-    let all_playlist_path = playlist_cache_path(config, "all_playlist.json");
+    let all_playlist_path = all_playlist_cache_path(config);
+    let fallback_path = playlist_cache_path(config, "all_playlist.json");
     let content = fs::read_to_string(&all_playlist_path)
+        .or_else(|_| fs::read_to_string(&fallback_path))
         .map_err(|err| format!("无法读取全部歌单缓存: {err}"))?;
     serde_json::from_str(&content).map_err(|err| format!("无法解析全部歌单缓存: {err}"))
 }
@@ -428,7 +499,9 @@ pub(crate) fn record_recent_track(config: &AppConfig, path: &str) -> Result<(), 
         return Ok(());
     }
 
-    if !playlist_cache_path(config, "all_playlist.json").exists() {
+    if !all_playlist_cache_path(config).exists()
+        && !playlist_cache_path(config, "all_playlist.json").exists()
+    {
         return Ok(());
     }
 
@@ -484,16 +557,33 @@ pub(crate) fn track_map_from_tracks(tracks: &[Track]) -> BTreeMap<String, Track>
         .collect()
 }
 
+fn is_user_playlist_cache_file(path: &Path) -> bool {
+    let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+
+    path.extension().and_then(|extension| extension.to_str()) == Some("json")
+        && !file_name.ends_with("_playlist.json")
+}
+
 pub(crate) fn track_ids_from_tracks(tracks: &[Track]) -> Vec<String> {
     tracks.iter().map(|track| track.id.clone()).collect()
 }
 
-pub(crate) fn playlist_cache_path(config: &AppConfig, file_name: &str) -> PathBuf {
+fn all_playlist_cache_path(config: &AppConfig) -> PathBuf {
+    PathBuf::from(&config.cache.library_cache_dir).join("all_playlist.json")
+}
+
+fn library_playlist_cache_path(config: &AppConfig, file_name: &str) -> PathBuf {
     PathBuf::from(&config.cache.library_cache_dir).join(file_name)
 }
 
+pub(crate) fn playlist_cache_path(config: &AppConfig, file_name: &str) -> PathBuf {
+    PathBuf::from(&config.cache.playlist_cache_dir).join(file_name)
+}
+
 pub(crate) fn my_playlist_cache_path(config: &AppConfig, file_name: &str) -> PathBuf {
-    PathBuf::from(&config.cache.my_playlist_cache_dir).join(file_name)
+    PathBuf::from(&config.cache.playlist_cache_dir).join(file_name)
 }
 
 pub(crate) fn normalized_group_name(value: &str, fallback: &str) -> String {

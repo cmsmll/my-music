@@ -59,6 +59,8 @@ const emit = defineEmits<{
   open_queue: [];
   cycle_playback_mode: [];
   change_volume: [event: Event];
+  open_artist: [name: string];
+  open_album: [name: string];
 }>();
 
 const player_bar = ref<PlayerBarExpose | null>(null);
@@ -89,6 +91,16 @@ const auto_lyrics_enabled = computed({
     app_config_store.update_state({ auto_lyrics_enabled: value });
   },
 });
+
+function open_current_artist() {
+  if (!current_track.value) return;
+  emit("open_artist", display_artist(current_track.value));
+}
+
+function open_current_album() {
+  if (!current_track.value) return;
+  emit("open_album", display_album(current_track.value));
+}
 
 function normalize_lyrics(content: string) {
   return content
@@ -410,8 +422,8 @@ defineExpose({ render_progress });
         <div class="track_identity">
           <h1>{{ display_title(current_track) }}</h1>
           <p>
-            <span>专辑：{{ display_album(current_track) }}</span>
-            <span>歌手：{{ display_artist(current_track) }}</span>
+            <button type="button" @click="open_current_album">专辑：{{ display_album(current_track) }}</button>
+            <button type="button" @click="open_current_artist">歌手：{{ display_artist(current_track) }}</button>
           </p>
         </div>
 
@@ -746,19 +758,31 @@ defineExpose({ render_progress });
 }
 
 .track_identity p {
-  display: flex;
-  justify-content: center;
-  gap: 28px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
   min-width: 0;
   color: rgba(245, 246, 248, 0.58);
   font-size: 1.02rem;
   font-weight: 800;
 }
 
-.track_identity p span {
+.track_identity p button {
   overflow: hidden;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.track_identity p button:hover,
+.track_identity p button:focus-visible {
+  color: var(--theme-highlight-color, #3bce82);
 }
 
 .lyrics_search_overlay {
@@ -949,6 +973,11 @@ defineExpose({ render_progress });
   background: transparent;
   font-weight: 900;
   cursor: pointer;
+}
+
+.lyrics_result_row button:hover {
+  border: 1px solid #fff;
+  color: #fff;
 }
 
 .lyrics_result_row button:disabled {

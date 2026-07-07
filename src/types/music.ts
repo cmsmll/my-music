@@ -29,11 +29,11 @@ export type AppConfig = {
 
 export type CacheConfig = {
   library_cache_dir: string;
-  cover_cache_dir: string;
+  playlist_cache_dir: string;
   lyrics_cache_dir: string;
-  my_playlist_cache_dir: string;
-  log_dir: string;
-  play_statistics_cache_path: string;
+  cover_cache_dir: string;
+  spectrum_cache_dir: string;
+  log_cache_dir: string;
 };
 
 export type DecoderConfig = {

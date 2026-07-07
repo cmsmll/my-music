@@ -78,9 +78,9 @@ pub(crate) struct CacheConfig {
     pub(crate) library_cache_dir: String,
     pub(crate) cover_cache_dir: String,
     pub(crate) lyrics_cache_dir: String,
-    pub(crate) my_playlist_cache_dir: String,
-    pub(crate) log_dir: String,
-    pub(crate) play_statistics_cache_path: String,
+    pub(crate) playlist_cache_dir: String,
+    pub(crate) spectrum_cache_dir: String,
+    pub(crate) log_cache_dir: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -120,9 +120,11 @@ pub(crate) struct ConfigFile {
     pub(crate) library_cache_dir: Option<String>,
     pub(crate) cover_cache_dir: Option<String>,
     pub(crate) lyrics_cache_dir: Option<String>,
+    pub(crate) playlist_cache_dir: Option<String>,
+    pub(crate) spectrum_cache_dir: Option<String>,
+    pub(crate) log_cache_dir: Option<String>,
     pub(crate) my_playlist_cache_dir: Option<String>,
     pub(crate) log_dir: Option<String>,
-    pub(crate) play_statistics_cache_path: Option<String>,
     pub(crate) style: Option<StyleConfigFile>,
     pub(crate) state: Option<AppStateConfigFile>,
 }
@@ -132,9 +134,11 @@ pub(crate) struct CacheConfigFile {
     pub(crate) library_cache_dir: Option<String>,
     pub(crate) cover_cache_dir: Option<String>,
     pub(crate) lyrics_cache_dir: Option<String>,
+    pub(crate) playlist_cache_dir: Option<String>,
+    pub(crate) spectrum_cache_dir: Option<String>,
+    pub(crate) log_cache_dir: Option<String>,
     pub(crate) my_playlist_cache_dir: Option<String>,
     pub(crate) log_dir: Option<String>,
-    pub(crate) play_statistics_cache_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -237,7 +241,9 @@ pub(crate) struct PlaylistCache {
     pub(crate) kind: String,
     pub(crate) generated_at: u64,
     pub(crate) metadata: PlaylistMetadata,
+    #[serde(default)]
     pub(crate) track_ids: Vec<String>,
+    #[serde(default)]
     pub(crate) children: Vec<PlaylistSummary>,
 }
 

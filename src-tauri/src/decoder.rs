@@ -170,7 +170,7 @@ fn join_formats(formats: &BTreeSet<String>) -> String {
 }
 
 fn write_decoder_operation_log(config: &AppConfig, action: &str, detail: &str) {
-    let log_dir = PathBuf::from(&config.cache.log_dir);
+    let log_dir = PathBuf::from(&config.cache.log_cache_dir);
     let _ = fs::create_dir_all(&log_dir);
     let log_path = log_dir.join("decoder.log");
     let Ok(mut file) = OpenOptions::new().create(true).append(true).open(log_path) else {
@@ -187,7 +187,7 @@ fn write_decoder_operation_log(config: &AppConfig, action: &str, detail: &str) {
 }
 
 fn write_decoder_info_log(config: &AppConfig, source: &Path, output: &Path, kind: &str) {
-    let log_dir = PathBuf::from(&config.cache.log_dir);
+    let log_dir = PathBuf::from(&config.cache.log_cache_dir);
     let _ = fs::create_dir_all(&log_dir);
     let log_path = log_dir.join("decoder.log");
     let Ok(mut file) = OpenOptions::new().create(true).append(true).open(log_path) else {
@@ -205,7 +205,7 @@ fn write_decoder_info_log(config: &AppConfig, source: &Path, output: &Path, kind
 }
 
 fn write_decoder_error_log(config: &AppConfig, path: Option<&Path>, stage: &str, reason: &str) {
-    let log_dir = PathBuf::from(&config.cache.log_dir);
+    let log_dir = PathBuf::from(&config.cache.log_cache_dir);
     let _ = fs::create_dir_all(&log_dir);
     let log_path = log_dir.join("decoder.log");
     let Ok(mut file) = OpenOptions::new().create(true).append(true).open(log_path) else {

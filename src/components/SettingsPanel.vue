@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import CustomScrollbar from "./CustomScrollbar.vue";
 import { open } from "@tauri-apps/plugin-dialog";
 import delete_icon from "../assets/icons/delete.svg";
 import folder_open_icon from "../assets/icons/folder-open.svg";
@@ -21,11 +22,11 @@ const emit = defineEmits<{
 type SettingsSectionKey = "library" | "decoder" | "cache" | "style" | "about";
 type CacheEntryKey =
   | "library_cache_dir"
-  | "cover_cache_dir"
+  | "playlist_cache_dir"
   | "lyrics_cache_dir"
-  | "my_playlist_cache_dir"
-  | "play_statistics_cache_path"
-  | "log_dir";
+  | "cover_cache_dir"
+  | "spectrum_cache_dir"
+  | "log_cache_dir";
 
 type CacheEntry = {
   key: CacheEntryKey;
@@ -148,9 +149,9 @@ const cache_entries = computed<CacheEntry[]>(() => [
     directory: true,
   },
   {
-    key: "cover_cache_dir",
-    title: "封面缓存目录",
-    value: current_config.value?.cache.cover_cache_dir ?? "",
+    key: "playlist_cache_dir",
+    title: "歌单缓存目录",
+    value: current_config.value?.cache.playlist_cache_dir ?? "",
     directory: true,
   },
   {
@@ -160,21 +161,21 @@ const cache_entries = computed<CacheEntry[]>(() => [
     directory: true,
   },
   {
-    key: "my_playlist_cache_dir",
-    title: "我的歌单缓存目录",
-    value: current_config.value?.cache.my_playlist_cache_dir ?? "",
+    key: "cover_cache_dir",
+    title: "封面缓存目录",
+    value: current_config.value?.cache.cover_cache_dir ?? "",
     directory: true,
   },
   {
-    key: "play_statistics_cache_path",
-    title: "播放统计缓存文件",
-    value: current_config.value?.cache.play_statistics_cache_path ?? "",
-    directory: false,
+    key: "spectrum_cache_dir",
+    title: "频谱缓存目录",
+    value: current_config.value?.cache.spectrum_cache_dir ?? "",
+    directory: true,
   },
   {
-    key: "log_dir",
-    title: "日志目录",
-    value: current_config.value?.cache.log_dir ?? "",
+    key: "log_cache_dir",
+    title: "日志缓存目录",
+    value: current_config.value?.cache.log_cache_dir ?? "",
     directory: true,
   },
 ]);
@@ -370,7 +371,11 @@ async function choose_cache_path(entry: CacheEntry) {
           </button>
         </nav>
 
-        <section class="settings_content" :aria-label="active_section_title">
+        <CustomScrollbar
+          class="settings_content"
+          content_class="settings_content_inner"
+          :aria-label="active_section_title"
+        >
           <section v-if="active_section === 'library'" class="settings_section">
             <h3>音乐库</h3>
             <div class="settings_field_group">
@@ -719,7 +724,7 @@ async function choose_cache_path(entry: CacheEntry) {
               </label>
             </div>
           </section>
-        </section>
+        </CustomScrollbar>
       </div>
     </aside>
   </div>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
+import CustomScrollbar from "./CustomScrollbar.vue";
 import type { AlbumItem, ArtistItem, PlayStatistics, QueueSource, Track, TrackPlayStatistic, ViewKey } from "../types/music";
 import { cover_src, display_album, display_artist, display_title, format_duration, format_file_size, is_missing_track } from "../utils/track";
 
@@ -33,13 +34,26 @@ const emit = defineEmits<{
   close_detail: [];
 }>();
 
-const track_table = ref<HTMLElement | null>(null);
+type CustomScrollbarExpose = {
+  refresh: () => void;
+  set_scroll_top: (value: number) => void;
+  get_scroll_top: () => number;
+  get_client_height: () => number;
+  get_viewport: () => HTMLElement | null;
+};
+
+const track_table = ref<CustomScrollbarExpose | null>(null);
+const artist_view = ref<CustomScrollbarExpose | null>(null);
+const album_view = ref<CustomScrollbarExpose | null>(null);
 const scroll_top = ref(0);
 const viewport_height = ref(720);
 const track_row_height = 74;
 const virtual_overscan = 8;
 
-let resize_observer: ResizeObserver | null = null;
+const view_scroll_positions = new Map<string, number>();
+
+const artist_scroll_key = computed(() => `artists:${props.query.trim()}`);
+const album_scroll_key = computed(() => `albums:${props.query.trim()}`);
 
 const virtual_start_index = computed(() =>
   Math.max(Math.floor(scroll_top.value / track_row_height) - virtual_overscan, 0),
@@ -67,13 +81,33 @@ const virtual_bottom_padding = computed(() =>
 
 function update_virtual_viewport() {
   if (!track_table.value) return;
-  viewport_height.value = track_table.value.clientHeight || viewport_height.value;
-  scroll_top.value = track_table.value.scrollTop;
+  viewport_height.value = track_table.value.get_client_height() || viewport_height.value;
+  scroll_top.value = track_table.value.get_scroll_top();
 }
 
 function handle_track_table_scroll() {
   if (!track_table.value) return;
-  scroll_top.value = track_table.value.scrollTop;
+  scroll_top.value = track_table.value.get_scroll_top();
+}
+
+function handle_artist_view_scroll() {
+  if (!artist_view.value) return;
+  view_scroll_positions.set(artist_scroll_key.value, artist_view.value.get_scroll_top());
+}
+
+function handle_album_view_scroll() {
+  if (!album_view.value) return;
+  view_scroll_positions.set(album_scroll_key.value, album_view.value.get_scroll_top());
+}
+
+async function restore_media_grid_scroll() {
+  await nextTick();
+  if (props.active_view === "artists" && !props.selected_artist && artist_view.value) {
+    artist_view.value.set_scroll_top(view_scroll_positions.get(artist_scroll_key.value) ?? 0);
+  }
+  if (props.active_view === "albums" && !props.selected_album && album_view.value) {
+    album_view.value.set_scroll_top(view_scroll_positions.get(album_scroll_key.value) ?? 0);
+  }
 }
 
 async function locate_status_track() {
@@ -84,8 +118,9 @@ async function locate_status_track() {
   const index = props.display_tracks.findIndex((track) => track.path === props.status_path);
   if (index < 0 || !track_table.value) return;
 
-  const top = Math.max(index * track_row_height - track_table.value.clientHeight / 2 + track_row_height / 2, 0);
-  track_table.value.scrollTop = top;
+  const client_height = track_table.value.get_client_height();
+  const top = Math.max(index * track_row_height - client_height / 2 + track_row_height / 2, 0);
+  track_table.value.set_scroll_top(top);
   update_virtual_viewport();
 }
 
@@ -206,9 +241,10 @@ watch(
   async () => {
     await nextTick();
     if (track_table.value) {
-      track_table.value.scrollTop = 0;
+      track_table.value.set_scroll_top(0);
     }
     update_virtual_viewport();
+    await restore_media_grid_scroll();
   },
 );
 
@@ -228,16 +264,8 @@ watch(
 
 onMounted(() => {
   update_virtual_viewport();
-  if (track_table.value) {
-    resize_observer = new ResizeObserver(update_virtual_viewport);
-    resize_observer.observe(track_table.value);
-  }
 });
 
-onBeforeUnmount(() => {
-  resize_observer?.disconnect();
-  resize_observer = null;
-});
 </script>
 
 <template>
@@ -254,10 +282,9 @@ onBeforeUnmount(() => {
       aria-label="歌曲列表"
     >
       <header v-if="selected_artist || selected_album" class="detail_header">
-        <button type="button" @click="emit('close_detail')">返回</button>
-        <div class="detail_title">
+        <button class="detail_title" type="button" @click="emit('close_detail')">
           <strong>{{ selected_artist || selected_album }}</strong>
-        </div>
+        </button>
         <span class="detail_meta">
           {{ display_tracks.length }} 首歌曲 {{ format_duration(detail_total_duration()) }}
         </span>
@@ -270,10 +297,12 @@ onBeforeUnmount(() => {
         <span class="duration_cell">时长</span>
       </div>
 
-      <section
-        class="track_table"
+      <CustomScrollbar
         ref="track_table"
+        class="track_table"
+        content_class="track_table_content"
         @scroll="handle_track_table_scroll"
+        @resize="update_virtual_viewport"
       >
         <div class="virtual_track_spacer" :style="{ height: `${virtual_top_padding}px` }" />
         <button
@@ -304,10 +333,16 @@ onBeforeUnmount(() => {
         <p v-if="!loading && !display_tracks.length" class="empty_state">
           没有找到歌曲，先添加音乐目录或调整搜索内容。
         </p>
-      </section>
+      </CustomScrollbar>
     </section>
 
-    <section v-else-if="active_view === 'albums'" class="placeholder_view">
+    <CustomScrollbar
+      v-else-if="active_view === 'albums'"
+      ref="album_view"
+      class="placeholder_view"
+      content_class="placeholder_view_content"
+      @scroll="handle_album_view_scroll"
+    >
       <div class="placeholder_grid">
         <button
           v-for="album in filtered_album_items"
@@ -326,9 +361,15 @@ onBeforeUnmount(() => {
       </div>
       <p v-if="!tracks.length" class="empty_state">添加音乐目录后会在这里展示专辑。</p>
       <p v-else-if="!filtered_album_items.length" class="empty_state">没有找到匹配的专辑。</p>
-    </section>
+    </CustomScrollbar>
 
-    <section v-else-if="active_view === 'artists'" class="placeholder_view">
+    <CustomScrollbar
+      v-else-if="active_view === 'artists'"
+      ref="artist_view"
+      class="placeholder_view"
+      content_class="placeholder_view_content"
+      @scroll="handle_artist_view_scroll"
+    >
       <div class="artist_grid">
         <button
           v-for="artist in filtered_artist_items"
@@ -347,9 +388,9 @@ onBeforeUnmount(() => {
       </div>
       <p v-if="!tracks.length" class="empty_state">添加音乐目录后会在这里展示歌手。</p>
       <p v-else-if="!filtered_artist_items.length" class="empty_state">没有找到匹配的歌手。</p>
-    </section>
+    </CustomScrollbar>
 
-    <section v-else-if="active_view === 'stats'" class="stats_view">
+    <CustomScrollbar v-else-if="active_view === 'stats'" class="stats_view" content_class="stats_view_content">
       <section class="stats_section">
         <h2>音乐统计</h2>
         <div class="stats_card_grid music_stats_grid">
@@ -413,10 +454,10 @@ onBeforeUnmount(() => {
         </div>
         <p v-else class="empty_state">播放歌曲后会在这里展示最常播放。</p>
       </section>
-    </section>
+    </CustomScrollbar>
 
-    <section v-else class="placeholder_view">
+    <CustomScrollbar v-else class="placeholder_view" content_class="placeholder_view_content">
       <p class="empty_state">这个播放列表界面已经预留，后续会接入播放记录和自定义歌单。</p>
-    </section>
+    </CustomScrollbar>
   </section>
 </template>

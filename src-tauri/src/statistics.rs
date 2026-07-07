@@ -1,9 +1,12 @@
 use crate::models::{AppConfig, PlayStatistics, Track, TrackPlayStatistic};
 use crate::utils::{unix_timestamp, write_json_cache};
-use std::{fs, path::Path};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 pub(crate) fn read_play_statistics(config: &AppConfig) -> Result<PlayStatistics, String> {
-    let path = Path::new(&config.cache.play_statistics_cache_path);
+    let path = play_statistics_cache_path(config);
     if !path.exists() {
         return Ok(PlayStatistics::default());
     }
@@ -17,7 +20,7 @@ pub(crate) fn write_play_statistics(
     statistics: &PlayStatistics,
 ) -> Result<(), String> {
     write_json_cache(
-        Path::new(&config.cache.play_statistics_cache_path),
+        &play_statistics_cache_path(config),
         statistics,
         "播放统计缓存",
     )
@@ -86,6 +89,10 @@ pub(crate) fn record_track_listening_seconds(
 
     write_play_statistics(config, &statistics)?;
     Ok(statistics)
+}
+
+fn play_statistics_cache_path(config: &AppConfig) -> PathBuf {
+    Path::new(&config.cache.library_cache_dir).join("play-statistics.json")
 }
 
 fn statistic_from_track(track: &Track) -> TrackPlayStatistic {

@@ -26,16 +26,9 @@ impl ConfigManager {
                 library_cache_dir: app_dir.join("library-cache").to_string_lossy().to_string(),
                 cover_cache_dir: app_dir.join("cover-cache").to_string_lossy().to_string(),
                 lyrics_cache_dir: app_dir.join("lyrics-cache").to_string_lossy().to_string(),
-                my_playlist_cache_dir: app_dir
-                    .join("my-playlist-cache")
-                    .to_string_lossy()
-                    .to_string(),
-                log_dir: app_dir.join("logs").to_string_lossy().to_string(),
-                play_statistics_cache_path: app_dir
-                    .join("library-cache")
-                    .join("play-statistics.json")
-                    .to_string_lossy()
-                    .to_string(),
+                playlist_cache_dir: app_dir.join("playlist-cache").to_string_lossy().to_string(),
+                spectrum_cache_dir: app_dir.join("spectrum-cache").to_string_lossy().to_string(),
+                log_cache_dir: app_dir.join("log-cache").to_string_lossy().to_string(),
             },
             style: crate::models::StyleConfig {
                 background_color: "#ffffff".to_string(),
@@ -129,16 +122,15 @@ impl ConfigManager {
             .map_err(|err| format!("无法创建图标缓存目录: {err}"))?;
         fs::create_dir_all(&config.cache.lyrics_cache_dir)
             .map_err(|err| format!("无法创建歌词缓存目录: {err}"))?;
-        fs::create_dir_all(&config.cache.my_playlist_cache_dir)
-            .map_err(|err| format!("无法创建我的歌单缓存目录: {err}"))?;
-        fs::create_dir_all(&config.cache.log_dir)
-            .map_err(|err| format!("无法创建日志目录: {err}"))?;
+        fs::create_dir_all(&config.cache.playlist_cache_dir)
+            .map_err(|err| format!("无法创建歌单缓存目录: {err}"))?;
+        fs::create_dir_all(&config.cache.spectrum_cache_dir)
+            .map_err(|err| format!("无法创建频谱缓存目录: {err}"))?;
+        fs::create_dir_all(&config.cache.log_cache_dir)
+            .map_err(|err| format!("无法创建日志缓存目录: {err}"))?;
         if !config.decoder.output_dir.trim().is_empty() {
             fs::create_dir_all(&config.decoder.output_dir)
                 .map_err(|err| format!("无法创建解码输出目录: {err}"))?;
-        }
-        if let Some(parent) = Path::new(&config.cache.play_statistics_cache_path).parent() {
-            fs::create_dir_all(parent).map_err(|err| format!("无法创建播放统计缓存目录: {err}"))?;
         }
         Ok(())
     }
@@ -167,9 +159,11 @@ pub(crate) fn parse_config(content: &str, default_config: &AppConfig) -> Option<
             library_cache_dir: None,
             cover_cache_dir: None,
             lyrics_cache_dir: None,
+            playlist_cache_dir: None,
+            spectrum_cache_dir: None,
+            log_cache_dir: None,
             my_playlist_cache_dir: None,
             log_dir: None,
-            play_statistics_cache_path: None,
         });
         let style = config.style.unwrap_or(crate::models::StyleConfigFile {
             background_color: None,
@@ -222,18 +216,22 @@ pub(crate) fn parse_config(content: &str, default_config: &AppConfig) -> Option<
                     .lyrics_cache_dir
                     .or(config.lyrics_cache_dir)
                     .unwrap_or_else(|| default_config.cache.lyrics_cache_dir.clone()),
-                my_playlist_cache_dir: cache
-                    .my_playlist_cache_dir
+                playlist_cache_dir: cache
+                    .playlist_cache_dir
+                    .or(config.playlist_cache_dir)
+                    .or(cache.my_playlist_cache_dir)
                     .or(config.my_playlist_cache_dir)
-                    .unwrap_or_else(|| default_config.cache.my_playlist_cache_dir.clone()),
-                log_dir: cache
-                    .log_dir
+                    .unwrap_or_else(|| default_config.cache.playlist_cache_dir.clone()),
+                spectrum_cache_dir: cache
+                    .spectrum_cache_dir
+                    .or(config.spectrum_cache_dir)
+                    .unwrap_or_else(|| default_config.cache.spectrum_cache_dir.clone()),
+                log_cache_dir: cache
+                    .log_cache_dir
+                    .or(config.log_cache_dir)
+                    .or(cache.log_dir)
                     .or(config.log_dir)
-                    .unwrap_or_else(|| default_config.cache.log_dir.clone()),
-                play_statistics_cache_path: cache
-                    .play_statistics_cache_path
-                    .or(config.play_statistics_cache_path)
-                    .unwrap_or_else(|| default_config.cache.play_statistics_cache_path.clone()),
+                    .unwrap_or_else(|| default_config.cache.log_cache_dir.clone()),
             },
             style: crate::models::StyleConfig {
                 background_color: style

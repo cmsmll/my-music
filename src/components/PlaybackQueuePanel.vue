@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onActivated, onBeforeUnmount, onMounted, ref } from "vue";
 import { storeToRefs } from "pinia";
+import CustomScrollbar from "./CustomScrollbar.vue";
 import { use_playback_store } from "../stores/playback";
 import { use_player_queue_store } from "../stores/player_queue";
 import { use_ui_store } from "../stores/ui";
@@ -18,7 +19,11 @@ const ui_store = use_ui_store();
 const { current_queue, queue_source } = storeToRefs(player_queue);
 const { current_track, status } = storeToRefs(playback_store);
 const { playback_queue_open } = storeToRefs(ui_store);
-const queue_list = ref<HTMLElement | null>(null);
+type CustomScrollbarExpose = {
+  query_selector: <T extends Element = Element>(selector: string) => T | null;
+};
+
+const queue_list = ref<CustomScrollbarExpose | null>(null);
 
 const queue_title = computed(() => {
   if (queue_source.value.type === "artist") return `歌手·${queue_source.value.label}`;
@@ -43,7 +48,7 @@ function track_should_spin(track: Track) {
 
 async function scroll_active_track_into_view() {
   await nextTick();
-  const active_item = queue_list.value?.querySelector<HTMLElement>(".queue_item.active");
+  const active_item = queue_list.value?.query_selector<HTMLElement>(".queue_item.active");
   active_item?.scrollIntoView({ block: "center" });
 }
 
@@ -74,7 +79,7 @@ onBeforeUnmount(() => {
         <p>{{ current_queue.length }} 首歌曲 {{ format_duration(queue_total_duration) }}</p>
       </header>
 
-      <section ref="queue_list" class="queue_list">
+      <CustomScrollbar ref="queue_list" class="queue_list" content_class="queue_list_content">
         <button
           v-for="track in current_queue"
           :key="track.id"
@@ -95,7 +100,7 @@ onBeforeUnmount(() => {
         </button>
 
         <p v-if="!current_queue.length" class="empty_state">当前播放队列为空。</p>
-      </section>
+      </CustomScrollbar>
     </aside>
   </div>
 </template>

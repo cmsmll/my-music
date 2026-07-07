@@ -25,10 +25,10 @@ pub fn run() {
     let config_manager = ConfigManager::new();
     let log_dir = config_manager
         .get()
-        .map(|config| config.cache.log_dir)
+        .map(|config| config.cache.log_cache_dir)
         .unwrap_or_else(|_| {
             utils::current_app_dir()
-                .join("logs")
+                .join("log-cache")
                 .to_string_lossy()
                 .to_string()
         });

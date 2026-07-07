@@ -422,8 +422,12 @@ defineExpose({ render_progress });
         <div class="track_identity">
           <h1>{{ display_title(current_track) }}</h1>
           <p>
-            <button type="button" @click="open_current_album">专辑：{{ display_album(current_track) }}</button>
-            <button type="button" @click="open_current_artist">歌手：{{ display_artist(current_track) }}</button>
+            <button class="track_album_button" type="button" @click="open_current_album">
+              专辑：{{ display_album(current_track) }}
+            </button>
+            <button class="track_artist_button" type="button" @click="open_current_artist">
+              歌手：{{ display_artist(current_track) }}
+            </button>
           </p>
         </div>
 
@@ -758,8 +762,9 @@ defineExpose({ render_progress });
 }
 
 .track_identity p {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  display: flex;
+  align-items: center;
+  justify-content: center;
   gap: 16px;
   min-width: 0;
   color: rgba(245, 246, 248, 0.58);
@@ -770,6 +775,7 @@ defineExpose({ render_progress });
 .track_identity p button {
   overflow: hidden;
   min-width: 0;
+  max-width: calc((100% - 16px) / 2);
   border: 0;
   padding: 0;
   color: inherit;
@@ -778,6 +784,14 @@ defineExpose({ render_progress });
   cursor: pointer;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.track_album_button {
+  text-align: right;
+}
+
+.track_artist_button {
+  text-align: left;
 }
 
 .track_identity p button:hover,

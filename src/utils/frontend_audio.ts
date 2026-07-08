@@ -1,10 +1,20 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { PlaybackStatus, Track } from "../types/music";
 
+export type FrontendAudioError = {
+  path: string | null;
+  source: string;
+  code: number | null;
+  message: string;
+  elapsed: number;
+  ready_state: number;
+  network_state: number;
+};
+
 export type FrontendAudioEvents = {
   status_change?: (status: PlaybackStatus) => void;
   ended?: (status: PlaybackStatus) => void;
-  error?: (message: string) => void;
+  error?: (error: FrontendAudioError) => void;
 };
 
 export class FrontendAudioPlayer {
@@ -25,7 +35,7 @@ export class FrontendAudioPlayer {
       this.events.ended?.(this.status());
     });
     this.audio.addEventListener("error", () => {
-      this.events.error?.(this.audio_error_message());
+      this.events.error?.(this.audio_error());
       this.emit_status();
     });
   }
@@ -132,5 +142,17 @@ export class FrontendAudioPlayer {
       default:
         return "前端音频播放失败";
     }
+  }
+
+  private audio_error(): FrontendAudioError {
+    return {
+      path: this.path,
+      source: this.audio.currentSrc || this.audio.src,
+      code: this.audio.error?.code ?? null,
+      message: this.audio_error_message(),
+      elapsed: Math.max(Math.floor(this.audio.currentTime || 0), 0),
+      ready_state: this.audio.readyState,
+      network_state: this.audio.networkState,
+    };
   }
 }

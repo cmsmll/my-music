@@ -346,8 +346,19 @@ function ensure_frontend_audio_player() {
     ended: (next_status) => {
       void handle_playback_completion(next_status);
     },
-    error: (message) => {
-      notification.error(message);
+    error: (error) => {
+      notification.error(error.message);
+      void invoke("record_frontend_audio_error", {
+        path: error.path,
+        source: error.source,
+        code: error.code,
+        message: error.message,
+        elapsed: error.elapsed,
+        readyState: error.ready_state,
+        networkState: error.network_state,
+      }).catch((log_error) => {
+        console.warn("无法记录前端音频错误", log_error);
+      });
     },
   });
   return frontend_audio_player;

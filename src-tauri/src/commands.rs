@@ -17,7 +17,7 @@ use crate::playlist::{
 };
 use crate::statistics::{read_play_statistics, record_track_listening_seconds, record_track_play};
 use crate::utils::{safe_cache_name, short_hash, unix_timestamp, write_json_cache};
-use std::{fs, path::PathBuf};
+use std::{fs, fs::OpenOptions, io::Write, path::PathBuf};
 use tauri::Manager;
 
 /// 获取应用启动所需的配置、曲库缓存、歌单缓存和播放统计。
@@ -442,6 +442,32 @@ pub(crate) fn record_track_started(
     Ok(play_statistics)
 }
 
+/// 记录前端 audio 标签播放错误，便于排查 WebView 媒体解码和本地资源加载问题。
+#[tauri::command]
+pub(crate) fn record_frontend_audio_error(
+    config_manager: tauri::State<'_, ConfigManager>,
+    path: Option<String>,
+    source: String,
+    code: Option<u16>,
+    message: String,
+    elapsed: u64,
+    ready_state: u16,
+    network_state: u16,
+) -> Result<(), String> {
+    let config = config_manager.get()?;
+    write_frontend_audio_error_log(
+        &config,
+        path.as_deref(),
+        &source,
+        code,
+        &message,
+        elapsed,
+        ready_state,
+        network_state,
+    );
+    Ok(())
+}
+
 /// 获取播放统计缓存，用于统计页展示累计播放、聆听时长和常听歌曲。
 #[tauri::command]
 pub(crate) fn get_play_statistics(
@@ -464,4 +490,43 @@ pub(crate) fn record_listening_time(
         .as_ref()
         .and_then(|playlist| playlist.tracks.get(&track_id));
     record_track_listening_seconds(&config, track, &track_id, seconds)
+}
+
+fn write_frontend_audio_error_log(
+    config: &AppConfig,
+    path: Option<&str>,
+    source: &str,
+    code: Option<u16>,
+    message: &str,
+    elapsed: u64,
+    ready_state: u16,
+    network_state: u16,
+) {
+    let log_dir = PathBuf::from(&config.cache.log_cache_dir);
+    let _ = fs::create_dir_all(&log_dir);
+    let log_path = log_dir.join("frontend-audio.log");
+    let Ok(mut file) = OpenOptions::new().create(true).append(true).open(log_path) else {
+        return;
+    };
+
+    let file_path = path.map(log_value).unwrap_or_else(|| "无".to_string());
+    let code = code
+        .map(|code| code.to_string())
+        .unwrap_or_else(|| "无".to_string());
+    let _ = writeln!(
+        file,
+        "[{}] 前端音频播放失败 | 文件=\"{}\" | 地址=\"{}\" | 错误码={} | 秒数={} | ready_state={} | network_state={} | 原因=\"{}\"",
+        unix_timestamp(),
+        file_path,
+        log_value(source),
+        code,
+        elapsed,
+        ready_state,
+        network_state,
+        log_value(message),
+    );
+}
+
+fn log_value(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"")
 }

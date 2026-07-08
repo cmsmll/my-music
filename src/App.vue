@@ -93,11 +93,6 @@ type PlaylistContextMenu = {
   y: number;
 };
 
-type GlobalContextMenu = {
-  x: number;
-  y: number;
-};
-
 type LibraryScanDialogState = {
   visible: boolean;
   status: "loading" | "success" | "error";
@@ -127,7 +122,6 @@ const locate_playing_track_request = ref(0);
 const track_context_menu = ref<TrackContextMenuState | null>(null);
 const track_detail_dialog = ref<Track | null>(null);
 const playlist_context_menu = ref<PlaylistContextMenu | null>(null);
-const global_context_menu = ref<GlobalContextMenu | null>(null);
 const pending_delete_playlist = ref<PlaylistCache | null>(null);
 const library_scan_dialog = ref<LibraryScanDialogState>({
   visible: false,
@@ -1285,7 +1279,6 @@ function active_record_playlist_id() {
 function open_track_context_menu(track: Track, event: MouseEvent) {
   const menu_width = 220;
   const menu_min_height = 64;
-  close_global_context_menu();
   close_playlist_context_menu();
   track_context_menu.value = {
     track,
@@ -1313,7 +1306,6 @@ function close_track_detail_dialog() {
 function open_playlist_context_menu(playlist: PlaylistCache, event: MouseEvent) {
   const menu_width = 170;
   const menu_min_height = 96;
-  close_global_context_menu();
   close_track_context_menu();
   playlist_context_menu.value = {
     playlist,
@@ -1324,41 +1316,6 @@ function open_playlist_context_menu(playlist: PlaylistCache, event: MouseEvent) 
 
 function close_playlist_context_menu() {
   playlist_context_menu.value = null;
-}
-
-function open_global_context_menu(event: MouseEvent) {
-  const menu_width = 150;
-  const menu_min_height = 112;
-  close_track_context_menu();
-  close_playlist_context_menu();
-  global_context_menu.value = {
-    x: Math.min(event.clientX, Math.max(window.innerWidth - menu_width - 12, 12)),
-    y: Math.min(event.clientY, Math.max(window.innerHeight - menu_min_height - 12, 12)),
-  };
-}
-
-function close_global_context_menu() {
-  global_context_menu.value = null;
-}
-
-function close_all_context_menus() {
-  close_track_context_menu();
-  close_playlist_context_menu();
-  close_global_context_menu();
-}
-
-async function restart_default_output_device_from_context_menu() {
-  close_global_context_menu();
-  try {
-    const track = current_track.value;
-    const seconds = cache_elapsed_seconds();
-    if (track) {
-      await ensure_frontend_audio_player().play(track, seconds);
-    }
-    notification.success("前端音频已重新加载");
-  } catch (error) {
-    show_error_message(error);
-  }
 }
 
 function apply_playlist_bundle(next_playlists: PlaylistBundle) {
@@ -1638,23 +1595,14 @@ function handle_before_unload() {
 function close_context_menus_on_pointer(event: PointerEvent) {
   const target = event.target as HTMLElement | null;
   if (target?.closest(".context_menu")) return;
-  close_all_context_menus();
-}
-
-function open_global_context_menu_on_context(event: MouseEvent) {
-  const target = event.target as HTMLElement | null;
-  if (target?.closest(".context_menu")) return;
-  event.preventDefault();
-  if (target?.closest("button, input, textarea, select, a, [role='button']")) {
-    close_all_context_menus();
-    return;
-  }
-  open_global_context_menu(event);
+  close_track_context_menu();
+  close_playlist_context_menu();
 }
 
 function close_context_menus_on_key(event: KeyboardEvent) {
   if (event.key === "Escape") {
-    close_all_context_menus();
+    close_track_context_menu();
+    close_playlist_context_menu();
     if (selected_artist.value || selected_album.value) {
       close_detail_playlist();
     }
@@ -1681,7 +1629,6 @@ onBeforeUnmount(() => {
   window.removeEventListener("pointercancel", end_sidebar_resize);
   window.removeEventListener("beforeunload", handle_before_unload);
   window.removeEventListener("pointerdown", close_context_menus_on_pointer);
-  window.removeEventListener("contextmenu", open_global_context_menu_on_context);
   window.removeEventListener("keydown", close_context_menus_on_key);
   document.body.classList.remove("resizing_sidebar");
 });
@@ -1691,7 +1638,6 @@ onMounted(() => {
   ensure_frontend_audio_player();
   window.addEventListener("beforeunload", handle_before_unload);
   window.addEventListener("pointerdown", close_context_menus_on_pointer);
-  window.addEventListener("contextmenu", open_global_context_menu_on_context);
   window.addEventListener("keydown", close_context_menus_on_key);
   void listen_window_resize();
   void listen_window_close();
@@ -1823,20 +1769,6 @@ watch([current_queue, queue_source, playback_mode], () => {
         @click="delete_context_playlist"
       >
         删除
-      </button>
-    </ContextMenu>
-
-    <ContextMenu
-      v-if="global_context_menu"
-      class="global_context_menu"
-      :x="global_context_menu.x"
-      :y="global_context_menu.y"
-    >
-      <button class="context_menu_button" type="button" @click="restart_default_output_device_from_context_menu">
-        重启设备
-      </button>
-      <button class="context_menu_button" type="button">
-        定时关闭
       </button>
     </ContextMenu>
 
@@ -2192,10 +2124,6 @@ p {
 }
 
 .playlist_context_menu {
-  min-width: 150px;
-}
-
-.global_context_menu {
   min-width: 150px;
 }
 

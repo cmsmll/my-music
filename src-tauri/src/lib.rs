@@ -69,7 +69,6 @@ pub fn run() {
             commands::stop_track,
             commands::set_volume,
             commands::seek_track,
-            commands::restart_default_output_device,
             commands::get_playback_status,
             commands::get_play_statistics,
             commands::record_track_started,

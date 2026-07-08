@@ -1,4 +1,3 @@
-use crate::audio::{AudioCommand, AudioEngine};
 use crate::config::ConfigManager;
 use crate::decoder::{run_decoder as run_config_decoder, DecoderRunSummary};
 use crate::library::{
@@ -8,7 +7,7 @@ use crate::lyrics::LyricsSearchService;
 use crate::media_shortcuts::register_media_shortcuts as register_system_media_shortcuts;
 use crate::models::{
     AppConfig, AppStartup, LibraryRefreshResult, LyricsSearchResponse, LyricsUseResult,
-    PlayStatistics, PlayTrackResult, PlaybackStatus, PlaylistBundle, Track,
+    PlayStatistics, PlaylistBundle, Track,
 };
 use crate::playlist::{
     empty_playlist, ensure_unique_playlist_name, load_my_playlist_caches, load_playlist_bundle,
@@ -422,39 +421,6 @@ pub(crate) fn reorder_user_playlists(
     load_playlist_bundle(&config)
 }
 
-/// 播放指定路径的音频文件，并记录到最近播放列表。
-#[tauri::command]
-pub(crate) fn play_track(
-    engine: tauri::State<'_, AudioEngine>,
-    config_manager: tauri::State<'_, ConfigManager>,
-    path: String,
-) -> Result<PlayTrackResult, String> {
-    let requested_path = path.clone();
-    engine.send(|reply| AudioCommand::Play { path, reply })?;
-    let status = engine.status()?;
-    let mut play_statistics = PlayStatistics::default();
-    if let Ok(config) = config_manager.get() {
-        play_statistics = read_play_statistics(&config).unwrap_or_default();
-        let active_path = status.path.as_deref().unwrap_or(&requested_path);
-        let _ = record_recent_track(&config, active_path);
-        if let Ok(all_playlist) = read_all_playlist_cache(&config) {
-            if let Some(track) = all_playlist
-                .tracks
-                .values()
-                .find(|track| track.path == active_path || track.id == active_path)
-            {
-                if let Ok(next_statistics) = record_track_play(&config, track) {
-                    play_statistics = next_statistics;
-                }
-            }
-        }
-    }
-    Ok(PlayTrackResult {
-        status,
-        play_statistics,
-    })
-}
-
 /// 记录前端播放器开始播放的歌曲，用于最近播放和播放统计。
 #[tauri::command]
 pub(crate) fn record_track_started(
@@ -474,57 +440,6 @@ pub(crate) fn record_track_started(
         }
     }
     Ok(play_statistics)
-}
-
-/// 暂停当前播放的音频并返回最新播放状态。
-#[tauri::command]
-pub(crate) fn pause_track(engine: tauri::State<'_, AudioEngine>) -> Result<PlaybackStatus, String> {
-    engine.send(|reply| AudioCommand::Pause { reply })?;
-    engine.status()
-}
-
-/// 恢复当前音频播放并返回最新播放状态。
-#[tauri::command]
-pub(crate) fn resume_track(
-    engine: tauri::State<'_, AudioEngine>,
-) -> Result<PlaybackStatus, String> {
-    engine.send(|reply| AudioCommand::Resume { reply })?;
-    engine.status()
-}
-
-/// 停止当前音频播放并清空后端播放状态。
-#[tauri::command]
-pub(crate) fn stop_track(engine: tauri::State<'_, AudioEngine>) -> Result<PlaybackStatus, String> {
-    engine.send(|reply| AudioCommand::Stop { reply })?;
-    engine.status()
-}
-
-/// 设置播放器音量并返回最新播放状态。
-#[tauri::command]
-pub(crate) fn set_volume(
-    engine: tauri::State<'_, AudioEngine>,
-    volume: f32,
-) -> Result<PlaybackStatus, String> {
-    engine.set_volume(volume)?;
-    engine.status()
-}
-
-/// 跳转当前音频播放进度到指定秒数并返回最新播放状态。
-#[tauri::command]
-pub(crate) fn seek_track(
-    engine: tauri::State<'_, AudioEngine>,
-    seconds: u64,
-) -> Result<PlaybackStatus, String> {
-    engine.send(|reply| AudioCommand::Seek { seconds, reply })?;
-    engine.status()
-}
-
-/// 获取当前后端播放器状态，用于前端同步播放进度和按钮状态。
-#[tauri::command]
-pub(crate) fn get_playback_status(
-    engine: tauri::State<'_, AudioEngine>,
-) -> Result<PlaybackStatus, String> {
-    engine.status()
 }
 
 /// 获取播放统计缓存，用于统计页展示累计播放、聆听时长和常听歌曲。

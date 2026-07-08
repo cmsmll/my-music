@@ -93,11 +93,6 @@ export type PlaybackStatus = {
   elapsed: number;
 };
 
-export type PlayTrackResult = {
-  status: PlaybackStatus;
-  play_statistics: PlayStatistics;
-};
-
 export type LyricsSearchResult = {
   source: string;
   id: string;

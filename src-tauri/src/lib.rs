@@ -1,4 +1,3 @@
-mod audio;
 mod commands;
 mod config;
 mod decoder;
@@ -13,7 +12,6 @@ mod scanner;
 mod statistics;
 mod utils;
 
-use audio::AudioEngine;
 use config::ConfigManager;
 use lyrics::LyricsSearchService;
 use media_shortcuts::media_shortcut_plugin;
@@ -23,19 +21,8 @@ use tauri::Manager;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let config_manager = ConfigManager::new();
-    let log_dir = config_manager
-        .get()
-        .map(|config| config.cache.log_cache_dir)
-        .unwrap_or_else(|_| {
-            utils::current_app_dir()
-                .join("log-cache")
-                .to_string_lossy()
-                .to_string()
-        });
-
     tauri::Builder::default()
         .plugin(media_shortcut_plugin())
-        .manage(AudioEngine::new(log_dir))
         .manage(LyricsSearchService::new())
         .manage(config_manager)
         .setup(|app| {
@@ -63,13 +50,6 @@ pub fn run() {
             commands::rename_user_playlist,
             commands::delete_user_playlist,
             commands::reorder_user_playlists,
-            commands::play_track,
-            commands::pause_track,
-            commands::resume_track,
-            commands::stop_track,
-            commands::set_volume,
-            commands::seek_track,
-            commands::get_playback_status,
             commands::get_play_statistics,
             commands::record_track_started,
             commands::record_listening_time

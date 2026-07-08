@@ -132,6 +132,7 @@ const library_scan_dialog = ref<LibraryScanDialogState>({
 });
 const main_player_bar = ref<PlayerBarExpose | null>(null);
 const now_playing_player_bar = ref<PlayerBarExpose | null>(null);
+const frontend_audio_element = ref<HTMLAudioElement | null>(null);
 const sidebar_width = ref(250);
 const sidebar_resizing = ref(false);
 let status_timer: number | undefined;
@@ -335,7 +336,10 @@ function show_error_message(error: unknown) {
 
 function ensure_frontend_audio_player() {
   if (frontend_audio_player) return frontend_audio_player;
-  frontend_audio_player = new FrontendAudioPlayer({
+  if (!frontend_audio_element.value) {
+    throw new Error("前端音频元素未初始化");
+  }
+  frontend_audio_player = new FrontendAudioPlayer(frontend_audio_element.value, {
     status_change: (next_status) => {
       apply_playback_status(next_status);
     },
@@ -1682,6 +1686,7 @@ watch([current_queue, queue_source, playback_mode], () => {
 
 <template>
   <main class="app_shell" :class="{ sidebar_compact, sidebar_resizing }" :style="app_shell_style">
+    <audio ref="frontend_audio_element" class="frontend_audio_element" preload="auto" />
     <LibrarySidebar
       :active_view="active_view"
       :has_query="Boolean(query.trim())"
@@ -1932,6 +1937,14 @@ button:focus-visible {
   overflow: hidden;
   color: var(--theme-title-color, #1e2026);
   background-color: var(--app_background_color, #ffffff);
+}
+
+.frontend_audio_element {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .app_shell::before {

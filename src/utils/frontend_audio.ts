@@ -8,12 +8,15 @@ export type FrontendAudioEvents = {
 };
 
 export class FrontendAudioPlayer {
-  private readonly audio = new Audio();
   private path: string | null = null;
   private volume = 1;
 
-  constructor(private readonly events: FrontendAudioEvents = {}) {
+  constructor(
+    private readonly audio: HTMLAudioElement,
+    private readonly events: FrontendAudioEvents = {},
+  ) {
     this.audio.preload = "auto";
+    this.audio.controls = false;
     this.audio.addEventListener("play", () => this.emit_status());
     this.audio.addEventListener("pause", () => this.emit_status());
     this.audio.addEventListener("timeupdate", () => this.emit_status());

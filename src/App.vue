@@ -1603,6 +1603,10 @@ function close_context_menus_on_pointer(event: PointerEvent) {
   close_playlist_context_menu();
 }
 
+function prevent_default_context_menu(event: MouseEvent) {
+  event.preventDefault();
+}
+
 function close_context_menus_on_key(event: KeyboardEvent) {
   if (event.key === "Escape") {
     close_track_context_menu();
@@ -1633,6 +1637,7 @@ onBeforeUnmount(() => {
   window.removeEventListener("pointercancel", end_sidebar_resize);
   window.removeEventListener("beforeunload", handle_before_unload);
   window.removeEventListener("pointerdown", close_context_menus_on_pointer);
+  window.removeEventListener("contextmenu", prevent_default_context_menu);
   window.removeEventListener("keydown", close_context_menus_on_key);
   document.body.classList.remove("resizing_sidebar");
 });
@@ -1642,6 +1647,7 @@ onMounted(() => {
   ensure_frontend_audio_player();
   window.addEventListener("beforeunload", handle_before_unload);
   window.addEventListener("pointerdown", close_context_menus_on_pointer);
+  window.addEventListener("contextmenu", prevent_default_context_menu);
   window.addEventListener("keydown", close_context_menus_on_key);
   void listen_window_resize();
   void listen_window_close();

@@ -10,7 +10,7 @@ defineProps<{
     class="context_menu"
     :style="{ left: `${x}px`, top: `${y}px` }"
     @click.stop
-    @contextmenu.prevent
+    @contextmenu.stop.prevent
   >
     <slot />
   </div>
@@ -21,11 +21,13 @@ defineProps<{
   position: fixed;
   z-index: 1000;
   display: grid;
-  gap: 4px;
-  border: 1px solid #eef0f4;
-  border-radius: 8px;
-  padding: 8px;
+  gap: 3px;
+  overflow: hidden;
+  border: 1px solid #e7eaf1;
+  border-radius: 6px;
+  padding: 6px;
+  color: #20242c;
   background: #ffffff;
-  box-shadow: 0 12px 34px rgba(19, 24, 34, 0.16);
+  box-shadow: 0 10px 28px rgba(17, 24, 39, 0.14);
 }
 </style>

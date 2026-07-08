@@ -93,6 +93,11 @@ type PlaylistContextMenu = {
   y: number;
 };
 
+type GlobalContextMenu = {
+  x: number;
+  y: number;
+};
+
 type LibraryScanDialogState = {
   visible: boolean;
   status: "loading" | "success" | "error";
@@ -122,6 +127,7 @@ const locate_playing_track_request = ref(0);
 const track_context_menu = ref<TrackContextMenuState | null>(null);
 const track_detail_dialog = ref<Track | null>(null);
 const playlist_context_menu = ref<PlaylistContextMenu | null>(null);
+const global_context_menu = ref<GlobalContextMenu | null>(null);
 const pending_delete_playlist = ref<PlaylistCache | null>(null);
 const library_scan_dialog = ref<LibraryScanDialogState>({
   visible: false,
@@ -1268,6 +1274,8 @@ function active_record_playlist_id() {
 function open_track_context_menu(track: Track, event: MouseEvent) {
   const menu_width = 220;
   const menu_min_height = 64;
+  close_global_context_menu();
+  close_playlist_context_menu();
   track_context_menu.value = {
     track,
     x: Math.min(event.clientX, Math.max(window.innerWidth - menu_width - 12, 12)),
@@ -1294,6 +1302,8 @@ function close_track_detail_dialog() {
 function open_playlist_context_menu(playlist: PlaylistCache, event: MouseEvent) {
   const menu_width = 170;
   const menu_min_height = 96;
+  close_global_context_menu();
+  close_track_context_menu();
   playlist_context_menu.value = {
     playlist,
     x: Math.min(event.clientX, Math.max(window.innerWidth - menu_width - 12, 12)),
@@ -1303,6 +1313,37 @@ function open_playlist_context_menu(playlist: PlaylistCache, event: MouseEvent) 
 
 function close_playlist_context_menu() {
   playlist_context_menu.value = null;
+}
+
+function open_global_context_menu(event: MouseEvent) {
+  const menu_width = 150;
+  const menu_min_height = 112;
+  close_track_context_menu();
+  close_playlist_context_menu();
+  global_context_menu.value = {
+    x: Math.min(event.clientX, Math.max(window.innerWidth - menu_width - 12, 12)),
+    y: Math.min(event.clientY, Math.max(window.innerHeight - menu_min_height - 12, 12)),
+  };
+}
+
+function close_global_context_menu() {
+  global_context_menu.value = null;
+}
+
+function close_all_context_menus() {
+  close_track_context_menu();
+  close_playlist_context_menu();
+  close_global_context_menu();
+}
+
+async function restart_default_output_device_from_context_menu() {
+  close_global_context_menu();
+  try {
+    apply_playback_status(await invoke<PlaybackStatus>("restart_default_output_device"));
+    notification.success("音频输出设备已重启");
+  } catch (error) {
+    show_error_message(error);
+  }
 }
 
 function apply_playlist_bundle(next_playlists: PlaylistBundle) {
@@ -1579,18 +1620,26 @@ function handle_before_unload() {
   void flush_app_config();
 }
 
-function close_track_context_menu_on_pointer(event: PointerEvent) {
+function close_context_menus_on_pointer(event: PointerEvent) {
   const target = event.target as HTMLElement | null;
-  if (target?.closest(".track_context_menu")) return;
-  if (target?.closest(".playlist_context_menu")) return;
-  close_track_context_menu();
-  close_playlist_context_menu();
+  if (target?.closest(".context_menu")) return;
+  close_all_context_menus();
 }
 
-function close_track_context_menu_on_key(event: KeyboardEvent) {
+function open_global_context_menu_on_context(event: MouseEvent) {
+  const target = event.target as HTMLElement | null;
+  if (target?.closest(".context_menu")) return;
+  event.preventDefault();
+  if (target?.closest("button, input, textarea, select, a, [role='button']")) {
+    close_all_context_menus();
+    return;
+  }
+  open_global_context_menu(event);
+}
+
+function close_context_menus_on_key(event: KeyboardEvent) {
   if (event.key === "Escape") {
-    close_track_context_menu();
-    close_playlist_context_menu();
+    close_all_context_menus();
     if (selected_artist.value || selected_album.value) {
       close_detail_playlist();
     }
@@ -1614,16 +1663,18 @@ onBeforeUnmount(() => {
   window.removeEventListener("pointerup", end_sidebar_resize);
   window.removeEventListener("pointercancel", end_sidebar_resize);
   window.removeEventListener("beforeunload", handle_before_unload);
-  window.removeEventListener("pointerdown", close_track_context_menu_on_pointer);
-  window.removeEventListener("keydown", close_track_context_menu_on_key);
+  window.removeEventListener("pointerdown", close_context_menus_on_pointer);
+  window.removeEventListener("contextmenu", open_global_context_menu_on_context);
+  window.removeEventListener("keydown", close_context_menus_on_key);
   document.body.classList.remove("resizing_sidebar");
 });
 
 onMounted(() => {
   media_shortcut_listeners_disposed = false;
   window.addEventListener("beforeunload", handle_before_unload);
-  window.addEventListener("pointerdown", close_track_context_menu_on_pointer);
-  window.addEventListener("keydown", close_track_context_menu_on_key);
+  window.addEventListener("pointerdown", close_context_menus_on_pointer);
+  window.addEventListener("contextmenu", open_global_context_menu_on_context);
+  window.addEventListener("keydown", close_context_menus_on_key);
   void listen_window_resize();
   void listen_window_close();
   void load_startup_state();
@@ -1754,6 +1805,20 @@ watch([current_queue, queue_source, playback_mode], () => {
         @click="delete_context_playlist"
       >
         删除
+      </button>
+    </ContextMenu>
+
+    <ContextMenu
+      v-if="global_context_menu"
+      class="global_context_menu"
+      :x="global_context_menu.x"
+      :y="global_context_menu.y"
+    >
+      <button class="context_menu_button" type="button" @click="restart_default_output_device_from_context_menu">
+        重启设备
+      </button>
+      <button class="context_menu_button" type="button">
+        定时关闭
       </button>
     </ContextMenu>
 
@@ -2112,11 +2177,15 @@ p {
   min-width: 150px;
 }
 
+.global_context_menu {
+  min-width: 150px;
+}
+
 .context_menu_button {
   min-height: 34px;
-  border-radius: 8px;
+  border-radius: 6px;
   padding: 0 10px;
-  color: var(--theme-title-color, #1e2026);
+  color: #20242c;
   background: transparent;
   font-size: 0.92rem;
   font-weight: 800;
@@ -2124,7 +2193,7 @@ p {
 }
 
 .context_menu_button:hover {
-  color: var(--theme-highlight-color, #426dff);
+  color: #426dff;
   background: #eaf0ff;
 }
 

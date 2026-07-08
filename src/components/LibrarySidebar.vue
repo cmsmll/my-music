@@ -248,7 +248,7 @@ function reset_playlist_drag() {
           :data-playlist-id="playlist.id"
           :title="String(playlist.metadata.track_count)"
           @click="click_playlist(playlist.id, $event)"
-          @contextmenu.prevent="emit('open_playlist_menu', playlist, $event)"
+          @contextmenu.stop.prevent="emit('open_playlist_menu', playlist, $event)"
           @pointerdown="begin_playlist_pointer_drag(playlist.id, $event)"
           @pointermove="move_playlist_pointer_drag"
           @pointerup="end_playlist_pointer_drag"

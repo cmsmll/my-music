@@ -498,6 +498,15 @@ pub(crate) fn seek_track(
     engine.status()
 }
 
+/// 重新打开当前播放器使用的后端默认音频输出设备。
+#[tauri::command]
+pub(crate) fn restart_default_output_device(
+    engine: tauri::State<'_, AudioEngine>,
+) -> Result<PlaybackStatus, String> {
+    engine.send(|reply| AudioCommand::RestartDefaultOutputDevice { reply })?;
+    engine.status()
+}
+
 /// 获取当前后端播放器状态，用于前端同步播放进度和按钮状态。
 #[tauri::command]
 pub(crate) fn get_playback_status(

@@ -312,7 +312,7 @@ onMounted(() => {
           :class="{ active: row.track.path === status_path, missing: is_missing_track(row.track) }"
           type="button"
           @click="play_track(row.track)"
-          @contextmenu.prevent="emit('open_track_menu', row.track, $event)"
+          @contextmenu.stop.prevent="emit('open_track_menu', row.track, $event)"
         >
           <span class="index_cell">{{ row.index + 1 }}</span>
           <span class="song_cell">

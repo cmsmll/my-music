@@ -234,6 +234,9 @@ pub(crate) enum AudioCommand {
         seconds: u64,
         reply: Sender<Result<(), String>>,
     },
+    RestartDefaultOutputDevice {
+        reply: Sender<Result<(), String>>,
+    },
 }
 
 impl AudioEngine {
@@ -386,6 +389,9 @@ impl AudioWorker {
             AudioCommand::Seek { seconds, reply } => {
                 let _ = reply.send(self.seek(seconds));
             }
+            AudioCommand::RestartDefaultOutputDevice { reply } => {
+                let _ = reply.send(self.restart_default_output_device());
+            }
         }
     }
 
@@ -460,6 +466,30 @@ impl AudioWorker {
                 self.rebuild_playback(path, target, "音频跳转失败", "seek_rebuild")
             }
         }
+    }
+
+    fn restart_default_output_device(&mut self) -> Result<(), String> {
+        println!("reload");
+        let Some(playback) = self.playback.as_ref() else {
+            return Ok(());
+        };
+
+        let path = playback.path.clone();
+        let position = playback.position();
+        self.logger.write(
+            "默认音频输出设备重启",
+            Some(&path),
+            Some("restart_default_output_device"),
+            Some(position.as_secs()),
+            "重新打开后端默认音频输出设备",
+        );
+
+        self.rebuild_playback(
+            path,
+            position,
+            "默认音频输出设备重启失败",
+            "restart_default_output_device",
+        )
     }
 
     fn recover_from_default_device_change(&mut self) {

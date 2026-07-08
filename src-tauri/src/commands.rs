@@ -455,6 +455,27 @@ pub(crate) fn play_track(
     })
 }
 
+/// 记录前端播放器开始播放的歌曲，用于最近播放和播放统计。
+#[tauri::command]
+pub(crate) fn record_track_started(
+    config_manager: tauri::State<'_, ConfigManager>,
+    path: String,
+) -> Result<PlayStatistics, String> {
+    let config = config_manager.get()?;
+    let _ = record_recent_track(&config, &path);
+    let mut play_statistics = read_play_statistics(&config).unwrap_or_default();
+    if let Ok(all_playlist) = read_all_playlist_cache(&config) {
+        if let Some(track) = all_playlist
+            .tracks
+            .values()
+            .find(|track| track.path == path || track.id == path)
+        {
+            play_statistics = record_track_play(&config, track)?;
+        }
+    }
+    Ok(play_statistics)
+}
+
 /// 暂停当前播放的音频并返回最新播放状态。
 #[tauri::command]
 pub(crate) fn pause_track(engine: tauri::State<'_, AudioEngine>) -> Result<PlaybackStatus, String> {

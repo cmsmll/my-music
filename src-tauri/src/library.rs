@@ -21,6 +21,7 @@ use symphonia::core::{
 use walkdir::WalkDir;
 
 const SUPPORTED_EXTENSIONS: &[&str] = &["mp3", "flac", "wav", "ogg", "m4a", "aac"];
+const COVER_WEBP_QUALITY: f32 = 60.0;
 
 pub(crate) fn reload_all_directories(
     config_manager: &ConfigManager,
@@ -337,9 +338,29 @@ pub(crate) fn cache_cover(
     if let Some(parent) = cache_path.parent() {
         let _ = fs::create_dir_all(parent);
     }
-    let _ = fs::write(&cache_path, picture.data());
+    let cover_data = picture.data().to_vec();
+    let _ = fs::write(&cache_path, &cover_data);
+    let webp_cache_path = cache_path.clone();
+    tokio::task::spawn_blocking(move || {
+        if let Err(err) = write_webp_cover(&cover_data, &webp_cache_path) {
+            eprintln!(
+                "封面 WebP 转换失败 | 文件=\"{}\" | 原因=\"{}\"",
+                webp_cache_path.to_string_lossy(),
+                err
+            );
+        }
+    });
 
     Some(cache_path.to_string_lossy().to_string())
+}
+
+fn write_webp_cover(data: &[u8], cache_path: &Path) -> Result<(), String> {
+    let image =
+        image::load_from_memory(data).map_err(|err| format!("无法解析封面图片内容: {err}"))?;
+    let rgba = image.to_rgba8();
+    let encoder = webp::Encoder::from_rgba(&rgba, rgba.width(), rgba.height());
+    let webp = encoder.encode(COVER_WEBP_QUALITY);
+    fs::write(cache_path, &*webp).map_err(|err| format!("无法写入 WebP 封面: {err}"))
 }
 
 pub(crate) fn extract_embedded_lyrics(tag: &lofty::tag::Tag) -> Option<String> {

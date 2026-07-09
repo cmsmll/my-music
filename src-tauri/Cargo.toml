@@ -38,7 +38,15 @@ symphonia = { version = "0.5.5", default-features = false, features = [
 ] }
 walkdir = "2"
 base64 = "0.22"
+image = { version = "0.25", default-features = false, features = [
+    "bmp",
+    "gif",
+    "jpeg",
+    "png",
+    "tiff",
+] }
 lofty = "0.24"
+webp = "0.3"
 sha2 = "0.11.0"
 aes = "0.9.1"
 infer = "0.19"

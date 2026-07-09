@@ -9,6 +9,12 @@ type LineLyricItem = {
   text: string;
 };
 
+type LyricSyncOptions = {
+  force?: boolean;
+  bypass_manual_scroll_lock?: boolean;
+  animate?: boolean;
+};
+
 const props = withDefaults(defineProps<{
   lyrics: string;
   loading?: boolean;
@@ -243,7 +249,11 @@ async function scroll_active_line(animate = true) {
   }
 }
 
-function sync_anchor_for_elapsed(seconds: number, force = false) {
+function sync_anchor_for_elapsed(seconds: number, options: LyricSyncOptions = {}) {
+  const force = options.force ?? false;
+  const bypass_manual_scroll_lock = options.bypass_manual_scroll_lock ?? false;
+  const animate = options.animate ?? !force;
+
   if (!has_timed_lyrics.value) {
     active_anchor_index.value = -1;
     cancel_scroll_animation();
@@ -259,23 +269,40 @@ function sync_anchor_for_elapsed(seconds: number, force = false) {
   if (!force && next_index === active_anchor_index.value) return;
 
   active_anchor_index.value = next_index;
-  if (!force && should_skip_auto_scroll()) return;
-  void scroll_active_line(!force);
+  if (!bypass_manual_scroll_lock && should_skip_auto_scroll()) return;
+  void scroll_active_line(animate);
 }
 
 async function sync_visible_anchor() {
   await nextTick();
   await wait_for_render_frame();
-  sync_anchor_for_elapsed(visual_elapsed.value, true);
+  sync_anchor_for_elapsed(visual_elapsed.value, {
+    force: true,
+    bypass_manual_scroll_lock: true,
+    animate: false,
+  });
 }
 
 watch(visual_elapsed, (seconds) => {
-  const force = progress_dragging.value || is_seek_elapsed_change(seconds);
-  if (force) {
+  const bypass_manual_scroll_lock = progress_dragging.value || is_seek_elapsed_change(seconds);
+  if (bypass_manual_scroll_lock) {
     clear_manual_scroll_lock();
   }
-  sync_anchor_for_elapsed(seconds, force);
+  sync_anchor_for_elapsed(seconds, {
+    bypass_manual_scroll_lock,
+    animate: true,
+  });
 }, { immediate: true });
+
+watch(progress_dragging, (dragging, was_dragging) => {
+  if (dragging || !was_dragging) return;
+  clear_manual_scroll_lock();
+  sync_anchor_for_elapsed(visual_elapsed.value, {
+    force: true,
+    bypass_manual_scroll_lock: true,
+    animate: true,
+  });
+});
 
 watch(current_track_path, () => {
   clear_manual_scroll_lock();

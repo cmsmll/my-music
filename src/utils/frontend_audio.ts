@@ -117,7 +117,7 @@ export class FrontendAudioPlayer {
       path: this.path,
       playing: !this.audio.paused && !this.audio.ended,
       volume: this.volume,
-      elapsed: Math.max(Math.floor(this.audio.currentTime || 0), 0),
+      elapsed: Math.max(this.audio.currentTime || 0, 0),
     };
   }
 

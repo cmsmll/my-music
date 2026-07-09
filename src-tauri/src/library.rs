@@ -7,7 +7,6 @@ use crate::playlist::{track_map_from_tracks, write_playlist_caches};
 use crate::utils::unix_timestamp;
 use lofty::{
     file::{AudioFile, TaggedFileExt},
-    picture::MimeType,
     prelude::Accessor,
     probe::Probe,
     tag::ItemKey,
@@ -330,15 +329,9 @@ pub(crate) fn cache_cover(
     config: &AppConfig,
 ) -> Option<String> {
     let picture = tag.pictures().first()?;
-    let mime = picture
-        .mime_type()
-        .map(mime_type_to_string)
-        .unwrap_or("image/jpeg");
-    let extension = extension_for_mime(mime);
     let cache_path = PathBuf::from(&config.cache.cover_cache_dir).join(format!(
-        "{}.{}",
-        cache_file_stem(audio_path),
-        extension
+        "{}.webp",
+        cache_file_stem(audio_path)
     ));
 
     if let Some(parent) = cache_path.parent() {
@@ -418,27 +411,6 @@ pub(crate) fn non_empty_owned(value: Option<String>) -> Option<String> {
     value
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
-}
-
-pub(crate) fn mime_type_to_string(mime_type: &MimeType) -> &'static str {
-    match mime_type {
-        MimeType::Png => "image/png",
-        MimeType::Jpeg => "image/jpeg",
-        MimeType::Tiff => "image/tiff",
-        MimeType::Bmp => "image/bmp",
-        MimeType::Gif => "image/gif",
-        _ => "image/jpeg",
-    }
-}
-
-pub(crate) fn extension_for_mime(mime: &str) -> &'static str {
-    match mime {
-        "image/png" => "png",
-        "image/tiff" => "tiff",
-        "image/bmp" => "bmp",
-        "image/gif" => "gif",
-        _ => "jpg",
-    }
 }
 
 pub(crate) fn lyrics_cache_path(path: &Path, config: &AppConfig) -> String {

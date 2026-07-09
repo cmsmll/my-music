@@ -1,4 +1,3 @@
-use crate::audio::{AudioCommand, AudioEngine};
 use crate::config::ConfigManager;
 use crate::decoder::{run_decoder as run_config_decoder, DecoderRunSummary};
 use crate::library::{
@@ -8,7 +7,7 @@ use crate::lyrics::LyricsSearchService;
 use crate::media_shortcuts::register_media_shortcuts as register_system_media_shortcuts;
 use crate::models::{
     AppConfig, AppStartup, LibraryRefreshResult, LyricsSearchResponse, LyricsUseResult,
-    PlayStatistics, PlayTrackResult, PlaybackStatus, PlaylistBundle, Track,
+    PlayStatistics, PlaylistBundle, Track,
 };
 use crate::playlist::{
     empty_playlist, ensure_unique_playlist_name, load_my_playlist_caches, load_playlist_bundle,
@@ -18,7 +17,7 @@ use crate::playlist::{
 };
 use crate::statistics::{read_play_statistics, record_track_listening_seconds, record_track_play};
 use crate::utils::{safe_cache_name, short_hash, unix_timestamp, write_json_cache};
-use std::{fs, path::PathBuf};
+use std::{fs, fs::OpenOptions, io::Write, path::PathBuf};
 use tauri::Manager;
 
 /// 获取应用启动所需的配置、曲库缓存、歌单缓存和播放统计。
@@ -422,97 +421,51 @@ pub(crate) fn reorder_user_playlists(
     load_playlist_bundle(&config)
 }
 
-/// 播放指定路径的音频文件，并记录到最近播放列表。
+/// 记录播放器开始播放的歌曲，用于最近播放和播放统计。
 #[tauri::command]
-pub(crate) fn play_track(
-    engine: tauri::State<'_, AudioEngine>,
+pub(crate) fn record_track_started(
     config_manager: tauri::State<'_, ConfigManager>,
     path: String,
-) -> Result<PlayTrackResult, String> {
-    let requested_path = path.clone();
-    engine.send(|reply| AudioCommand::Play { path, reply })?;
-    let status = engine.status()?;
-    let mut play_statistics = PlayStatistics::default();
-    if let Ok(config) = config_manager.get() {
-        play_statistics = read_play_statistics(&config).unwrap_or_default();
-        let active_path = status.path.as_deref().unwrap_or(&requested_path);
-        let _ = record_recent_track(&config, active_path);
-        if let Ok(all_playlist) = read_all_playlist_cache(&config) {
-            if let Some(track) = all_playlist
-                .tracks
-                .values()
-                .find(|track| track.path == active_path || track.id == active_path)
-            {
-                if let Ok(next_statistics) = record_track_play(&config, track) {
-                    play_statistics = next_statistics;
-                }
-            }
+) -> Result<PlayStatistics, String> {
+    let config = config_manager.get()?;
+    let _ = record_recent_track(&config, &path);
+    let mut play_statistics = read_play_statistics(&config).unwrap_or_default();
+    if let Ok(all_playlist) = read_all_playlist_cache(&config) {
+        if let Some(track) = all_playlist
+            .tracks
+            .values()
+            .find(|track| track.path == path || track.id == path)
+        {
+            play_statistics = record_track_play(&config, track)?;
         }
     }
-    Ok(PlayTrackResult {
-        status,
-        play_statistics,
-    })
+    Ok(play_statistics)
 }
 
-/// 暂停当前播放的音频并返回最新播放状态。
+/// 记录音频播放错误，便于排查 WebView 媒体解码和本地资源加载问题。
 #[tauri::command]
-pub(crate) fn pause_track(engine: tauri::State<'_, AudioEngine>) -> Result<PlaybackStatus, String> {
-    engine.send(|reply| AudioCommand::Pause { reply })?;
-    engine.status()
-}
-
-/// 恢复当前音频播放并返回最新播放状态。
-#[tauri::command]
-pub(crate) fn resume_track(
-    engine: tauri::State<'_, AudioEngine>,
-) -> Result<PlaybackStatus, String> {
-    engine.send(|reply| AudioCommand::Resume { reply })?;
-    engine.status()
-}
-
-/// 停止当前音频播放并清空后端播放状态。
-#[tauri::command]
-pub(crate) fn stop_track(engine: tauri::State<'_, AudioEngine>) -> Result<PlaybackStatus, String> {
-    engine.send(|reply| AudioCommand::Stop { reply })?;
-    engine.status()
-}
-
-/// 设置播放器音量并返回最新播放状态。
-#[tauri::command]
-pub(crate) fn set_volume(
-    engine: tauri::State<'_, AudioEngine>,
-    volume: f32,
-) -> Result<PlaybackStatus, String> {
-    engine.set_volume(volume)?;
-    engine.status()
-}
-
-/// 跳转当前音频播放进度到指定秒数并返回最新播放状态。
-#[tauri::command]
-pub(crate) fn seek_track(
-    engine: tauri::State<'_, AudioEngine>,
-    seconds: u64,
-) -> Result<PlaybackStatus, String> {
-    engine.send(|reply| AudioCommand::Seek { seconds, reply })?;
-    engine.status()
-}
-
-/// 重新打开当前播放器使用的后端默认音频输出设备。
-#[tauri::command]
-pub(crate) fn restart_default_output_device(
-    engine: tauri::State<'_, AudioEngine>,
-) -> Result<PlaybackStatus, String> {
-    engine.send(|reply| AudioCommand::RestartDefaultOutputDevice { reply })?;
-    engine.status()
-}
-
-/// 获取当前后端播放器状态，用于前端同步播放进度和按钮状态。
-#[tauri::command]
-pub(crate) fn get_playback_status(
-    engine: tauri::State<'_, AudioEngine>,
-) -> Result<PlaybackStatus, String> {
-    engine.status()
+pub(crate) fn record_audio_error(
+    config_manager: tauri::State<'_, ConfigManager>,
+    path: Option<String>,
+    source: String,
+    code: Option<u16>,
+    message: String,
+    elapsed: u64,
+    ready_state: u16,
+    network_state: u16,
+) -> Result<(), String> {
+    let config = config_manager.get()?;
+    write_audio_error_log(
+        &config,
+        path.as_deref(),
+        &source,
+        code,
+        &message,
+        elapsed,
+        ready_state,
+        network_state,
+    );
+    Ok(())
 }
 
 /// 获取播放统计缓存，用于统计页展示累计播放、聆听时长和常听歌曲。
@@ -537,4 +490,43 @@ pub(crate) fn record_listening_time(
         .as_ref()
         .and_then(|playlist| playlist.tracks.get(&track_id));
     record_track_listening_seconds(&config, track, &track_id, seconds)
+}
+
+fn write_audio_error_log(
+    config: &AppConfig,
+    path: Option<&str>,
+    source: &str,
+    code: Option<u16>,
+    message: &str,
+    elapsed: u64,
+    ready_state: u16,
+    network_state: u16,
+) {
+    let log_dir = PathBuf::from(&config.cache.log_cache_dir);
+    let _ = fs::create_dir_all(&log_dir);
+    let log_path = log_dir.join("audio.log");
+    let Ok(mut file) = OpenOptions::new().create(true).append(true).open(log_path) else {
+        return;
+    };
+
+    let file_path = path.map(log_value).unwrap_or_else(|| "无".to_string());
+    let code = code
+        .map(|code| code.to_string())
+        .unwrap_or_else(|| "无".to_string());
+    let _ = writeln!(
+        file,
+        "[{}] 音频播放失败 | 文件=\"{}\" | 地址=\"{}\" | 错误码={} | 秒数={} | ready_state={} | network_state={} | 原因=\"{}\"",
+        unix_timestamp(),
+        file_path,
+        log_value(source),
+        code,
+        elapsed,
+        ready_state,
+        network_state,
+        log_value(message),
+    );
+}
+
+fn log_value(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"")
 }

@@ -7,20 +7,21 @@ use crate::playlist::{track_map_from_tracks, write_playlist_caches};
 use crate::utils::unix_timestamp;
 use lofty::{
     file::{AudioFile, TaggedFileExt},
-    picture::MimeType,
     prelude::Accessor,
     probe::Probe,
     tag::ItemKey,
 };
-use rodio::{Decoder, Source};
 use std::{
-    fs::{self, File},
-    io::BufReader,
+    fs,
     path::{Path, PathBuf},
+};
+use symphonia::core::{
+    formats::FormatOptions, io::MediaSourceStream, meta::MetadataOptions, probe::Hint,
 };
 use walkdir::WalkDir;
 
 const SUPPORTED_EXTENSIONS: &[&str] = &["mp3", "flac", "wav", "ogg", "m4a", "aac"];
+const COVER_WEBP_QUALITY: f32 = 50.0;
 
 pub(crate) fn reload_all_directories(
     config_manager: &ConfigManager,
@@ -329,23 +330,35 @@ pub(crate) fn cache_cover(
     config: &AppConfig,
 ) -> Option<String> {
     let picture = tag.pictures().first()?;
-    let mime = picture
-        .mime_type()
-        .map(mime_type_to_string)
-        .unwrap_or("image/jpeg");
-    let extension = extension_for_mime(mime);
-    let cache_path = PathBuf::from(&config.cache.cover_cache_dir).join(format!(
-        "{}.{}",
-        cache_file_stem(audio_path),
-        extension
-    ));
+    let cache_path = PathBuf::from(&config.cache.cover_cache_dir)
+        .join(format!("{}.webp", cache_file_stem(audio_path)));
 
     if let Some(parent) = cache_path.parent() {
         let _ = fs::create_dir_all(parent);
     }
-    let _ = fs::write(&cache_path, picture.data());
+    let cover_data = picture.data().to_vec();
+    let _ = fs::write(&cache_path, &cover_data);
+    let result = cache_path.to_string_lossy().to_string();
+    tokio::task::spawn_blocking(move || {
+        if let Err(err) = write_webp_cover(&cover_data, &cache_path) {
+            eprintln!(
+                "封面 WebP 转换失败 | 文件=\"{}\" | 原因=\"{}\"",
+                cache_path.to_string_lossy(),
+                err
+            );
+        }
+    });
 
-    Some(cache_path.to_string_lossy().to_string())
+    Some(result)
+}
+
+fn write_webp_cover(data: &[u8], cache_path: &Path) -> Result<(), String> {
+    let image =
+        image::load_from_memory(data).map_err(|err| format!("无法解析封面图片内容: {err}"))?;
+    let rgba = image.to_rgba8();
+    let encoder = webp::Encoder::from_rgba(&rgba, rgba.width(), rgba.height());
+    let webp = encoder.encode(COVER_WEBP_QUALITY);
+    fs::write(cache_path, &*webp).map_err(|err| format!("无法写入 WebP 封面: {err}"))
 }
 
 pub(crate) fn extract_embedded_lyrics(tag: &lofty::tag::Tag) -> Option<String> {
@@ -419,27 +432,6 @@ pub(crate) fn non_empty_owned(value: Option<String>) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
-pub(crate) fn mime_type_to_string(mime_type: &MimeType) -> &'static str {
-    match mime_type {
-        MimeType::Png => "image/png",
-        MimeType::Jpeg => "image/jpeg",
-        MimeType::Tiff => "image/tiff",
-        MimeType::Bmp => "image/bmp",
-        MimeType::Gif => "image/gif",
-        _ => "image/jpeg",
-    }
-}
-
-pub(crate) fn extension_for_mime(mime: &str) -> &'static str {
-    match mime {
-        "image/png" => "png",
-        "image/tiff" => "tiff",
-        "image/bmp" => "bmp",
-        "image/gif" => "gif",
-        _ => "jpg",
-    }
-}
-
 pub(crate) fn lyrics_cache_path(path: &Path, config: &AppConfig) -> String {
     PathBuf::from(&config.cache.lyrics_cache_dir)
         .join(format!("{}.lrc", cache_file_stem(path)))
@@ -471,7 +463,30 @@ pub(crate) fn parse_artist_and_title(file_name: &str) -> (String, String) {
 }
 
 pub(crate) fn duration_seconds(path: &Path) -> Option<u64> {
-    let file = File::open(path).ok()?;
-    let decoder = Decoder::new(BufReader::new(file)).ok()?;
-    decoder.total_duration().map(|duration| duration.as_secs())
+    let file = fs::File::open(path).ok()?;
+    let media_stream = MediaSourceStream::new(Box::new(file), Default::default());
+
+    let mut hint = Hint::new();
+    if let Some(extension) = path.extension().and_then(|extension| extension.to_str()) {
+        hint.with_extension(extension);
+    }
+
+    let probed = symphonia::default::get_probe()
+        .format(
+            &hint,
+            media_stream,
+            &FormatOptions::default(),
+            &MetadataOptions::default(),
+        )
+        .ok()?;
+    let track = probed
+        .format
+        .default_track()
+        .or_else(|| probed.format.tracks().first())?;
+    let duration = track
+        .codec_params
+        .time_base?
+        .calc_time(track.codec_params.n_frames?);
+
+    Some(duration.seconds)
 }

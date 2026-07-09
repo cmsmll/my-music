@@ -286,20 +286,6 @@ pub(crate) struct LibraryRefreshResult {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub(crate) struct PlaybackStatus {
-    pub(crate) path: Option<String>,
-    pub(crate) playing: bool,
-    pub(crate) volume: f32,
-    pub(crate) elapsed: u64,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub(crate) struct PlayTrackResult {
-    pub(crate) status: PlaybackStatus,
-    pub(crate) play_statistics: PlayStatistics,
-}
-
-#[derive(Debug, Clone, Serialize)]
 pub(crate) struct LyricsSearchResponse {
     pub(crate) current_lyrics_hash: Option<String>,
     pub(crate) results: Vec<LyricsSearchResult>,

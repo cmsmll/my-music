@@ -9,6 +9,12 @@ type LineLyricItem = {
   text: string;
 };
 
+type LyricSyncOptions = {
+  force?: boolean;
+  bypass_manual_scroll_lock?: boolean;
+  animate?: boolean;
+};
+
 const props = withDefaults(defineProps<{
   lyrics: string;
   loading?: boolean;
@@ -21,11 +27,16 @@ const props = withDefaults(defineProps<{
 });
 
 const playback_store = use_playback_store();
-const { visual_elapsed } = storeToRefs(playback_store);
+const { current_track_path, progress_dragging, visual_elapsed } = storeToRefs(playback_store);
 const lyrics_viewport = ref<HTMLElement | null>(null);
 const active_anchor_index = ref(-1);
 const lyric_anchor_prefix = useId();
+const manual_scroll_lock_ms = 3000;
+const last_manual_scroll_at = ref(0);
 let scroll_animation_frame: number | undefined;
+let programmatic_scroll_active = false;
+let programmatic_scroll_reset_timer: number | undefined;
+let last_visual_elapsed = visual_elapsed.value;
 
 const lyric_lines = computed(() => {
   const parsed: LineLyricItem[] = [];
@@ -130,6 +141,53 @@ function cancel_scroll_animation() {
   scroll_animation_frame = undefined;
 }
 
+function reset_programmatic_scroll_later() {
+  if (programmatic_scroll_reset_timer !== undefined) {
+    window.clearTimeout(programmatic_scroll_reset_timer);
+  }
+  programmatic_scroll_reset_timer = window.setTimeout(() => {
+    programmatic_scroll_active = false;
+    programmatic_scroll_reset_timer = undefined;
+  }, 80);
+}
+
+function begin_programmatic_scroll() {
+  programmatic_scroll_active = true;
+  if (programmatic_scroll_reset_timer !== undefined) {
+    window.clearTimeout(programmatic_scroll_reset_timer);
+    programmatic_scroll_reset_timer = undefined;
+  }
+}
+
+function end_programmatic_scroll() {
+  reset_programmatic_scroll_later();
+}
+
+function mark_manual_scroll() {
+  last_manual_scroll_at.value = performance.now();
+  cancel_scroll_animation();
+  programmatic_scroll_active = false;
+}
+
+function handle_lyrics_scroll() {
+  if (programmatic_scroll_active) return;
+  last_manual_scroll_at.value = performance.now();
+}
+
+function should_skip_auto_scroll() {
+  return performance.now() - last_manual_scroll_at.value < manual_scroll_lock_ms;
+}
+
+function clear_manual_scroll_lock() {
+  last_manual_scroll_at.value = 0;
+}
+
+function is_seek_elapsed_change(seconds: number) {
+  const elapsed_delta = Math.abs(seconds - last_visual_elapsed);
+  last_visual_elapsed = seconds;
+  return elapsed_delta > 1.5;
+}
+
 function ease_out_cubic(progress: number) {
   return 1 - (1 - progress) ** 3;
 }
@@ -151,7 +209,9 @@ function scroll_to_anchor(anchor: HTMLElement, animate: boolean) {
 
   cancel_scroll_animation();
   if (!animate) {
+    begin_programmatic_scroll();
     viewport.scrollTop = target_top;
+    end_programmatic_scroll();
     return;
   }
 
@@ -161,6 +221,7 @@ function scroll_to_anchor(anchor: HTMLElement, animate: boolean) {
 
   const duration = 220;
   const started_at = performance.now();
+  begin_programmatic_scroll();
   const step = (now: number) => {
     const progress = Math.min((now - started_at) / duration, 1);
     viewport.scrollTop = start_top + distance * ease_out_cubic(progress);
@@ -169,6 +230,7 @@ function scroll_to_anchor(anchor: HTMLElement, animate: boolean) {
       return;
     }
     scroll_animation_frame = undefined;
+    end_programmatic_scroll();
   };
   scroll_animation_frame = window.requestAnimationFrame(step);
 }
@@ -187,7 +249,11 @@ async function scroll_active_line(animate = true) {
   }
 }
 
-function sync_anchor_for_elapsed(seconds: number, force = false) {
+function sync_anchor_for_elapsed(seconds: number, options: LyricSyncOptions = {}) {
+  const force = options.force ?? false;
+  const bypass_manual_scroll_lock = options.bypass_manual_scroll_lock ?? false;
+  const animate = options.animate ?? !force;
+
   if (!has_timed_lyrics.value) {
     active_anchor_index.value = -1;
     cancel_scroll_animation();
@@ -203,18 +269,52 @@ function sync_anchor_for_elapsed(seconds: number, force = false) {
   if (!force && next_index === active_anchor_index.value) return;
 
   active_anchor_index.value = next_index;
-  void scroll_active_line(!force);
+  if (!bypass_manual_scroll_lock && should_skip_auto_scroll()) return;
+  void scroll_active_line(animate);
 }
 
 async function sync_visible_anchor() {
   await nextTick();
   await wait_for_render_frame();
-  sync_anchor_for_elapsed(visual_elapsed.value, true);
+  sync_anchor_for_elapsed(visual_elapsed.value, {
+    force: true,
+    bypass_manual_scroll_lock: true,
+    animate: false,
+  });
 }
 
 watch(visual_elapsed, (seconds) => {
-  sync_anchor_for_elapsed(seconds);
+  if (progress_dragging.value) {
+    last_visual_elapsed = seconds;
+    return;
+  }
+
+  const bypass_manual_scroll_lock = is_seek_elapsed_change(seconds);
+  if (bypass_manual_scroll_lock) {
+    clear_manual_scroll_lock();
+  }
+  sync_anchor_for_elapsed(seconds, {
+    bypass_manual_scroll_lock,
+    animate: true,
+  });
 }, { immediate: true });
+
+watch(progress_dragging, (dragging, was_dragging) => {
+  if (dragging || !was_dragging) return;
+  clear_manual_scroll_lock();
+  last_visual_elapsed = visual_elapsed.value;
+  sync_anchor_for_elapsed(visual_elapsed.value, {
+    force: true,
+    bypass_manual_scroll_lock: true,
+    animate: true,
+  });
+});
+
+watch(current_track_path, () => {
+  clear_manual_scroll_lock();
+  last_visual_elapsed = visual_elapsed.value;
+  void sync_visible_anchor();
+});
 
 onActivated(() => {
   void sync_visible_anchor();
@@ -231,11 +331,21 @@ watch(() => props.active, (active) => {
 
 onBeforeUnmount(() => {
   cancel_scroll_animation();
+  if (programmatic_scroll_reset_timer !== undefined) {
+    window.clearTimeout(programmatic_scroll_reset_timer);
+  }
 });
 </script>
 
 <template>
-  <section ref="lyrics_viewport" class="line_lyrics_renderer" aria-label="歌词">
+  <section
+    ref="lyrics_viewport"
+    class="line_lyrics_renderer"
+    aria-label="歌词"
+    @scroll="handle_lyrics_scroll"
+    @wheel.passive="mark_manual_scroll"
+    @touchstart.passive="mark_manual_scroll"
+  >
     <p v-if="loading" class="line_lyrics_state">正在读取歌词...</p>
     <template v-else>
       <p

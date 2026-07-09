@@ -46,7 +46,6 @@ import type {
   LibraryRefreshResult,
   PlaybackMode,
   PlaybackModeItem,
-  PlayTrackResult,
   PlayStatistics,
   PlaybackStatus,
   PlaylistBundle,
@@ -55,6 +54,11 @@ import type {
   Track,
   ViewKey,
 } from "./types/music";
+import {
+  AudioPlayer,
+  is_audio_error_ignorable,
+  is_audio_play_interrupted,
+} from "./utils/audio_player";
 import { display_album, display_artist, display_title, is_missing_track } from "./utils/track";
 
 const ConfirmDialog = defineAsyncComponent(() => import("./components/ConfirmDialog.vue"));
@@ -93,11 +97,6 @@ type PlaylistContextMenu = {
   y: number;
 };
 
-type GlobalContextMenu = {
-  x: number;
-  y: number;
-};
-
 type LibraryScanDialogState = {
   visible: boolean;
   status: "loading" | "success" | "error";
@@ -127,7 +126,6 @@ const locate_playing_track_request = ref(0);
 const track_context_menu = ref<TrackContextMenuState | null>(null);
 const track_detail_dialog = ref<Track | null>(null);
 const playlist_context_menu = ref<PlaylistContextMenu | null>(null);
-const global_context_menu = ref<GlobalContextMenu | null>(null);
 const pending_delete_playlist = ref<PlaylistCache | null>(null);
 const library_scan_dialog = ref<LibraryScanDialogState>({
   visible: false,
@@ -138,6 +136,7 @@ const library_scan_dialog = ref<LibraryScanDialogState>({
 });
 const main_player_bar = ref<PlayerBarExpose | null>(null);
 const now_playing_player_bar = ref<PlayerBarExpose | null>(null);
+const audio_element = ref<HTMLAudioElement | null>(null);
 const sidebar_width = ref(250);
 const sidebar_resizing = ref(false);
 let status_timer: number | undefined;
@@ -154,6 +153,7 @@ let handled_completion_path = "";
 let sidebar_resize_start_x = 0;
 let sidebar_resize_start_width = 250;
 let media_shortcut_unlisteners: UnlistenFn[] = [];
+let audio_player: AudioPlayer | null = null;
 let window_resize_unlisten: UnlistenFn | null = null;
 let window_close_unlisten: UnlistenFn | null = null;
 let media_shortcut_listeners_disposed = false;
@@ -335,7 +335,43 @@ const selected_user_playlist = computed(() => {
 });
 
 function show_error_message(error: unknown) {
+  if (is_audio_play_interrupted(error)) return;
   notification.error(error instanceof Error ? error.message : String(error));
+}
+
+function ensure_audio_player() {
+  if (audio_player) return audio_player;
+  if (!audio_element.value) {
+    throw new Error("音频元素未初始化");
+  }
+  audio_player = new AudioPlayer(audio_element.value, {
+    status_change: (next_status) => {
+      apply_playback_status(next_status);
+    },
+    ended: (next_status) => {
+      void handle_playback_completion(next_status);
+    },
+    error: (error) => {
+      if (is_audio_error_ignorable(error)) return;
+      notification.error(error.message);
+      void invoke("record_audio_error", {
+        path: error.path,
+        source: error.source,
+        code: error.code,
+        message: error.message,
+        elapsed: error.elapsed,
+        readyState: error.ready_state,
+        networkState: error.network_state,
+      }).catch((log_error) => {
+        console.warn("无法记录音频错误", log_error);
+      });
+    },
+  });
+  return audio_player;
+}
+
+function audio_status() {
+  return ensure_audio_player().status();
 }
 
 async function choose_music_directory() {
@@ -493,16 +529,7 @@ async function load_startup_state() {
 async function apply_config_state(config: AppConfig) {
   sidebar_width.value = clamp_sidebar_width(config.state.sidebar_width);
   playback_store.patch_status({ volume: config.state.volume });
-
-  void invoke<PlaybackStatus>("set_volume", {
-    volume: config.state.volume,
-  })
-    .then((next_status) => {
-      playback_store.patch_status({ volume: next_status.volume });
-    })
-    .catch((error) => {
-      console.warn("无法同步配置音量", error);
-    });
+  ensure_audio_player().set_volume(config.state.volume);
 
   if (config.state.width > 0 && config.state.height > 0) {
     try {
@@ -553,16 +580,15 @@ function schedule_deferred_startup_work() {
   }, 0);
 }
 
-async function play(track: Track) {
+async function play(track: Track, seconds = 0) {
   try {
     await flush_listening_time();
     restored_playback_pending = false;
     handled_completion_path = "";
     clear_pending_seek();
-    const result = await invoke<PlayTrackResult>("play_track", { path: track.path });
-    apply_playback_status(result.status);
+    await ensure_audio_player().play(track, seconds);
     library_store.add_recent_track(track);
-    play_statistics.value = result.play_statistics;
+    play_statistics.value = await invoke<PlayStatistics>("record_track_started", { path: track.path });
     start_listening_session(track);
     start_status_polling();
   } catch (error) {
@@ -593,7 +619,17 @@ async function toggle_playback() {
     await flush_listening_time();
   }
 
-  apply_playback_status(await invoke<PlaybackStatus>(was_playing ? "pause_track" : "resume_track"));
+  try {
+    if (was_playing) {
+      ensure_audio_player().pause();
+    } else {
+      await ensure_audio_player().resume();
+    }
+  } catch (error) {
+    if (is_audio_play_interrupted(error)) return;
+    show_error_message(error);
+    return;
+  }
   if (!was_playing && status.value.playing && current_track.value) {
     start_listening_session(current_track.value);
   }
@@ -617,7 +653,7 @@ async function stop_playback() {
     await flush_listening_time();
     restored_playback_pending = false;
     clear_pending_seek();
-    apply_playback_status(await invoke<PlaybackStatus>("stop_track"));
+    ensure_audio_player().stop();
   } catch (error) {
     show_error_message(error);
   }
@@ -708,9 +744,8 @@ async function close_window_after_config_save() {
 
 async function change_volume(event: Event) {
   const target = event.target as HTMLInputElement;
-  const next_status = await invoke<PlaybackStatus>("set_volume", {
-    volume: Number(target.value),
-  });
+  ensure_audio_player().set_volume(Number(target.value));
+  const next_status = audio_status();
   apply_playback_status(next_status);
   app_config_store.update_state({ volume: next_status.volume });
 }
@@ -743,7 +778,8 @@ async function commit_progress_seek(seconds = progress_preview_seconds) {
   try {
     handled_completion_path = "";
     hold_progress_at_seek_target(target_seconds);
-    apply_playback_status(await invoke<PlaybackStatus>("seek_track", { seconds: target_seconds }));
+    ensure_audio_player().seek(target_seconds);
+    apply_playback_status(audio_status());
   } catch (error) {
     clear_pending_seek();
     show_error_message(error);
@@ -782,10 +818,10 @@ function cancel_progress_drag(event: PointerEvent) {
 
 function start_status_polling() {
   if (status_timer) window.clearInterval(status_timer);
-  status_timer = window.setInterval(async () => {
-    const next_status = await invoke<PlaybackStatus>("get_playback_status");
+  status_timer = window.setInterval(() => {
+    const next_status = audio_status();
     apply_playback_status(next_status);
-    await handle_playback_completion(next_status);
+    void handle_playback_completion(next_status);
   }, 1000);
 }
 
@@ -1001,12 +1037,8 @@ function restore_player_cache() {
 
 async function play_from_cached_position(track: Track, seconds: number) {
   const target_seconds = Math.min(Math.max(Math.floor(seconds), 0), track.duration ?? seconds);
-  await play(track);
+  await play(track, target_seconds);
 
-  if (target_seconds > 0 && status.value.path === track.path) {
-    hold_progress_at_seek_target(target_seconds);
-    apply_playback_status(await invoke<PlaybackStatus>("seek_track", { seconds: target_seconds }));
-  }
 }
 
 function playback_queue() {
@@ -1274,7 +1306,6 @@ function active_record_playlist_id() {
 function open_track_context_menu(track: Track, event: MouseEvent) {
   const menu_width = 220;
   const menu_min_height = 64;
-  close_global_context_menu();
   close_playlist_context_menu();
   track_context_menu.value = {
     track,
@@ -1302,7 +1333,6 @@ function close_track_detail_dialog() {
 function open_playlist_context_menu(playlist: PlaylistCache, event: MouseEvent) {
   const menu_width = 170;
   const menu_min_height = 96;
-  close_global_context_menu();
   close_track_context_menu();
   playlist_context_menu.value = {
     playlist,
@@ -1313,37 +1343,6 @@ function open_playlist_context_menu(playlist: PlaylistCache, event: MouseEvent) 
 
 function close_playlist_context_menu() {
   playlist_context_menu.value = null;
-}
-
-function open_global_context_menu(event: MouseEvent) {
-  const menu_width = 150;
-  const menu_min_height = 112;
-  close_track_context_menu();
-  close_playlist_context_menu();
-  global_context_menu.value = {
-    x: Math.min(event.clientX, Math.max(window.innerWidth - menu_width - 12, 12)),
-    y: Math.min(event.clientY, Math.max(window.innerHeight - menu_min_height - 12, 12)),
-  };
-}
-
-function close_global_context_menu() {
-  global_context_menu.value = null;
-}
-
-function close_all_context_menus() {
-  close_track_context_menu();
-  close_playlist_context_menu();
-  close_global_context_menu();
-}
-
-async function restart_default_output_device_from_context_menu() {
-  close_global_context_menu();
-  try {
-    apply_playback_status(await invoke<PlaybackStatus>("restart_default_output_device"));
-    notification.success("音频输出设备已重启");
-  } catch (error) {
-    show_error_message(error);
-  }
 }
 
 function apply_playlist_bundle(next_playlists: PlaylistBundle) {
@@ -1623,23 +1622,18 @@ function handle_before_unload() {
 function close_context_menus_on_pointer(event: PointerEvent) {
   const target = event.target as HTMLElement | null;
   if (target?.closest(".context_menu")) return;
-  close_all_context_menus();
+  close_track_context_menu();
+  close_playlist_context_menu();
 }
 
-function open_global_context_menu_on_context(event: MouseEvent) {
-  const target = event.target as HTMLElement | null;
-  if (target?.closest(".context_menu")) return;
+function prevent_default_context_menu(event: MouseEvent) {
   event.preventDefault();
-  if (target?.closest("button, input, textarea, select, a, [role='button']")) {
-    close_all_context_menus();
-    return;
-  }
-  open_global_context_menu(event);
 }
 
 function close_context_menus_on_key(event: KeyboardEvent) {
   if (event.key === "Escape") {
-    close_all_context_menus();
+    close_track_context_menu();
+    close_playlist_context_menu();
     if (selected_artist.value || selected_album.value) {
       close_detail_playlist();
     }
@@ -1655,6 +1649,8 @@ onBeforeUnmount(() => {
   media_shortcut_listeners_disposed = true;
   media_shortcut_unlisteners.forEach((unlisten) => unlisten());
   media_shortcut_unlisteners = [];
+  audio_player?.destroy();
+  audio_player = null;
   window_resize_unlisten?.();
   window_resize_unlisten = null;
   window_close_unlisten?.();
@@ -1664,16 +1660,17 @@ onBeforeUnmount(() => {
   window.removeEventListener("pointercancel", end_sidebar_resize);
   window.removeEventListener("beforeunload", handle_before_unload);
   window.removeEventListener("pointerdown", close_context_menus_on_pointer);
-  window.removeEventListener("contextmenu", open_global_context_menu_on_context);
+  window.removeEventListener("contextmenu", prevent_default_context_menu);
   window.removeEventListener("keydown", close_context_menus_on_key);
   document.body.classList.remove("resizing_sidebar");
 });
 
 onMounted(() => {
   media_shortcut_listeners_disposed = false;
+  ensure_audio_player();
   window.addEventListener("beforeunload", handle_before_unload);
   window.addEventListener("pointerdown", close_context_menus_on_pointer);
-  window.addEventListener("contextmenu", open_global_context_menu_on_context);
+  window.addEventListener("contextmenu", prevent_default_context_menu);
   window.addEventListener("keydown", close_context_menus_on_key);
   void listen_window_resize();
   void listen_window_close();
@@ -1718,6 +1715,7 @@ watch([current_queue, queue_source, playback_mode], () => {
 
 <template>
   <main class="app_shell" :class="{ sidebar_compact, sidebar_resizing }" :style="app_shell_style">
+    <audio ref="audio_element" class="audio_element" preload="auto" />
     <LibrarySidebar
       :active_view="active_view"
       :has_query="Boolean(query.trim())"
@@ -1805,20 +1803,6 @@ watch([current_queue, queue_source, playback_mode], () => {
         @click="delete_context_playlist"
       >
         删除
-      </button>
-    </ContextMenu>
-
-    <ContextMenu
-      v-if="global_context_menu"
-      class="global_context_menu"
-      :x="global_context_menu.x"
-      :y="global_context_menu.y"
-    >
-      <button class="context_menu_button" type="button" @click="restart_default_output_device_from_context_menu">
-        重启设备
-      </button>
-      <button class="context_menu_button" type="button">
-        定时关闭
       </button>
     </ContextMenu>
 
@@ -1982,6 +1966,14 @@ button:focus-visible {
   overflow: hidden;
   color: var(--theme-title-color, #1e2026);
   background-color: var(--app_background_color, #ffffff);
+}
+
+.audio_element {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .app_shell::before {
@@ -2177,10 +2169,6 @@ p {
   min-width: 150px;
 }
 
-.global_context_menu {
-  min-width: 150px;
-}
-
 .context_menu_button {
   min-height: 34px;
   border-radius: 6px;
@@ -2238,9 +2226,6 @@ p {
   flex: 0 0 auto;
   border-radius: 8px;
   color: #ffffff;
-  background:
-    linear-gradient(145deg, #21242b, var(--theme-highlight-color, #426dff)),
-    #21242b;
   font-weight: 900;
 }
 
@@ -2787,9 +2772,6 @@ p {
   height: 42px;
   border-radius: 8px;
   color: #ffffff;
-  background:
-    linear-gradient(145deg, #21242b, var(--theme-highlight-color, #426dff)),
-    #21242b;
   font-weight: 900;
 }
 

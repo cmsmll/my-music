@@ -17,6 +17,7 @@ const viewport_height = ref(0);
 const scroll_height = ref(0);
 const dragging = ref(false);
 let last_viewport_height = 0;
+let last_viewport_width = 0;
 let last_scroll_height = 0;
 
 let resize_observer: ResizeObserver | null = null;
@@ -46,9 +47,15 @@ function update_metrics() {
   if (!viewport.value) return;
   scroll_top.value = viewport.value.scrollTop;
   viewport_height.value = viewport.value.clientHeight;
+  const viewport_width = viewport.value.clientWidth;
   scroll_height.value = viewport.value.scrollHeight;
-  if (last_viewport_height !== viewport_height.value || last_scroll_height !== scroll_height.value) {
+  if (
+    last_viewport_height !== viewport_height.value ||
+    last_viewport_width !== viewport_width ||
+    last_scroll_height !== scroll_height.value
+  ) {
     last_viewport_height = viewport_height.value;
+    last_viewport_width = viewport_width;
     last_scroll_height = scroll_height.value;
     emit("resize");
   }
@@ -79,6 +86,10 @@ function get_scroll_top() {
 
 function get_client_height() {
   return viewport.value?.clientHeight ?? 0;
+}
+
+function get_client_width() {
+  return viewport.value?.clientWidth ?? 0;
 }
 
 function get_viewport() {
@@ -152,6 +163,7 @@ defineExpose({
   set_scroll_top,
   get_scroll_top,
   get_client_height,
+  get_client_width,
   get_viewport,
   query_selector,
   scroll_to,

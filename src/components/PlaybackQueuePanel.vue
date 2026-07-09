@@ -20,10 +20,16 @@ const { current_queue, queue_source } = storeToRefs(player_queue);
 const { current_track, status } = storeToRefs(playback_store);
 const { playback_queue_open } = storeToRefs(ui_store);
 type CustomScrollbarExpose = {
-  query_selector: <T extends Element = Element>(selector: string) => T | null;
+  set_scroll_top: (value: number) => void;
+  get_scroll_top: () => number;
+  get_client_height: () => number;
 };
 
 const queue_list = ref<CustomScrollbarExpose | null>(null);
+const queue_scroll_top = ref(0);
+const queue_viewport_height = ref(640);
+const queue_row_height = 58;
+const queue_virtual_overscan = 8;
 
 const queue_title = computed(() => {
   if (queue_source.value.type === "artist") return `歌手·${queue_source.value.label}`;
@@ -36,6 +42,24 @@ const queue_total_duration = computed(() =>
 );
 
 const is_playing = computed(() => status.value.playing);
+const virtual_queue_start_index = computed(() =>
+  Math.max(Math.floor(queue_scroll_top.value / queue_row_height) - queue_virtual_overscan, 0),
+);
+const virtual_queue_visible_count = computed(() =>
+  Math.ceil(queue_viewport_height.value / queue_row_height) + queue_virtual_overscan * 2,
+);
+const virtual_queue_items = computed(() => {
+  const start = virtual_queue_start_index.value;
+  return current_queue.value.slice(start, start + virtual_queue_visible_count.value);
+});
+const virtual_queue_top_padding = computed(() => virtual_queue_start_index.value * queue_row_height);
+const virtual_queue_bottom_padding = computed(() =>
+  Math.max(
+    (current_queue.value.length - virtual_queue_start_index.value - virtual_queue_items.value.length) *
+      queue_row_height,
+    0,
+  ),
+);
 
 function track_is_active(track: Track) {
   if (current_track.value?.id) return track.id === current_track.value.id;
@@ -46,10 +70,26 @@ function track_should_spin(track: Track) {
   return is_playing.value && track_is_active(track);
 }
 
+function update_queue_virtual_viewport() {
+  if (!queue_list.value) return;
+  queue_viewport_height.value = queue_list.value.get_client_height() || queue_viewport_height.value;
+  queue_scroll_top.value = queue_list.value.get_scroll_top();
+}
+
+function handle_queue_scroll() {
+  if (!queue_list.value) return;
+  queue_scroll_top.value = queue_list.value.get_scroll_top();
+}
+
 async function scroll_active_track_into_view() {
   await nextTick();
-  const active_item = queue_list.value?.query_selector<HTMLElement>(".queue_item.active");
-  active_item?.scrollIntoView({ block: "center" });
+  if (!queue_list.value) return;
+  const active_index = current_queue.value.findIndex(track_is_active);
+  if (active_index < 0) return;
+  const client_height = queue_list.value.get_client_height();
+  const top = Math.max(active_index * queue_row_height - client_height / 2 + queue_row_height / 2, 0);
+  queue_list.value.set_scroll_top(top);
+  update_queue_virtual_viewport();
 }
 
 function close_on_escape(event: KeyboardEvent) {
@@ -58,9 +98,11 @@ function close_on_escape(event: KeyboardEvent) {
 
 onMounted(() => {
   window.addEventListener("keydown", close_on_escape);
+  update_queue_virtual_viewport();
 });
 
 onActivated(() => {
+  update_queue_virtual_viewport();
   void scroll_active_track_into_view();
 });
 
@@ -79,9 +121,16 @@ onBeforeUnmount(() => {
         <p>{{ current_queue.length }} 首歌曲 {{ format_duration(queue_total_duration) }}</p>
       </header>
 
-      <CustomScrollbar ref="queue_list" class="queue_list" content_class="queue_list_content">
+      <CustomScrollbar
+        ref="queue_list"
+        class="queue_list"
+        content_class="queue_list_content"
+        @scroll="handle_queue_scroll"
+        @resize="update_queue_virtual_viewport"
+      >
+        <div class="virtual_track_spacer" :style="{ height: `${virtual_queue_top_padding}px` }" />
         <button
-          v-for="track in current_queue"
+          v-for="track in virtual_queue_items"
           :key="track.id"
           class="queue_item"
           :class="{ active: track_is_active(track) }"
@@ -98,6 +147,7 @@ onBeforeUnmount(() => {
           </span>
           <span class="queue_duration">{{ format_duration(track.duration) }}</span>
         </button>
+        <div class="virtual_track_spacer" :style="{ height: `${virtual_queue_bottom_padding}px` }" />
 
         <p v-if="!current_queue.length" class="empty_state">当前播放队列为空。</p>
       </CustomScrollbar>

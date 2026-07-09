@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { storeToRefs } from "pinia";
 import maximize_icon from "../assets/icons/maximize.svg";
 import minimize_icon from "../assets/icons/minimize.svg";
 import refresh_icon from "../assets/icons/refresh.svg";
@@ -6,23 +7,22 @@ import search_icon from "../assets/icons/search.svg";
 import settings_icon from "../assets/icons/settings.svg";
 import tools_icon from "../assets/icons/tools.svg";
 import x_icon from "../assets/icons/x.svg";
+import { use_library_view_store } from "../stores/library_view";
+import { use_ui_store } from "../stores/ui";
 import { icon_style } from "../utils/track";
 
-defineProps<{
-  query: string;
-}>();
-
 const emit = defineEmits<{
-  "update:query": [value: string];
-  focus_search: [];
   open_tools: [];
   reload_library: [];
-  open_settings: [];
   minimize_window: [];
   toggle_maximize_window: [];
   close_window: [];
   start_window_drag: [event: MouseEvent];
 }>();
+
+const library_view = use_library_view_store();
+const ui_store = use_ui_store();
+const { query } = storeToRefs(library_view);
 </script>
 
 <template>
@@ -33,8 +33,8 @@ const emit = defineEmits<{
         :value="query"
         type="search"
         placeholder="搜索歌曲、歌手、专辑"
-        @input="emit('update:query', ($event.target as HTMLInputElement).value)"
-        @focus="emit('focus_search')"
+        @input="library_view.update_query(($event.target as HTMLInputElement).value)"
+        @focus="library_view.focus_search()"
       />
     </label>
 
@@ -45,7 +45,7 @@ const emit = defineEmits<{
       <button class="tool_button hover_border_control" type="button" title="重载" @click="emit('reload_library')">
         <span class="svg_icon" :style="icon_style(refresh_icon)" />
       </button>
-      <button class="tool_button hover_border_control" type="button" title="设置" @click="emit('open_settings')">
+      <button class="tool_button hover_border_control" type="button" title="设置" @click="ui_store.open_settings()">
         <span class="svg_icon" :style="icon_style(settings_icon)" />
       </button>
       <button class="window_button hover_border_control" type="button" title="最小化" @click="emit('minimize_window')">

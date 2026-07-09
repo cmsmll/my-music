@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { nextTick, ref } from "vue";
+import { computed, nextTick, ref } from "vue";
+import { storeToRefs } from "pinia";
 import album_icon from "../assets/icons/album.svg";
 import artist_icon from "../assets/icons/artist.svg";
 import clock_fill_icon from "../assets/icons/clock-fill.svg";
@@ -7,28 +8,25 @@ import music_note_icon from "../assets/icons/music-note.svg";
 import playlist_grid_icon from "../assets/icons/playlist-grid.svg";
 import plus_icon from "../assets/icons/plus.svg";
 import statistics_icon from "../assets/icons/statistics.svg";
-import type { PlaylistCache, ViewKey } from "../types/music";
-import { icon_style } from "../utils/track";
-
-const props = defineProps<{
-  active_view: ViewKey;
-  has_query: boolean;
-  track_count: number;
-  artist_count: number;
-  album_count: number;
-  recent_count: number;
-  playlist_items: PlaylistCache[];
-  active_playlist_id: string;
-}>();
+import { use_library_store } from "../stores/library";
+import { use_library_view_store } from "../stores/library_view";
+import { use_player_queue_store } from "../stores/player_queue";
+import type { PlaylistCache } from "../types/music";
+import { display_album, display_artist, icon_style } from "../utils/track";
 
 const emit = defineEmits<{
-  show_view: [view: ViewKey];
-  show_playlist: [playlist_id: string];
   create_playlist: [name: string];
   reorder_playlists: [playlist_ids: string[]];
   open_playlist_menu: [playlist: PlaylistCache, event: MouseEvent];
   begin_resize: [event: PointerEvent];
 }>();
+
+const library_view = use_library_view_store();
+const library_store = use_library_store();
+const player_queue = use_player_queue_store();
+const { active_view, selected_playlist_id } = storeToRefs(library_view);
+const { playlists } = storeToRefs(library_store);
+const { library_tracks } = storeToRefs(player_queue);
 
 const creating_playlist = ref(false);
 const new_playlist_name = ref("");
@@ -43,6 +41,26 @@ let playlist_drag_candidate_id = "";
 let playlist_drag_pointer_id = -1;
 let playlist_drag_started = false;
 let suppress_playlist_click = false;
+
+const playlist_items = computed(() => playlists.value.my_playlists ?? []);
+const track_count = computed(() => library_tracks.value.length);
+const artist_count = computed(() => {
+  const artists = new Set(
+    library_tracks.value
+      .map((track) => display_artist(track))
+      .filter((artist) => artist !== "未知歌手"),
+  );
+  return artists.size;
+});
+const album_count = computed(() => {
+  const albums = new Set(
+    library_tracks.value
+      .map((track) => display_album(track))
+      .filter((album) => album !== "未知专辑"),
+  );
+  return albums.size;
+});
+const recent_count = computed(() => playlists.value.recent.metadata.track_count);
 
 async function start_create_playlist() {
   creating_playlist.value = true;
@@ -70,7 +88,7 @@ function click_playlist(playlist_id: string, event: MouseEvent) {
     event.stopPropagation();
     return;
   }
-  emit("show_playlist", playlist_id);
+  library_view.show_playlist(playlist_id);
 }
 
 function begin_playlist_pointer_drag(playlist_id: string, event: PointerEvent) {
@@ -154,7 +172,7 @@ function update_drag_target(event: PointerEvent) {
 }
 
 function reorder_playlist_ids(dragged_playlist_id: string, target_playlist_id: string, insert_after: boolean) {
-  const playlist_ids = props.playlist_items.map((playlist) => playlist.id);
+  const playlist_ids = playlist_items.value.map((playlist) => playlist.id);
   const from_index = playlist_ids.indexOf(dragged_playlist_id);
   if (from_index < 0) return;
 
@@ -183,10 +201,10 @@ function reset_playlist_drag() {
         <h2>音乐曲库</h2>
         <button
           class="nav_item"
-          :class="{ active: active_view === 'all' && !has_query }"
+          :class="{ active: active_view === 'all' }"
           type="button"
           :title="String(track_count)"
-          @click="emit('show_view', 'all')"
+          @click="library_view.show_view('all')"
         >
           <span class="nav_icon svg_icon" :style="icon_style(music_note_icon)" />
           <span>全部</span>
@@ -196,7 +214,7 @@ function reset_playlist_drag() {
           :class="{ active: active_view === 'artists' }"
           type="button"
           :title="String(artist_count)"
-          @click="emit('show_view', 'artists')"
+          @click="library_view.show_view('artists')"
         >
           <span class="nav_icon svg_icon" :style="icon_style(artist_icon)" />
           <span>歌手</span>
@@ -206,7 +224,7 @@ function reset_playlist_drag() {
           :class="{ active: active_view === 'albums' }"
           type="button"
           :title="String(album_count)"
-          @click="emit('show_view', 'albums')"
+          @click="library_view.show_view('albums')"
         >
           <span class="nav_icon svg_icon" :style="icon_style(album_icon)" />
           <span>专辑</span>
@@ -215,7 +233,7 @@ function reset_playlist_drag() {
           class="nav_item"
           :class="{ active: active_view === 'stats' }"
           type="button"
-          @click="emit('show_view', 'stats')"
+          @click="library_view.show_view('stats')"
         >
           <span class="nav_icon svg_icon" :style="icon_style(statistics_icon)" />
           <span>统计</span>
@@ -229,7 +247,7 @@ function reset_playlist_drag() {
           :class="{ active: active_view === 'recent' }"
           type="button"
           :title="String(recent_count)"
-          @click="emit('show_view', 'recent')"
+          @click="library_view.show_view('recent')"
         >
           <span class="nav_icon svg_icon" :style="icon_style(clock_fill_icon)" />
           <span>最近播放</span>
@@ -239,7 +257,7 @@ function reset_playlist_drag() {
           :key="playlist.id"
           class="nav_item playlist_item"
           :class="{
-            active: active_view === 'user_playlist' && active_playlist_id === playlist.id,
+            active: active_view === 'user_playlist' && selected_playlist_id === playlist.id,
             dragging: dragging_playlist_id === playlist.id,
             drag_over: drag_over_playlist_id === playlist.id,
             drag_over_after: drag_over_playlist_id === playlist.id && drag_over_after,

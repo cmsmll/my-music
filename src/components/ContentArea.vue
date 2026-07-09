@@ -1,21 +1,17 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { storeToRefs } from "pinia";
 import CustomScrollbar from "./CustomScrollbar.vue";
-import type { AlbumItem, ArtistItem, PlayStatistics, QueueSource, Track, TrackPlayStatistic, ViewKey } from "../types/music";
+import { use_library_view_store } from "../stores/library_view";
+import type { AlbumItem, ArtistItem, PlayStatistics, QueueSource, Track, TrackPlayStatistic } from "../types/music";
 import { cover_src, display_album, display_artist, display_title, format_duration, format_file_size, is_missing_track } from "../utils/track";
 
 const props = defineProps<{
-  active_view: ViewKey;
-  query: string;
   loading: boolean;
   tracks: Track[];
   display_tracks: Track[];
   status_path?: string | null;
-  locate_track_request: number;
   is_playing: boolean;
-  selected_artist: string;
-  selected_album: string;
-  selected_playlist_id: string;
   playback_queue_source: QueueSource;
   artist_items: ArtistItem[];
   album_items: AlbumItem[];
@@ -29,9 +25,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   play_track: [track: Track];
   open_track_menu: [track: Track, event: MouseEvent];
-  open_artist: [name: string];
-  open_album: [name: string];
-  close_detail: [];
 }>();
 
 type CustomScrollbarExpose = {
@@ -59,11 +52,14 @@ const virtual_overscan = 8;
 const media_tile_min_width = 150;
 const media_grid_gap = 18;
 const media_tile_text_height = 56;
+const library_view = use_library_view_store();
+const { active_view, locate_playing_track_request, query, selected_album, selected_artist, selected_playlist_id } =
+  storeToRefs(library_view);
 
 const view_scroll_positions = new Map<string, number>();
 
-const artist_scroll_key = computed(() => `artists:${props.query.trim()}`);
-const album_scroll_key = computed(() => `albums:${props.query.trim()}`);
+const artist_scroll_key = computed(() => `artists:${query.value.trim()}`);
+const album_scroll_key = computed(() => `albums:${query.value.trim()}`);
 const artist_grid_columns = computed(() => media_grid_columns(artist_viewport_width.value));
 const album_grid_columns = computed(() => media_grid_columns(album_viewport_width.value));
 const artist_grid_row_height = computed(() => media_grid_row_height(artist_viewport_width.value, artist_grid_columns.value));
@@ -197,11 +193,11 @@ function handle_album_view_scroll() {
 
 async function restore_media_grid_scroll() {
   await nextTick();
-  if (props.active_view === "artists" && !props.selected_artist && artist_view.value) {
+  if (active_view.value === "artists" && !selected_artist.value && artist_view.value) {
     artist_view.value.set_scroll_top(view_scroll_positions.get(artist_scroll_key.value) ?? 0);
     update_artist_virtual_viewport();
   }
-  if (props.active_view === "albums" && !props.selected_album && album_view.value) {
+  if (active_view.value === "albums" && !selected_album.value && album_view.value) {
     album_view.value.set_scroll_top(view_scroll_positions.get(album_scroll_key.value) ?? 0);
     update_album_virtual_viewport();
   }
@@ -226,22 +222,22 @@ function detail_total_duration() {
 }
 
 function visible_list_matches_playback_source() {
-  if (props.selected_artist) {
+  if (selected_artist.value) {
     return (
       props.playback_queue_source.type === "artist" &&
-      props.playback_queue_source.id === props.selected_artist
+      props.playback_queue_source.id === selected_artist.value
     );
   }
-  if (props.selected_album) {
-    return props.playback_queue_source.type === "album" && props.playback_queue_source.id === props.selected_album;
+  if (selected_album.value) {
+    return props.playback_queue_source.type === "album" && props.playback_queue_source.id === selected_album.value;
   }
-  if (props.active_view === "user_playlist") {
+  if (active_view.value === "user_playlist") {
     return (
       props.playback_queue_source.type === "playlist" &&
-      props.playback_queue_source.id === props.selected_playlist_id
+      props.playback_queue_source.id === selected_playlist_id.value
     );
   }
-  return props.playback_queue_source.type === props.active_view;
+  return props.playback_queue_source.type === active_view.value;
 }
 
 function track_should_spin(track: Track) {
@@ -255,9 +251,9 @@ function track_should_spin(track: Track) {
 function artist_card_should_spin(name: string) {
   return Boolean(
     props.is_playing &&
-    props.active_view === "artists" &&
-    !props.selected_artist &&
-    !props.query.trim() &&
+    active_view.value === "artists" &&
+    !selected_artist.value &&
+    !query.value.trim() &&
     props.playback_queue_source.type === "artist" &&
     props.playback_queue_source.id === name,
   );
@@ -266,9 +262,9 @@ function artist_card_should_spin(name: string) {
 function album_card_should_spin(name: string) {
   return Boolean(
     props.is_playing &&
-    props.active_view === "albums" &&
-    !props.selected_album &&
-    !props.query.trim() &&
+    active_view.value === "albums" &&
+    !selected_album.value &&
+    !query.value.trim() &&
     props.playback_queue_source.type === "album" &&
     props.playback_queue_source.id === name,
   );
@@ -293,13 +289,13 @@ const favorite_artist = computed(() => favorite_group("artist"));
 const favorite_album = computed(() => favorite_group("album"));
 
 const filtered_artist_items = computed(() => {
-  const keyword = props.query.trim().toLowerCase();
+  const keyword = query.value.trim().toLowerCase();
   if (!keyword) return props.artist_items;
   return props.artist_items.filter((artist) => artist.name.toLowerCase().includes(keyword));
 });
 
 const filtered_album_items = computed(() => {
-  const keyword = props.query.trim().toLowerCase();
+  const keyword = query.value.trim().toLowerCase();
   if (!keyword) return props.album_items;
   return props.album_items.filter((album) => album.name.toLowerCase().includes(keyword));
 });
@@ -334,7 +330,7 @@ function format_stat_duration(seconds: number) {
 }
 
 watch(
-  () => [props.active_view, props.query, props.selected_artist, props.selected_album, props.selected_playlist_id],
+  () => [active_view.value, query.value, selected_artist.value, selected_album.value, selected_playlist_id.value],
   async () => {
     await nextTick();
     if (track_table.value) {
@@ -365,7 +361,7 @@ watch(
 );
 
 watch(
-  () => props.locate_track_request,
+  locate_playing_track_request,
   () => {
     void locate_status_track();
   },
@@ -389,7 +385,7 @@ onMounted(() => {
       selected_album
     " class="track_table_view" aria-label="歌曲列表">
       <header v-if="selected_artist || selected_album" class="detail_header">
-        <button class="detail_title" type="button" @click="emit('close_detail')">
+        <button class="detail_title" type="button" @click="library_view.close_detail()">
           <strong>{{ selected_artist || selected_album }}</strong>
         </button>
         <span class="detail_meta">
@@ -438,7 +434,7 @@ onMounted(() => {
       <div class="virtual_track_spacer" :style="{ height: `${virtual_album_top_padding}px` }" />
       <div class="placeholder_grid">
         <button v-for="album in virtual_album_items" :key="album.name" class="album_tile media_tile" type="button"
-          @click="emit('open_album', album.name)">
+          @click="library_view.open_album(album.name)">
           <span class="album_art" :class="{ spinning_cover: album_card_should_spin(album.name) }">
             <img v-if="album.cover_track?.cover_cache_path" :src="cover_src(album.cover_track)" alt="" />
             <span v-else>♪</span>
@@ -458,7 +454,7 @@ onMounted(() => {
       <div class="virtual_track_spacer" :style="{ height: `${virtual_artist_top_padding}px` }" />
       <div class="artist_grid">
         <button v-for="artist in virtual_artist_items" :key="artist.name" class="artist_tile media_tile" type="button"
-          @click="emit('open_artist', artist.name)">
+          @click="library_view.open_artist(artist.name)">
           <span class="artist_art" :class="{ spinning_cover: artist_card_should_spin(artist.name) }">
             <img v-if="artist.cover_track?.cover_cache_path" :src="cover_src(artist.cover_track)" alt="" />
             <span v-else>♪</span>

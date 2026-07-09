@@ -14,6 +14,7 @@ import x_icon from "../assets/icons/x.svg";
 import LineLyricsRenderer from "./LineLyricsRenderer.vue";
 import PlayerBar from "./PlayerBar.vue";
 import { use_app_config_store } from "../stores/app_config";
+import { use_library_view_store } from "../stores/library_view";
 import { use_notification_store } from "../stores/notifications";
 import { use_playback_store } from "../stores/playback";
 import { use_player_queue_store } from "../stores/player_queue";
@@ -38,6 +39,7 @@ defineProps<{
 const player_queue = use_player_queue_store();
 const playback_store = use_playback_store();
 const app_config_store = use_app_config_store();
+const library_view = use_library_view_store();
 const notification = use_notification_store();
 const ui_store = use_ui_store();
 const { current_track, status } = storeToRefs(playback_store);
@@ -59,8 +61,6 @@ const emit = defineEmits<{
   open_queue: [];
   cycle_playback_mode: [];
   change_volume: [event: Event];
-  open_artist: [name: string];
-  open_album: [name: string];
 }>();
 
 const player_bar = ref<PlayerBarExpose | null>(null);
@@ -94,12 +94,14 @@ const auto_lyrics_enabled = computed({
 
 function open_current_artist() {
   if (!current_track.value) return;
-  emit("open_artist", display_artist(current_track.value));
+  library_view.open_artist(display_artist(current_track.value));
+  ui_store.close_now_playing();
 }
 
 function open_current_album() {
   if (!current_track.value) return;
-  emit("open_album", display_album(current_track.value));
+  library_view.open_album(display_album(current_track.value));
+  ui_store.close_now_playing();
 }
 
 function normalize_lyrics(content: string) {

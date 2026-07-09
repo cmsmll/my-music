@@ -33,6 +33,7 @@ import TrackContextMenu from "./components/TrackContextMenu.vue";
 import TopBar from "./components/TopBar.vue";
 import { use_app_config_store } from "./stores/app_config";
 import { use_library_store } from "./stores/library";
+import { use_library_view_store } from "./stores/library_view";
 import { use_notification_store } from "./stores/notifications";
 import { use_playback_store } from "./stores/playback";
 import { use_player_queue_store } from "./stores/player_queue";
@@ -109,20 +110,16 @@ const player_queue = use_player_queue_store();
 const playback_store = use_playback_store();
 const app_config_store = use_app_config_store();
 const library_store = use_library_store();
+const library_view = use_library_view_store();
 const notification = use_notification_store();
 const ui_store = use_ui_store();
 const { library_tracks: tracks, current_queue, playback_mode, queue_source } = storeToRefs(player_queue);
 const { status, current_track, progress_dragging } = storeToRefs(playback_store);
 const { config: app_config } = storeToRefs(app_config_store);
 const { selected_directories, library_loaded, playlists, play_statistics } = storeToRefs(library_store);
+const { active_view, query, selected_album, selected_artist, selected_playlist_id } = storeToRefs(library_view);
 const { settings_open, playback_queue_open, now_playing_open } = storeToRefs(ui_store);
 const loading = ref(false);
-const query = ref("");
-const active_view = ref<ViewKey>("all");
-const selected_artist = ref("");
-const selected_album = ref("");
-const selected_playlist_id = ref("my_playlist");
-const locate_playing_track_request = ref(0);
 const track_context_menu = ref<TrackContextMenuState | null>(null);
 const track_detail_dialog = ref<Track | null>(null);
 const playlist_context_menu = ref<PlaylistContextMenu | null>(null);
@@ -1108,15 +1105,11 @@ async function handle_playback_completion(next_status: PlaybackStatus) {
 }
 
 function show_view(view: ViewKey) {
-  active_view.value = view;
-  if (view !== "all") query.value = "";
-  selected_artist.value = "";
-  selected_album.value = "";
+  library_view.show_view(view);
 }
 
 function show_playlist(playlist_id: string) {
-  selected_playlist_id.value = playlist_id;
-  show_view("user_playlist");
+  library_view.show_playlist(playlist_id);
 }
 
 function queue_source_for_view(view: ViewKey): QueueSource {
@@ -1232,7 +1225,7 @@ function ensure_selected_playlist() {
     return;
   }
 
-  selected_playlist_id.value = user_playlist_items.value[0]?.id ?? playlists.value.my_playlist.id;
+  library_view.set_selected_playlist(user_playlist_items.value[0]?.id ?? playlists.value.my_playlist.id);
 }
 
 function set_queue_for_current_view() {
@@ -1245,49 +1238,15 @@ function set_queue_for_current_view() {
 }
 
 function open_artist_playlist(name: string) {
-  active_view.value = "artists";
-  selected_artist.value = name;
-  selected_album.value = "";
-  query.value = "";
-}
-
-function open_artist_from_now_playing(name: string) {
-  open_artist_playlist(name);
-  ui_store.close_now_playing();
+  library_view.open_artist(name);
 }
 
 function open_album_playlist(name: string) {
-  active_view.value = "albums";
-  selected_album.value = name;
-  selected_artist.value = "";
-  query.value = "";
-}
-
-function open_album_from_now_playing(name: string) {
-  open_album_playlist(name);
-  ui_store.close_now_playing();
+  library_view.open_album(name);
 }
 
 function close_detail_playlist() {
-  selected_artist.value = "";
-  selected_album.value = "";
-}
-
-function update_query(value: string) {
-  query.value = value;
-  if (active_view.value === "stats") {
-    active_view.value = "all";
-    selected_artist.value = "";
-    selected_album.value = "";
-  }
-}
-
-function focus_search() {
-  if (active_view.value === "stats") {
-    active_view.value = "all";
-    selected_artist.value = "";
-    selected_album.value = "";
-  }
+  library_view.close_detail();
 }
 
 async function play_track_from_view(track: Track) {
@@ -1524,7 +1483,7 @@ async function open_queue_source() {
   }
 
   await nextTick();
-  locate_playing_track_request.value += 1;
+  library_view.request_locate_playing_track();
 }
 
 function clamp_sidebar_width(width: number) {
@@ -1717,16 +1676,6 @@ watch([current_queue, queue_source, playback_mode], () => {
   <main class="app_shell" :class="{ sidebar_compact, sidebar_resizing }" :style="app_shell_style">
     <audio ref="audio_element" class="audio_element" preload="auto" />
     <LibrarySidebar
-      :active_view="active_view"
-      :has_query="Boolean(query.trim())"
-      :track_count="tracks.length"
-      :artist_count="artist_count"
-      :album_count="album_count"
-      :recent_count="playlists.recent.metadata.track_count"
-      :playlist_items="ordered_user_playlist_items"
-      :active_playlist_id="selected_user_playlist.id"
-      @show_view="show_view"
-      @show_playlist="show_playlist"
       @create_playlist="create_playlist"
       @reorder_playlists="reorder_playlists"
       @open_playlist_menu="open_playlist_context_menu"
@@ -1735,12 +1684,8 @@ watch([current_queue, queue_source, playback_mode], () => {
 
     <section class="workspace">
       <TopBar
-        :query="query"
-        @update:query="update_query"
-        @focus_search="focus_search"
         @open_tools="decode_music_files"
         @reload_library="reload_library"
-        @open_settings="ui_store.open_settings()"
         @minimize_window="minimize_window"
         @toggle_maximize_window="toggle_maximize_window"
         @close_window="close_window"
@@ -1748,17 +1693,11 @@ watch([current_queue, queue_source, playback_mode], () => {
       />
 
       <ContentArea
-        :active_view="active_view"
-        :query="query"
         :loading="loading"
         :tracks="tracks"
         :display_tracks="display_tracks"
         :status_path="status.path"
-        :locate_track_request="locate_playing_track_request"
         :is_playing="status.playing"
-        :selected_artist="selected_artist"
-        :selected_album="selected_album"
-        :selected_playlist_id="selected_user_playlist.id"
         :playback_queue_source="queue_source"
         :artist_items="artist_items"
         :album_items="album_items"
@@ -1769,9 +1708,6 @@ watch([current_queue, queue_source, playback_mode], () => {
         :play_statistics="play_statistics"
         @play_track="play_track_from_view"
         @open_track_menu="open_track_context_menu"
-        @open_artist="open_artist_playlist"
-        @open_album="open_album_playlist"
-        @close_detail="close_detail_playlist"
       />
     </section>
 
@@ -1846,8 +1782,6 @@ watch([current_queue, queue_source, playback_mode], () => {
           @open_queue="ui_store.open_playback_queue()"
           @cycle_playback_mode="cycle_playback_mode"
           @change_volume="change_volume"
-          @open_artist="open_artist_from_now_playing"
-          @open_album="open_album_from_now_playing"
         />
       </KeepAlive>
     </Transition>

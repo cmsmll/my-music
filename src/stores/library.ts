@@ -1,4 +1,5 @@
 import { defineStore } from "pinia";
+import { ref } from "vue";
 import type { PlayStatistics, PlaylistBundle, Track } from "../types/music";
 
 function empty_playlist(id: string, name: string, kind: string) {
@@ -38,37 +39,50 @@ export function empty_play_statistics(): PlayStatistics {
   };
 }
 
-export const use_library_store = defineStore("library", {
-  state: () => ({
-    selected_directories: [] as string[],
-    library_loaded: false,
-    playlists: empty_playlist_bundle(),
-    play_statistics: empty_play_statistics(),
-  }),
-  actions: {
-    set_selected_directories(directories: string[]) {
-      this.selected_directories = [...directories];
-    },
-    set_library_loaded(loaded: boolean) {
-      this.library_loaded = loaded;
-    },
-    set_playlists(playlists: PlaylistBundle) {
-      this.playlists = playlists;
-    },
-    set_play_statistics(statistics: PlayStatistics) {
-      this.play_statistics = statistics;
-    },
-    add_recent_track(track: Track) {
-      const track_ids = this.playlists.recent.track_ids.filter((track_id) => track_id !== track.id);
-      track_ids.unshift(track.id);
-      this.playlists.recent = {
-        ...this.playlists.recent,
-        track_ids: track_ids.slice(0, 100),
-        metadata: {
-          ...this.playlists.recent.metadata,
-          track_count: Math.min(track_ids.length, 100),
-        },
-      };
-    },
-  },
+export const use_library_store = defineStore("library", () => {
+  const selected_directories = ref<string[]>([]);
+  const library_loaded = ref(false);
+  const playlists = ref<PlaylistBundle>(empty_playlist_bundle());
+  const play_statistics = ref<PlayStatistics>(empty_play_statistics());
+
+  function set_selected_directories(directories: string[]) {
+    selected_directories.value = [...directories];
+  }
+
+  function set_library_loaded(loaded: boolean) {
+    library_loaded.value = loaded;
+  }
+
+  function set_playlists(next_playlists: PlaylistBundle) {
+    playlists.value = next_playlists;
+  }
+
+  function set_play_statistics(statistics: PlayStatistics) {
+    play_statistics.value = statistics;
+  }
+
+  function add_recent_track(track: Track) {
+    const track_ids = playlists.value.recent.track_ids.filter((track_id) => track_id !== track.id);
+    track_ids.unshift(track.id);
+    playlists.value.recent = {
+      ...playlists.value.recent,
+      track_ids: track_ids.slice(0, 100),
+      metadata: {
+        ...playlists.value.recent.metadata,
+        track_count: Math.min(track_ids.length, 100),
+      },
+    };
+  }
+
+  return {
+    selected_directories,
+    library_loaded,
+    playlists,
+    play_statistics,
+    set_selected_directories,
+    set_library_loaded,
+    set_playlists,
+    set_play_statistics,
+    add_recent_track,
+  };
 });

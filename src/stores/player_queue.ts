@@ -1,4 +1,5 @@
 import { defineStore } from "pinia";
+import { computed, ref } from "vue";
 import type { PlaybackMode, QueueSource, Track } from "../types/music";
 
 const default_queue_source: QueueSource = {
@@ -7,40 +8,54 @@ const default_queue_source: QueueSource = {
   label: "全部",
 };
 
-export const use_player_queue_store = defineStore("player_queue", {
-  state: () => ({
-    library_tracks: [] as Track[],
-    current_queue: [] as Track[],
-    queue_source: default_queue_source,
-    current_track_path: null as string | null,
-    playback_mode: "repeat" as PlaybackMode,
-  }),
-  getters: {
-    current_index(state) {
-      if (!state.current_track_path) return -1;
-      return state.current_queue.findIndex((track) => track.path === state.current_track_path);
-    },
-  },
-  actions: {
-    set_library_tracks(tracks: Track[]) {
-      this.library_tracks = tracks;
-      if (this.queue_source.type === "all" || !this.current_queue.length) {
-        this.set_current_queue(default_queue_source, tracks);
-      }
-    },
-    set_current_queue(source: QueueSource, tracks: Track[]) {
-      this.queue_source = source;
-      this.current_queue = [...tracks];
-    },
-    set_current_track_path(path?: string | null) {
-      this.current_track_path = path ?? null;
-    },
-    upsert_track(track: Track) {
-      const update_track = (current: Track) => (current.id === track.id ? { ...current, ...track } : current);
-      this.library_tracks = this.library_tracks.map(update_track);
-    },
-    set_playback_mode(mode: PlaybackMode) {
-      this.playback_mode = mode;
-    },
-  },
+export const use_player_queue_store = defineStore("player_queue", () => {
+  const library_tracks = ref<Track[]>([]);
+  const current_queue = ref<Track[]>([]);
+  const queue_source = ref<QueueSource>(default_queue_source);
+  const current_track_path = ref<string | null>(null);
+  const playback_mode = ref<PlaybackMode>("repeat");
+
+  const current_index = computed(() => {
+    if (!current_track_path.value) return -1;
+    return current_queue.value.findIndex((track) => track.path === current_track_path.value);
+  });
+
+  function set_library_tracks(tracks: Track[]) {
+    library_tracks.value = tracks;
+    if (queue_source.value.type === "all" || !current_queue.value.length) {
+      set_current_queue(default_queue_source, tracks);
+    }
+  }
+
+  function set_current_queue(source: QueueSource, tracks: Track[]) {
+    queue_source.value = source;
+    current_queue.value = [...tracks];
+  }
+
+  function set_current_track_path(path?: string | null) {
+    current_track_path.value = path ?? null;
+  }
+
+  function upsert_track(track: Track) {
+    const update_track = (current: Track) => (current.id === track.id ? { ...current, ...track } : current);
+    library_tracks.value = library_tracks.value.map(update_track);
+  }
+
+  function set_playback_mode(mode: PlaybackMode) {
+    playback_mode.value = mode;
+  }
+
+  return {
+    library_tracks,
+    current_queue,
+    queue_source,
+    current_track_path,
+    playback_mode,
+    current_index,
+    set_library_tracks,
+    set_current_queue,
+    set_current_track_path,
+    upsert_track,
+    set_playback_mode,
+  };
 });

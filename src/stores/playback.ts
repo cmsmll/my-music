@@ -1,4 +1,5 @@
 import { defineStore } from "pinia";
+import { computed, ref } from "vue";
 import type { PlaybackStatus, Track } from "../types/music";
 
 const default_status: PlaybackStatus = {
@@ -8,81 +9,104 @@ const default_status: PlaybackStatus = {
   elapsed: 0,
 };
 
-export const use_playback_store = defineStore("playback", {
-  state: () => ({
-    tracks_by_id: {} as Record<string, Track>,
-    tracks_by_path: {} as Record<string, Track>,
-    current_track_id: null as string | null,
-    current_track_path: null as string | null,
-    status: { ...default_status } as PlaybackStatus,
-    visual_elapsed: 0,
-    progress_dragging: false,
-  }),
-  getters: {
-    current_track(state) {
-      if (state.current_track_id) {
-        const track = state.tracks_by_id[state.current_track_id];
-        if (track) return track;
-      }
-      if (state.current_track_path) {
-        return state.tracks_by_path[state.current_track_path] ?? null;
-      }
-      return null;
-    },
-    duration(): number {
-      return this.current_track?.duration ?? 0;
-    },
-    progress_percent(): number {
-      if (!this.duration) return 0;
-      return Math.min(Math.max((this.visual_elapsed / this.duration) * 100, 0), 100);
-    },
-  },
-  actions: {
-    set_library_tracks(tracks: Track[]) {
-      this.tracks_by_id = Object.fromEntries(tracks.map((track) => [track.id, track]));
-      this.tracks_by_path = Object.fromEntries(tracks.map((track) => [track.path, track]));
-      this.sync_current_track_from_path(this.status.path ?? this.current_track_path);
-    },
-    upsert_track(track: Track) {
-      this.tracks_by_id = {
-        ...this.tracks_by_id,
-        [track.id]: track,
+export const use_playback_store = defineStore("playback", () => {
+  const tracks_by_id = ref<Record<string, Track>>({});
+  const tracks_by_path = ref<Record<string, Track>>({});
+  const current_track_id = ref<string | null>(null);
+  const current_track_path = ref<string | null>(null);
+  const status = ref<PlaybackStatus>({ ...default_status });
+  const visual_elapsed = ref(0);
+  const progress_dragging = ref(false);
+
+  const current_track = computed(() => {
+    if (current_track_id.value) {
+      const track = tracks_by_id.value[current_track_id.value];
+      if (track) return track;
+    }
+    if (current_track_path.value) {
+      return tracks_by_path.value[current_track_path.value] ?? null;
+    }
+    return null;
+  });
+
+  const duration = computed(() => current_track.value?.duration ?? 0);
+  const progress_percent = computed(() => {
+    if (!duration.value) return 0;
+    return Math.min(Math.max((visual_elapsed.value / duration.value) * 100, 0), 100);
+  });
+
+  function set_library_tracks(tracks: Track[]) {
+    tracks_by_id.value = Object.fromEntries(tracks.map((track) => [track.id, track]));
+    tracks_by_path.value = Object.fromEntries(tracks.map((track) => [track.path, track]));
+    sync_current_track_from_path(status.value.path ?? current_track_path.value);
+  }
+
+  function upsert_track(track: Track) {
+    tracks_by_id.value = {
+      ...tracks_by_id.value,
+      [track.id]: track,
+    };
+    if (track.path) {
+      tracks_by_path.value = {
+        ...tracks_by_path.value,
+        [track.path]: track,
       };
-      if (track.path) {
-        this.tracks_by_path = {
-          ...this.tracks_by_path,
-          [track.path]: track,
-        };
-      }
-      this.sync_current_track_from_path(this.status.path ?? this.current_track_path);
-    },
-    set_status(status: PlaybackStatus) {
-      this.status = { ...status };
-      this.sync_current_track_from_path(status.path);
-    },
-    patch_status(status: Partial<PlaybackStatus>) {
-      this.set_status({
-        ...this.status,
-        ...status,
-      });
-    },
-    set_visual_elapsed(seconds: number) {
-      this.visual_elapsed = Math.max(0, seconds);
-    },
-    set_progress_dragging(dragging: boolean) {
-      this.progress_dragging = dragging;
-    },
-    sync_current_track_from_path(path?: string | null) {
-      this.current_track_path = path ?? null;
-      const track = path ? this.tracks_by_path[path] : null;
-      this.current_track_id = track?.id ?? null;
-    },
-    reset() {
-      this.status = { ...default_status };
-      this.current_track_id = null;
-      this.current_track_path = null;
-      this.visual_elapsed = 0;
-      this.progress_dragging = false;
-    },
-  },
+    }
+    sync_current_track_from_path(status.value.path ?? current_track_path.value);
+  }
+
+  function set_status(next_status: PlaybackStatus) {
+    status.value = { ...next_status };
+    sync_current_track_from_path(next_status.path);
+  }
+
+  function patch_status(next_status: Partial<PlaybackStatus>) {
+    set_status({
+      ...status.value,
+      ...next_status,
+    });
+  }
+
+  function set_visual_elapsed(seconds: number) {
+    visual_elapsed.value = Math.max(0, seconds);
+  }
+
+  function set_progress_dragging(dragging: boolean) {
+    progress_dragging.value = dragging;
+  }
+
+  function sync_current_track_from_path(path?: string | null) {
+    current_track_path.value = path ?? null;
+    const track = path ? tracks_by_path.value[path] : null;
+    current_track_id.value = track?.id ?? null;
+  }
+
+  function reset() {
+    status.value = { ...default_status };
+    current_track_id.value = null;
+    current_track_path.value = null;
+    visual_elapsed.value = 0;
+    progress_dragging.value = false;
+  }
+
+  return {
+    tracks_by_id,
+    tracks_by_path,
+    current_track_id,
+    current_track_path,
+    status,
+    visual_elapsed,
+    progress_dragging,
+    current_track,
+    duration,
+    progress_percent,
+    set_library_tracks,
+    upsert_track,
+    set_status,
+    patch_status,
+    set_visual_elapsed,
+    set_progress_dragging,
+    sync_current_track_from_path,
+    reset,
+  };
 });

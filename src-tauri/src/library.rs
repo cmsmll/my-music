@@ -12,11 +12,12 @@ use lofty::{
     probe::Probe,
     tag::ItemKey,
 };
-use rodio::{Decoder, Source};
 use std::{
-    fs::{self, File},
-    io::BufReader,
+    fs,
     path::{Path, PathBuf},
+};
+use symphonia::core::{
+    formats::FormatOptions, io::MediaSourceStream, meta::MetadataOptions, probe::Hint,
 };
 use walkdir::WalkDir;
 
@@ -471,7 +472,30 @@ pub(crate) fn parse_artist_and_title(file_name: &str) -> (String, String) {
 }
 
 pub(crate) fn duration_seconds(path: &Path) -> Option<u64> {
-    let file = File::open(path).ok()?;
-    let decoder = Decoder::new(BufReader::new(file)).ok()?;
-    decoder.total_duration().map(|duration| duration.as_secs())
+    let file = fs::File::open(path).ok()?;
+    let media_stream = MediaSourceStream::new(Box::new(file), Default::default());
+
+    let mut hint = Hint::new();
+    if let Some(extension) = path.extension().and_then(|extension| extension.to_str()) {
+        hint.with_extension(extension);
+    }
+
+    let probed = symphonia::default::get_probe()
+        .format(
+            &hint,
+            media_stream,
+            &FormatOptions::default(),
+            &MetadataOptions::default(),
+        )
+        .ok()?;
+    let track = probed
+        .format
+        .default_track()
+        .or_else(|| probed.format.tracks().first())?;
+    let duration = track
+        .codec_params
+        .time_base?
+        .calc_time(track.codec_params.n_frames?);
+
+    Some(duration.seconds)
 }

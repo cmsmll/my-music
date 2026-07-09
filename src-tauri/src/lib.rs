@@ -52,7 +52,7 @@ pub fn run() {
             commands::reorder_user_playlists,
             commands::get_play_statistics,
             commands::record_track_started,
-            commands::record_frontend_audio_error,
+            commands::record_audio_error,
             commands::record_listening_time
         ])
         .run(tauri::generate_context!())

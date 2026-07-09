@@ -421,7 +421,7 @@ pub(crate) fn reorder_user_playlists(
     load_playlist_bundle(&config)
 }
 
-/// 记录前端播放器开始播放的歌曲，用于最近播放和播放统计。
+/// 记录播放器开始播放的歌曲，用于最近播放和播放统计。
 #[tauri::command]
 pub(crate) fn record_track_started(
     config_manager: tauri::State<'_, ConfigManager>,
@@ -442,9 +442,9 @@ pub(crate) fn record_track_started(
     Ok(play_statistics)
 }
 
-/// 记录前端 audio 标签播放错误，便于排查 WebView 媒体解码和本地资源加载问题。
+/// 记录音频播放错误，便于排查 WebView 媒体解码和本地资源加载问题。
 #[tauri::command]
-pub(crate) fn record_frontend_audio_error(
+pub(crate) fn record_audio_error(
     config_manager: tauri::State<'_, ConfigManager>,
     path: Option<String>,
     source: String,
@@ -455,7 +455,7 @@ pub(crate) fn record_frontend_audio_error(
     network_state: u16,
 ) -> Result<(), String> {
     let config = config_manager.get()?;
-    write_frontend_audio_error_log(
+    write_audio_error_log(
         &config,
         path.as_deref(),
         &source,
@@ -492,7 +492,7 @@ pub(crate) fn record_listening_time(
     record_track_listening_seconds(&config, track, &track_id, seconds)
 }
 
-fn write_frontend_audio_error_log(
+fn write_audio_error_log(
     config: &AppConfig,
     path: Option<&str>,
     source: &str,
@@ -504,7 +504,7 @@ fn write_frontend_audio_error_log(
 ) {
     let log_dir = PathBuf::from(&config.cache.log_cache_dir);
     let _ = fs::create_dir_all(&log_dir);
-    let log_path = log_dir.join("frontend-audio.log");
+    let log_path = log_dir.join("audio.log");
     let Ok(mut file) = OpenOptions::new().create(true).append(true).open(log_path) else {
         return;
     };
@@ -515,7 +515,7 @@ fn write_frontend_audio_error_log(
         .unwrap_or_else(|| "无".to_string());
     let _ = writeln!(
         file,
-        "[{}] 前端音频播放失败 | 文件=\"{}\" | 地址=\"{}\" | 错误码={} | 秒数={} | ready_state={} | network_state={} | 原因=\"{}\"",
+        "[{}] 音频播放失败 | 文件=\"{}\" | 地址=\"{}\" | 错误码={} | 秒数={} | ready_state={} | network_state={} | 原因=\"{}\"",
         unix_timestamp(),
         file_path,
         log_value(source),

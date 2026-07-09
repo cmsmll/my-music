@@ -1,7 +1,7 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { PlaybackStatus, Track } from "../types/music";
 
-export type FrontendAudioError = {
+export type AudioError = {
   path: string | null;
   source: string;
   code: number | null;
@@ -11,21 +11,21 @@ export type FrontendAudioError = {
   network_state: number;
 };
 
-export type FrontendAudioEvents = {
+export type AudioEvents = {
   status_change?: (status: PlaybackStatus) => void;
   ended?: (status: PlaybackStatus) => void;
-  error?: (error: FrontendAudioError) => void;
+  error?: (error: AudioError) => void;
 };
 
-export class FrontendAudioPlayInterruptedError extends Error {
+export class AudioPlayInterruptedError extends Error {
   constructor() {
     super("播放请求已被新的播放加载打断");
-    this.name = "FrontendAudioPlayInterruptedError";
+    this.name = "AudioPlayInterruptedError";
   }
 }
 
-export function is_frontend_audio_play_interrupted(error: unknown) {
-  if (error instanceof FrontendAudioPlayInterruptedError) return true;
+export function is_audio_play_interrupted(error: unknown) {
+  if (error instanceof AudioPlayInterruptedError) return true;
   if (error instanceof DOMException && error.name === "AbortError") return true;
   const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
   return (
@@ -35,18 +35,18 @@ export function is_frontend_audio_play_interrupted(error: unknown) {
   );
 }
 
-export function is_frontend_audio_error_ignorable(error: FrontendAudioError) {
-  return error.code === MediaError.MEDIA_ERR_ABORTED || is_frontend_audio_play_interrupted(error.message);
+export function is_audio_error_ignorable(error: AudioError) {
+  return error.code === MediaError.MEDIA_ERR_ABORTED || is_audio_play_interrupted(error.message);
 }
 
-export class FrontendAudioPlayer {
+export class AudioPlayer {
   private path: string | null = null;
   private volume = 1;
   private play_request_id = 0;
 
   constructor(
     private readonly audio: HTMLAudioElement,
-    private readonly events: FrontendAudioEvents = {},
+    private readonly events: AudioEvents = {},
   ) {
     this.audio.preload = "auto";
     this.audio.controls = false;
@@ -59,7 +59,7 @@ export class FrontendAudioPlayer {
     });
     this.audio.addEventListener("error", () => {
       const error = this.audio_error();
-      if (!is_frontend_audio_error_ignorable(error)) {
+      if (!is_audio_error_ignorable(error)) {
         this.events.error?.(error);
       }
       this.emit_status();
@@ -135,20 +135,20 @@ export class FrontendAudioPlayer {
 
   private async play_audio_for_request(request_id: number) {
     if (!this.is_current_play_request(request_id)) {
-      throw new FrontendAudioPlayInterruptedError();
+      throw new AudioPlayInterruptedError();
     }
 
     try {
       await this.audio.play();
     } catch (error) {
-      if (!this.is_current_play_request(request_id) || is_frontend_audio_play_interrupted(error)) {
-        throw new FrontendAudioPlayInterruptedError();
+      if (!this.is_current_play_request(request_id) || is_audio_play_interrupted(error)) {
+        throw new AudioPlayInterruptedError();
       }
       throw error;
     }
 
     if (!this.is_current_play_request(request_id)) {
-      throw new FrontendAudioPlayInterruptedError();
+      throw new AudioPlayInterruptedError();
     }
   }
 
@@ -167,7 +167,7 @@ export class FrontendAudioPlayer {
         if (this.is_current_play_request(request_id)) {
           resolve();
         } else {
-          reject(new FrontendAudioPlayInterruptedError());
+          reject(new AudioPlayInterruptedError());
         }
       };
       const handle_error = () => {
@@ -175,7 +175,7 @@ export class FrontendAudioPlayer {
         if (this.is_current_play_request(request_id)) {
           reject(new Error(this.audio_error_message()));
         } else {
-          reject(new FrontendAudioPlayInterruptedError());
+          reject(new AudioPlayInterruptedError());
         }
       };
       this.audio.addEventListener("loadedmetadata", handle_loaded, { once: true });
@@ -190,7 +190,7 @@ export class FrontendAudioPlayer {
 
   private audio_error_message() {
     const error = this.audio.error;
-    if (!error) return "前端音频播放失败";
+    if (!error) return "音频播放失败";
     switch (error.code) {
       case MediaError.MEDIA_ERR_ABORTED:
         return "音频播放被中止";
@@ -199,13 +199,13 @@ export class FrontendAudioPlayer {
       case MediaError.MEDIA_ERR_DECODE:
         return "音频格式无法解码";
       case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
-        return "当前音频格式不支持前端播放";
+        return "当前音频格式不支持播放";
       default:
-        return "前端音频播放失败";
+        return "音频播放失败";
     }
   }
 
-  private audio_error(): FrontendAudioError {
+  private audio_error(): AudioError {
     return {
       path: this.path,
       source: this.audio.currentSrc || this.audio.src,

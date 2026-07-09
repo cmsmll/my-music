@@ -55,10 +55,10 @@ import type {
   ViewKey,
 } from "./types/music";
 import {
-  FrontendAudioPlayer,
-  is_frontend_audio_error_ignorable,
-  is_frontend_audio_play_interrupted,
-} from "./utils/frontend_audio";
+  AudioPlayer,
+  is_audio_error_ignorable,
+  is_audio_play_interrupted,
+} from "./utils/audio_player";
 import { display_album, display_artist, display_title, is_missing_track } from "./utils/track";
 
 const ConfirmDialog = defineAsyncComponent(() => import("./components/ConfirmDialog.vue"));
@@ -136,7 +136,7 @@ const library_scan_dialog = ref<LibraryScanDialogState>({
 });
 const main_player_bar = ref<PlayerBarExpose | null>(null);
 const now_playing_player_bar = ref<PlayerBarExpose | null>(null);
-const frontend_audio_element = ref<HTMLAudioElement | null>(null);
+const audio_element = ref<HTMLAudioElement | null>(null);
 const sidebar_width = ref(250);
 const sidebar_resizing = ref(false);
 let status_timer: number | undefined;
@@ -153,7 +153,7 @@ let handled_completion_path = "";
 let sidebar_resize_start_x = 0;
 let sidebar_resize_start_width = 250;
 let media_shortcut_unlisteners: UnlistenFn[] = [];
-let frontend_audio_player: FrontendAudioPlayer | null = null;
+let audio_player: AudioPlayer | null = null;
 let window_resize_unlisten: UnlistenFn | null = null;
 let window_close_unlisten: UnlistenFn | null = null;
 let media_shortcut_listeners_disposed = false;
@@ -335,16 +335,16 @@ const selected_user_playlist = computed(() => {
 });
 
 function show_error_message(error: unknown) {
-  if (is_frontend_audio_play_interrupted(error)) return;
+  if (is_audio_play_interrupted(error)) return;
   notification.error(error instanceof Error ? error.message : String(error));
 }
 
-function ensure_frontend_audio_player() {
-  if (frontend_audio_player) return frontend_audio_player;
-  if (!frontend_audio_element.value) {
-    throw new Error("前端音频元素未初始化");
+function ensure_audio_player() {
+  if (audio_player) return audio_player;
+  if (!audio_element.value) {
+    throw new Error("音频元素未初始化");
   }
-  frontend_audio_player = new FrontendAudioPlayer(frontend_audio_element.value, {
+  audio_player = new AudioPlayer(audio_element.value, {
     status_change: (next_status) => {
       apply_playback_status(next_status);
     },
@@ -352,9 +352,9 @@ function ensure_frontend_audio_player() {
       void handle_playback_completion(next_status);
     },
     error: (error) => {
-      if (is_frontend_audio_error_ignorable(error)) return;
+      if (is_audio_error_ignorable(error)) return;
       notification.error(error.message);
-      void invoke("record_frontend_audio_error", {
+      void invoke("record_audio_error", {
         path: error.path,
         source: error.source,
         code: error.code,
@@ -363,15 +363,15 @@ function ensure_frontend_audio_player() {
         readyState: error.ready_state,
         networkState: error.network_state,
       }).catch((log_error) => {
-        console.warn("无法记录前端音频错误", log_error);
+        console.warn("无法记录音频错误", log_error);
       });
     },
   });
-  return frontend_audio_player;
+  return audio_player;
 }
 
-function frontend_audio_status() {
-  return ensure_frontend_audio_player().status();
+function audio_status() {
+  return ensure_audio_player().status();
 }
 
 async function choose_music_directory() {
@@ -529,7 +529,7 @@ async function load_startup_state() {
 async function apply_config_state(config: AppConfig) {
   sidebar_width.value = clamp_sidebar_width(config.state.sidebar_width);
   playback_store.patch_status({ volume: config.state.volume });
-  ensure_frontend_audio_player().set_volume(config.state.volume);
+  ensure_audio_player().set_volume(config.state.volume);
 
   if (config.state.width > 0 && config.state.height > 0) {
     try {
@@ -586,7 +586,7 @@ async function play(track: Track, seconds = 0) {
     restored_playback_pending = false;
     handled_completion_path = "";
     clear_pending_seek();
-    await ensure_frontend_audio_player().play(track, seconds);
+    await ensure_audio_player().play(track, seconds);
     library_store.add_recent_track(track);
     play_statistics.value = await invoke<PlayStatistics>("record_track_started", { path: track.path });
     start_listening_session(track);
@@ -621,12 +621,12 @@ async function toggle_playback() {
 
   try {
     if (was_playing) {
-      ensure_frontend_audio_player().pause();
+      ensure_audio_player().pause();
     } else {
-      await ensure_frontend_audio_player().resume();
+      await ensure_audio_player().resume();
     }
   } catch (error) {
-    if (is_frontend_audio_play_interrupted(error)) return;
+    if (is_audio_play_interrupted(error)) return;
     show_error_message(error);
     return;
   }
@@ -653,7 +653,7 @@ async function stop_playback() {
     await flush_listening_time();
     restored_playback_pending = false;
     clear_pending_seek();
-    ensure_frontend_audio_player().stop();
+    ensure_audio_player().stop();
   } catch (error) {
     show_error_message(error);
   }
@@ -744,8 +744,8 @@ async function close_window_after_config_save() {
 
 async function change_volume(event: Event) {
   const target = event.target as HTMLInputElement;
-  ensure_frontend_audio_player().set_volume(Number(target.value));
-  const next_status = frontend_audio_status();
+  ensure_audio_player().set_volume(Number(target.value));
+  const next_status = audio_status();
   apply_playback_status(next_status);
   app_config_store.update_state({ volume: next_status.volume });
 }
@@ -778,8 +778,8 @@ async function commit_progress_seek(seconds = progress_preview_seconds) {
   try {
     handled_completion_path = "";
     hold_progress_at_seek_target(target_seconds);
-    ensure_frontend_audio_player().seek(target_seconds);
-    apply_playback_status(frontend_audio_status());
+    ensure_audio_player().seek(target_seconds);
+    apply_playback_status(audio_status());
   } catch (error) {
     clear_pending_seek();
     show_error_message(error);
@@ -819,7 +819,7 @@ function cancel_progress_drag(event: PointerEvent) {
 function start_status_polling() {
   if (status_timer) window.clearInterval(status_timer);
   status_timer = window.setInterval(() => {
-    const next_status = frontend_audio_status();
+    const next_status = audio_status();
     apply_playback_status(next_status);
     void handle_playback_completion(next_status);
   }, 1000);
@@ -1649,8 +1649,8 @@ onBeforeUnmount(() => {
   media_shortcut_listeners_disposed = true;
   media_shortcut_unlisteners.forEach((unlisten) => unlisten());
   media_shortcut_unlisteners = [];
-  frontend_audio_player?.destroy();
-  frontend_audio_player = null;
+  audio_player?.destroy();
+  audio_player = null;
   window_resize_unlisten?.();
   window_resize_unlisten = null;
   window_close_unlisten?.();
@@ -1667,7 +1667,7 @@ onBeforeUnmount(() => {
 
 onMounted(() => {
   media_shortcut_listeners_disposed = false;
-  ensure_frontend_audio_player();
+  ensure_audio_player();
   window.addEventListener("beforeunload", handle_before_unload);
   window.addEventListener("pointerdown", close_context_menus_on_pointer);
   window.addEventListener("contextmenu", prevent_default_context_menu);
@@ -1715,7 +1715,7 @@ watch([current_queue, queue_source, playback_mode], () => {
 
 <template>
   <main class="app_shell" :class="{ sidebar_compact, sidebar_resizing }" :style="app_shell_style">
-    <audio ref="frontend_audio_element" class="frontend_audio_element" preload="auto" />
+    <audio ref="audio_element" class="audio_element" preload="auto" />
     <LibrarySidebar
       :active_view="active_view"
       :has_query="Boolean(query.trim())"
@@ -1968,7 +1968,7 @@ button:focus-visible {
   background-color: var(--app_background_color, #ffffff);
 }
 
-.frontend_audio_element {
+.audio_element {
   position: absolute;
   width: 1px;
   height: 1px;

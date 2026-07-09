@@ -21,15 +21,16 @@ const props = withDefaults(defineProps<{
 });
 
 const playback_store = use_playback_store();
-const { visual_elapsed } = storeToRefs(playback_store);
+const { current_track_path, progress_dragging, visual_elapsed } = storeToRefs(playback_store);
 const lyrics_viewport = ref<HTMLElement | null>(null);
 const active_anchor_index = ref(-1);
 const lyric_anchor_prefix = useId();
-const manual_scroll_lock_ms = 5000;
+const manual_scroll_lock_ms = 3000;
 const last_manual_scroll_at = ref(0);
 let scroll_animation_frame: number | undefined;
 let programmatic_scroll_active = false;
 let programmatic_scroll_reset_timer: number | undefined;
+let last_visual_elapsed = visual_elapsed.value;
 
 const lyric_lines = computed(() => {
   const parsed: LineLyricItem[] = [];
@@ -171,6 +172,16 @@ function should_skip_auto_scroll() {
   return performance.now() - last_manual_scroll_at.value < manual_scroll_lock_ms;
 }
 
+function clear_manual_scroll_lock() {
+  last_manual_scroll_at.value = 0;
+}
+
+function is_seek_elapsed_change(seconds: number) {
+  const elapsed_delta = Math.abs(seconds - last_visual_elapsed);
+  last_visual_elapsed = seconds;
+  return elapsed_delta > 1.5;
+}
+
 function ease_out_cubic(progress: number) {
   return 1 - (1 - progress) ** 3;
 }
@@ -259,8 +270,18 @@ async function sync_visible_anchor() {
 }
 
 watch(visual_elapsed, (seconds) => {
-  sync_anchor_for_elapsed(seconds);
+  const force = progress_dragging.value || is_seek_elapsed_change(seconds);
+  if (force) {
+    clear_manual_scroll_lock();
+  }
+  sync_anchor_for_elapsed(seconds, force);
 }, { immediate: true });
+
+watch(current_track_path, () => {
+  clear_manual_scroll_lock();
+  last_visual_elapsed = visual_elapsed.value;
+  void sync_visible_anchor();
+});
 
 onActivated(() => {
   void sync_visible_anchor();

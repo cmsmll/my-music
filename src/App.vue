@@ -54,7 +54,11 @@ import type {
   Track,
   ViewKey,
 } from "./types/music";
-import { FrontendAudioPlayer } from "./utils/frontend_audio";
+import {
+  FrontendAudioPlayer,
+  is_frontend_audio_error_ignorable,
+  is_frontend_audio_play_interrupted,
+} from "./utils/frontend_audio";
 import { display_album, display_artist, display_title, is_missing_track } from "./utils/track";
 
 const ConfirmDialog = defineAsyncComponent(() => import("./components/ConfirmDialog.vue"));
@@ -331,6 +335,7 @@ const selected_user_playlist = computed(() => {
 });
 
 function show_error_message(error: unknown) {
+  if (is_frontend_audio_play_interrupted(error)) return;
   notification.error(error instanceof Error ? error.message : String(error));
 }
 
@@ -347,6 +352,7 @@ function ensure_frontend_audio_player() {
       void handle_playback_completion(next_status);
     },
     error: (error) => {
+      if (is_frontend_audio_error_ignorable(error)) return;
       notification.error(error.message);
       void invoke("record_frontend_audio_error", {
         path: error.path,
@@ -613,10 +619,16 @@ async function toggle_playback() {
     await flush_listening_time();
   }
 
-  if (was_playing) {
-    ensure_frontend_audio_player().pause();
-  } else {
-    await ensure_frontend_audio_player().resume();
+  try {
+    if (was_playing) {
+      ensure_frontend_audio_player().pause();
+    } else {
+      await ensure_frontend_audio_player().resume();
+    }
+  } catch (error) {
+    if (is_frontend_audio_play_interrupted(error)) return;
+    show_error_message(error);
+    return;
   }
   if (!was_playing && status.value.playing && current_track.value) {
     start_listening_session(current_track.value);
@@ -2214,9 +2226,6 @@ p {
   flex: 0 0 auto;
   border-radius: 8px;
   color: #ffffff;
-  background:
-    linear-gradient(145deg, #21242b, var(--theme-highlight-color, #426dff)),
-    #21242b;
   font-weight: 900;
 }
 
@@ -2763,9 +2772,6 @@ p {
   height: 42px;
   border-radius: 8px;
   color: #ffffff;
-  background:
-    linear-gradient(145deg, #21242b, var(--theme-highlight-color, #426dff)),
-    #21242b;
   font-weight: 900;
 }
 

@@ -17,9 +17,32 @@ export type FrontendAudioEvents = {
   error?: (error: FrontendAudioError) => void;
 };
 
+export class FrontendAudioPlayInterruptedError extends Error {
+  constructor() {
+    super("播放请求已被新的播放加载打断");
+    this.name = "FrontendAudioPlayInterruptedError";
+  }
+}
+
+export function is_frontend_audio_play_interrupted(error: unknown) {
+  if (error instanceof FrontendAudioPlayInterruptedError) return true;
+  if (error instanceof DOMException && error.name === "AbortError") return true;
+  const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  return (
+    message.includes("play() request was interrupted") ||
+    message.includes("interrupted by a new load request") ||
+    message.includes("interrupted by a call to pause")
+  );
+}
+
+export function is_frontend_audio_error_ignorable(error: FrontendAudioError) {
+  return error.code === MediaError.MEDIA_ERR_ABORTED || is_frontend_audio_play_interrupted(error.message);
+}
+
 export class FrontendAudioPlayer {
   private path: string | null = null;
   private volume = 1;
+  private play_request_id = 0;
 
   constructor(
     private readonly audio: HTMLAudioElement,
@@ -35,35 +58,42 @@ export class FrontendAudioPlayer {
       this.events.ended?.(this.status());
     });
     this.audio.addEventListener("error", () => {
-      this.events.error?.(this.audio_error());
+      const error = this.audio_error();
+      if (!is_frontend_audio_error_ignorable(error)) {
+        this.events.error?.(error);
+      }
       this.emit_status();
     });
   }
 
   async play(track: Track, seconds = 0) {
+    const request_id = ++this.play_request_id;
     this.path = track.path;
     this.audio.src = convertFileSrc(track.path);
     this.audio.volume = this.safe_audio_volume(this.volume);
     if (seconds > 0) {
-      await this.wait_for_metadata();
+      await this.wait_for_metadata(request_id);
       this.audio.currentTime = Math.max(seconds, 0);
     }
-    await this.audio.play();
+    await this.play_audio_for_request(request_id);
     this.emit_status();
   }
 
   pause() {
+    this.play_request_id += 1;
     this.audio.pause();
     this.emit_status();
   }
 
   async resume() {
     if (!this.path) return;
-    await this.audio.play();
+    const request_id = ++this.play_request_id;
+    await this.play_audio_for_request(request_id);
     this.emit_status();
   }
 
   stop() {
+    this.play_request_id += 1;
     this.audio.pause();
     this.audio.removeAttribute("src");
     this.audio.load();
@@ -103,7 +133,26 @@ export class FrontendAudioPlayer {
     return Math.min(Math.max(volume, 0), 1);
   }
 
-  private wait_for_metadata() {
+  private async play_audio_for_request(request_id: number) {
+    if (!this.is_current_play_request(request_id)) {
+      throw new FrontendAudioPlayInterruptedError();
+    }
+
+    try {
+      await this.audio.play();
+    } catch (error) {
+      if (!this.is_current_play_request(request_id) || is_frontend_audio_play_interrupted(error)) {
+        throw new FrontendAudioPlayInterruptedError();
+      }
+      throw error;
+    }
+
+    if (!this.is_current_play_request(request_id)) {
+      throw new FrontendAudioPlayInterruptedError();
+    }
+  }
+
+  private wait_for_metadata(request_id: number) {
     if (this.audio.readyState >= HTMLMediaElement.HAVE_METADATA) {
       return Promise.resolve();
     }
@@ -115,16 +164,28 @@ export class FrontendAudioPlayer {
       };
       const handle_loaded = () => {
         cleanup();
-        resolve();
+        if (this.is_current_play_request(request_id)) {
+          resolve();
+        } else {
+          reject(new FrontendAudioPlayInterruptedError());
+        }
       };
       const handle_error = () => {
         cleanup();
-        reject(new Error(this.audio_error_message()));
+        if (this.is_current_play_request(request_id)) {
+          reject(new Error(this.audio_error_message()));
+        } else {
+          reject(new FrontendAudioPlayInterruptedError());
+        }
       };
       this.audio.addEventListener("loadedmetadata", handle_loaded, { once: true });
       this.audio.addEventListener("error", handle_error, { once: true });
       this.audio.load();
     });
+  }
+
+  private is_current_play_request(request_id: number) {
+    return request_id === this.play_request_id;
   }
 
   private audio_error_message() {

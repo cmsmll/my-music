@@ -284,7 +284,12 @@ async function sync_visible_anchor() {
 }
 
 watch(visual_elapsed, (seconds) => {
-  const bypass_manual_scroll_lock = progress_dragging.value || is_seek_elapsed_change(seconds);
+  if (progress_dragging.value) {
+    last_visual_elapsed = seconds;
+    return;
+  }
+
+  const bypass_manual_scroll_lock = is_seek_elapsed_change(seconds);
   if (bypass_manual_scroll_lock) {
     clear_manual_scroll_lock();
   }
@@ -297,6 +302,7 @@ watch(visual_elapsed, (seconds) => {
 watch(progress_dragging, (dragging, was_dragging) => {
   if (dragging || !was_dragging) return;
   clear_manual_scroll_lock();
+  last_visual_elapsed = visual_elapsed.value;
   sync_anchor_for_elapsed(visual_elapsed.value, {
     force: true,
     bypass_manual_scroll_lock: true,

@@ -32,7 +32,6 @@ export type CacheConfig = {
   playlist_cache_dir: string;
   lyrics_cache_dir: string;
   cover_cache_dir: string;
-  spectrum_cache_dir: string;
   log_cache_dir: string;
 };
 
@@ -78,7 +77,6 @@ export type AppStartup = {
   tracks: Track[];
   playlists: PlaylistBundle;
   play_statistics: PlayStatistics;
-  playback_record?: PlaybackRecord | null;
 };
 
 export type LibraryRefreshResult = {
@@ -120,7 +118,7 @@ export type LyricsUseResult = {
 
 export type ViewKey = "all" | "artists" | "albums" | "stats" | "recent" | "user_playlist";
 
-export type PlaybackMode = "random" | "shuffle" | "repeat" | "repeat_one";
+export type PlaybackMode = "shuffle" | "random" | "repeat" | "repeat_one";
 
 export type PlaybackModeItem = {
   mode: PlaybackMode;
@@ -141,7 +139,6 @@ export type PlaybackRecord = {
   playback_mode: PlaybackMode;
   playlist: PlaybackRecordSource;
   secondary_playlist?: PlaybackRecordSource | null;
-  updated_at: number;
 };
 
 export type ArtistItem = {

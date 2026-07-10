@@ -13,7 +13,11 @@ use super::playlist::*;
 use super::statistics::*;
 use crate::logger::{self, LogKind};
 use crate::utils::{safe_cache_name, short_hash, unix_timestamp, write_json_cache};
-use std::{fs, path::PathBuf};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    process::Command,
+};
 use tauri::Manager;
 
 /// 获取应用启动所需的配置、曲库缓存、歌单缓存和播放统计。
@@ -39,13 +43,6 @@ pub(crate) async fn get_startup_state(app: tauri::AppHandle) -> Result<AppStartu
             );
             PlayStatistics::default()
         });
-        let playback_record = read_playback_record(&config).unwrap_or_else(|err| {
-            logger::warn(
-                LogKind::App,
-                format!("读取启动播放记录缓存失败 | 原因=\"{}\"", &err),
-            );
-            None
-        });
 
         Ok(AppStartup {
             config,
@@ -53,7 +50,6 @@ pub(crate) async fn get_startup_state(app: tauri::AppHandle) -> Result<AppStartu
             tracks,
             playlists,
             play_statistics,
-            playback_record,
         })
     })
     .await
@@ -156,14 +152,90 @@ pub(crate) fn get_playlist_bundle(
     load_playlist_bundle(&config)
 }
 
-/// 保存前端同步过来的轻量播放记录。
+/// 打开指定目录，失败时写入应用日志并把错误信息返回给前端。
 #[tauri::command]
-pub(crate) fn save_playback_record(
-    config_manager: tauri::State<'_, ConfigManager>,
-    record: PlaybackRecord,
-) -> Result<(), String> {
-    let config = config_manager.get()?;
-    write_playback_record(&config, &record)
+pub(crate) fn open_directory(path: String) -> Result<(), String> {
+    let directory = resolve_open_directory(&path).map_err(|err| {
+        let message = format!("无法打开文件夹: {err}");
+        logger::error(
+            LogKind::App,
+            format!(
+                "打开目录失败 | 路径=\"{}\" | 原因=\"{}\"",
+                path.trim(),
+                err
+            ),
+        );
+        message
+    })?;
+
+    open_directory_with_system(&directory).map_err(|err| {
+        let message = format!("无法打开文件夹: {err}");
+        logger::error(
+            LogKind::App,
+            format!(
+                "打开目录失败 | 路径=\"{}\" | 原因=\"{}\"",
+                directory.display(),
+                err
+            ),
+        );
+        message
+    })
+}
+
+fn resolve_open_directory(path: &str) -> Result<PathBuf, String> {
+    let trimmed_path = path.trim();
+    if trimmed_path.is_empty() {
+        return Err("路径为空".to_string());
+    }
+
+    let path = PathBuf::from(trimmed_path);
+    if path.is_dir() {
+        return Ok(path);
+    }
+    if path.is_file() {
+        return path
+            .parent()
+            .map(Path::to_path_buf)
+            .ok_or_else(|| "无法解析文件所在目录".to_string());
+    }
+
+    if let Some(parent) = path.parent().filter(|parent| parent.is_dir()) {
+        return Ok(parent.to_path_buf());
+    }
+
+    Err("目录不存在".to_string())
+}
+
+fn open_directory_with_system(directory: &Path) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        return Command::new("explorer")
+            .arg(directory)
+            .spawn()
+            .map(|_| ())
+            .map_err(|err| err.to_string());
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        return Command::new("open")
+            .arg(directory)
+            .spawn()
+            .map(|_| ())
+            .map_err(|err| err.to_string());
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        return Command::new("xdg-open")
+            .arg(directory)
+            .spawn()
+            .map(|_| ())
+            .map_err(|err| err.to_string());
+    }
+
+    #[allow(unreachable_code)]
+    Err("当前系统不支持打开目录".to_string())
 }
 
 /// 读取歌曲歌词缓存文本，文件不存在或路径为空时返回空值。

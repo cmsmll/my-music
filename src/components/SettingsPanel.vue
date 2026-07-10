@@ -25,7 +25,6 @@ type CacheEntryKey =
   | "playlist_cache_dir"
   | "lyrics_cache_dir"
   | "cover_cache_dir"
-  | "spectrum_cache_dir"
   | "log_cache_dir";
 
 type CacheEntry = {
@@ -164,12 +163,6 @@ const cache_entries = computed<CacheEntry[]>(() => [
     key: "cover_cache_dir",
     title: "封面缓存目录",
     value: current_config.value?.cache.cover_cache_dir ?? "",
-    directory: true,
-  },
-  {
-    key: "spectrum_cache_dir",
-    title: "频谱缓存目录",
-    value: current_config.value?.cache.spectrum_cache_dir ?? "",
     directory: true,
   },
   {

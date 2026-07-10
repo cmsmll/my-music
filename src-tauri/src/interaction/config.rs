@@ -40,7 +40,6 @@ impl ConfigManager {
                 cover_cache_dir: app_dir.join("cover-cache").to_string_lossy().to_string(),
                 lyrics_cache_dir: app_dir.join("lyrics-cache").to_string_lossy().to_string(),
                 playlist_cache_dir: app_dir.join("playlist-cache").to_string_lossy().to_string(),
-                spectrum_cache_dir: app_dir.join("spectrum-cache").to_string_lossy().to_string(),
                 log_cache_dir: app_dir.join("log-cache").to_string_lossy().to_string(),
             },
             style: StyleConfig {
@@ -146,8 +145,6 @@ impl ConfigManager {
             .map_err(|err| format!("无法创建歌词缓存目录: {err}"))?;
         fs::create_dir_all(&config.cache.playlist_cache_dir)
             .map_err(|err| format!("无法创建歌单缓存目录: {err}"))?;
-        fs::create_dir_all(&config.cache.spectrum_cache_dir)
-            .map_err(|err| format!("无法创建频谱缓存目录: {err}"))?;
         fs::create_dir_all(&config.cache.log_cache_dir)
             .map_err(|err| format!("无法创建日志缓存目录: {err}"))?;
         if !config.decoder.output_dir.trim().is_empty() {
@@ -184,7 +181,6 @@ pub(crate) fn parse_config(content: &str, default_config: &AppConfig) -> Option<
             cover_cache_dir: None,
             lyrics_cache_dir: None,
             playlist_cache_dir: None,
-            spectrum_cache_dir: None,
             log_cache_dir: None,
             my_playlist_cache_dir: None,
             log_dir: None,
@@ -246,10 +242,6 @@ pub(crate) fn parse_config(content: &str, default_config: &AppConfig) -> Option<
                     .or(cache.my_playlist_cache_dir)
                     .or(config.my_playlist_cache_dir)
                     .unwrap_or_else(|| default_config.cache.playlist_cache_dir.clone()),
-                spectrum_cache_dir: cache
-                    .spectrum_cache_dir
-                    .or(config.spectrum_cache_dir)
-                    .unwrap_or_else(|| default_config.cache.spectrum_cache_dir.clone()),
                 log_cache_dir: cache
                     .log_cache_dir
                     .or(config.log_cache_dir)

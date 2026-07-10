@@ -138,8 +138,6 @@ pub(crate) struct CacheConfig {
     pub(crate) lyrics_cache_dir: String,
     /// 用户歌单和最近播放缓存目录。
     pub(crate) playlist_cache_dir: String,
-    /// 频谱缓存目录。
-    pub(crate) spectrum_cache_dir: String,
     /// 日志缓存目录。
     pub(crate) log_cache_dir: String,
 }
@@ -206,7 +204,6 @@ pub(crate) struct ConfigFile {
     pub(crate) cover_cache_dir: Option<String>,
     pub(crate) lyrics_cache_dir: Option<String>,
     pub(crate) playlist_cache_dir: Option<String>,
-    pub(crate) spectrum_cache_dir: Option<String>,
     pub(crate) log_cache_dir: Option<String>,
     pub(crate) my_playlist_cache_dir: Option<String>,
     pub(crate) log_dir: Option<String>,
@@ -223,7 +220,6 @@ pub(crate) struct CacheConfigFile {
     pub(crate) cover_cache_dir: Option<String>,
     pub(crate) lyrics_cache_dir: Option<String>,
     pub(crate) playlist_cache_dir: Option<String>,
-    pub(crate) spectrum_cache_dir: Option<String>,
     pub(crate) log_cache_dir: Option<String>,
     pub(crate) my_playlist_cache_dir: Option<String>,
     pub(crate) log_dir: Option<String>,
@@ -434,8 +430,6 @@ pub(crate) struct AppStartup {
     pub(crate) playlists: PlaylistBundle,
     /// 播放统计。
     pub(crate) play_statistics: PlayStatistics,
-    /// 最近一次播放记录，用于重启后恢复播放列表、歌曲和进度。
-    pub(crate) playback_record: Option<PlaybackRecord>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -447,41 +441,6 @@ pub(crate) struct LibraryRefreshResult {
     pub(crate) playlists: PlaylistBundle,
     /// 最新播放统计。
     pub(crate) play_statistics: PlayStatistics,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-/// 播放记录来源。
-///
-/// 注意：一级来源表示来自哪个主列表；歌手、专辑详情会额外写入二级来源。
-pub(crate) struct PlaybackRecordSource {
-    /// 来源类型，例如 all、recent、playlist、artists、artist。
-    pub(crate) source_type: String,
-    /// 来源 id。
-    pub(crate) id: String,
-    /// 来源显示名称。
-    pub(crate) label: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-/// 轻量播放记录缓存。
-///
-/// 注意：随机播放不会缓存随机后的队列顺序，恢复时只保证当前歌曲、进度和来源一致。
-pub(crate) struct PlaybackRecord {
-    /// 缓存结构版本。
-    pub(crate) version: u8,
-    /// 当前歌曲 id。
-    pub(crate) track_id: String,
-    /// 当前播放进度，单位秒。
-    pub(crate) elapsed: u64,
-    /// 当前播放模式。
-    pub(crate) playback_mode: String,
-    /// 一级播放列表来源。
-    pub(crate) playlist: PlaybackRecordSource,
-    /// 二级列表来源，主要用于歌手/专辑详情。
-    #[serde(default)]
-    pub(crate) secondary_playlist: Option<PlaybackRecordSource>,
-    /// 最近更新时间戳。
-    pub(crate) updated_at: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]

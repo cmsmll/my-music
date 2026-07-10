@@ -25,6 +25,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(media_shortcut_plugin())
+        .plugin(single_instance_plugin())
         .manage(LyricsSearchService::new())
         .manage(config_manager)
         .setup(|app| {
@@ -43,7 +44,7 @@ pub fn run() {
             interaction::commands::register_media_shortcuts,
             interaction::commands::run_decoder,
             interaction::commands::get_playlist_bundle,
-            interaction::commands::save_playback_record,
+            interaction::commands::open_directory,
             interaction::commands::read_lyrics_cache,
             interaction::commands::search_lyrics,
             interaction::commands::use_lyrics_search_result,
@@ -60,6 +61,27 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// 限制应用单例启动。
+///
+/// 二次启动时不会新建窗口，而是唤起已有主窗口。
+fn single_instance_plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
+    tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+        if let Some(window) = app.get_webview_window("main") {
+            if let Err(err) = window.unminimize() {
+                logger::warn(LogKind::App, format!("单例唤起窗口取消最小化失败 | 原因=\"{err}\""));
+            }
+            if let Err(err) = window.show() {
+                logger::warn(LogKind::App, format!("单例唤起窗口显示失败 | 原因=\"{err}\""));
+            }
+            if let Err(err) = window.set_focus() {
+                logger::warn(LogKind::App, format!("单例唤起窗口聚焦失败 | 原因=\"{err}\""));
+            }
+        } else {
+            logger::warn(LogKind::App, "单例唤起窗口失败 | 原因=\"未找到 main 窗口\"");
+        }
+    })
 }
 
 /// 后台初始化非首屏必需的插件和存储目录。

@@ -28,10 +28,6 @@ import type {
 } from "../types/music";
 import { cover_src, display_album, display_artist, display_title, icon_style } from "../utils/track";
 
-type PlayerBarExpose = {
-  render_progress: (percent: number, seconds: number) => void;
-};
-
 defineProps<{
   playback_mode_button: PlaybackModeItem;
 }>();
@@ -63,7 +59,6 @@ const emit = defineEmits<{
   change_volume: [event: Event];
 }>();
 
-const player_bar = ref<PlayerBarExpose | null>(null);
 const lyrics_loading = ref(false);
 const lyrics_text = ref("");
 const lyrics_lines = ref<string[]>([]);
@@ -369,15 +364,9 @@ onBeforeUnmount(() => {
   window.removeEventListener("keydown", close_on_escape);
 });
 
-function render_progress(percent: number, seconds: number) {
-  player_bar.value?.render_progress(percent, seconds);
-}
-
 function toggle_compact_panel() {
   compact_panel.value = compact_panel.value === "record" ? "lyrics" : "record";
 }
-
-defineExpose({ render_progress });
 </script>
 
 <template>
@@ -534,7 +523,6 @@ defineExpose({ render_progress });
     </div>
 
     <PlayerBar
-      ref="player_bar"
       :playback_mode_button="playback_mode_button"
       :show_cover="false"
       @begin_progress_drag="emit('begin_progress_drag', $event)"

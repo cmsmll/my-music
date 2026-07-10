@@ -566,28 +566,6 @@ pub(crate) fn record_recent_track(config: &AppConfig, path: &str) -> Result<(), 
     write_json_cache(&recent_path, &recent, "最近播放缓存")
 }
 
-/// 读取轻量播放记录缓存。
-pub(crate) fn read_playback_record(config: &AppConfig) -> Result<Option<PlaybackRecord>, String> {
-    let path = playback_record_cache_path(config);
-    if !path.exists() {
-        return Ok(None);
-    }
-
-    let content =
-        fs::read_to_string(&path).map_err(|err| format!("无法读取播放记录缓存: {err}"))?;
-    let record =
-        serde_json::from_str(&content).map_err(|err| format!("无法解析播放记录缓存: {err}"))?;
-    Ok(Some(record))
-}
-
-/// 写入轻量播放记录缓存。
-pub(crate) fn write_playback_record(
-    config: &AppConfig,
-    record: &PlaybackRecord,
-) -> Result<(), String> {
-    write_json_cache(&playback_record_cache_path(config), record, "播放记录缓存")
-}
-
 /// 写入任意 JSON 缓存文件。
 pub(crate) fn write_json_cache<T: Serialize>(
     path: &Path,
@@ -616,6 +594,10 @@ fn is_user_playlist_cache_file(path: &Path) -> bool {
         return false;
     };
 
+    if file_name == "playback_record.json" {
+        return false;
+    }
+
     path.extension().and_then(|extension| extension.to_str()) == Some("json")
         && !file_name.ends_with("_playlist.json")
 }
@@ -638,11 +620,6 @@ fn library_playlist_cache_path(config: &AppConfig, file_name: &str) -> PathBuf {
 /// 返回歌单缓存目录下的缓存文件路径。
 pub(crate) fn playlist_cache_path(config: &AppConfig, file_name: &str) -> PathBuf {
     PathBuf::from(&config.cache.playlist_cache_dir).join(file_name)
-}
-
-/// 返回播放记录缓存路径。
-pub(crate) fn playback_record_cache_path(config: &AppConfig) -> PathBuf {
-    playlist_cache_path(config, "playback_record.json")
 }
 
 /// 返回用户歌单缓存目录下的缓存文件路径。

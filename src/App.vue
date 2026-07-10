@@ -20,7 +20,7 @@ import {
   PhysicalSize,
   primaryMonitor,
 } from "@tauri-apps/api/window";
-import disorder_icon from "./assets/icons/disorder.svg";
+import random_icon from "./assets/icons/disorder.svg";
 import repeat_one_icon from "./assets/icons/repeat-one.svg";
 import repeat_icon from "./assets/icons/repeat.svg";
 import shuffle_icon from "./assets/icons/shuffle.svg";
@@ -28,6 +28,7 @@ import ContextMenu from "./components/ContextMenu.vue";
 import ContentArea from "./components/ContentArea.vue";
 import GlobalNotification from "./components/GlobalNotification.vue";
 import LibrarySidebar from "./components/LibrarySidebar.vue";
+import AudioEngine from "./components/AudioEngine.vue";
 import PlayerBar from "./components/PlayerBar.vue";
 import TrackDetailDialog from "./components/TrackDetailDialog.vue";
 import TrackContextMenu from "./components/TrackContextMenu.vue";
@@ -58,11 +59,6 @@ import type {
   Track,
   ViewKey,
 } from "./types/music";
-import {
-  AudioPlayer,
-  is_audio_error_ignorable,
-  is_audio_play_interrupted,
-} from "./utils/audio_player";
 import { display_album, display_artist, display_title, is_missing_track } from "./utils/track";
 
 const ConfirmDialog = defineAsyncComponent(() => import("./components/ConfirmDialog.vue"));
@@ -73,8 +69,19 @@ const PlaybackQueuePanel = defineAsyncComponent(
 );
 const SettingsPanel = defineAsyncComponent(() => import("./components/SettingsPanel.vue"));
 
-type PlayerBarExpose = {
-  render_progress: (percent: number, seconds: number) => void;
+type AudioEngineExpose = {
+  play: (track: Track, seconds?: number) => Promise<void>;
+  pause: () => void;
+  resume: () => Promise<void>;
+  stop: () => void;
+  seek: (seconds: number) => void;
+  set_volume: (volume: number) => void;
+  status: () => PlaybackStatus;
+  preview_seek: (seconds: number) => void;
+  cancel_seek_preview: () => void;
+  apply_external_status: (status: PlaybackStatus) => void;
+  cache_elapsed_seconds: () => number;
+  save_playback_elapsed_cache: (seconds?: number, force?: boolean) => void;
 };
 
 type TrackContextMenuState = {
@@ -130,26 +137,15 @@ const library_scan_dialog = ref<LibraryScanDialogState>({
   message: "正在扫描音乐目录...",
   detail: "",
 });
-const main_player_bar = ref<PlayerBarExpose | null>(null);
-const now_playing_player_bar = ref<PlayerBarExpose | null>(null);
-const audio_element = ref<HTMLAudioElement | null>(null);
+const audio_engine = ref<AudioEngineExpose | null>(null);
 const sidebar_width = ref(250);
 const sidebar_resizing = ref(false);
-let status_timer: number | undefined;
-let progress_frame: number | undefined;
-let progress_sync_started_at = performance.now();
 let progress_preview_seconds = 0;
-let progress_preview_percent = 0;
 let progress_drag_rect: DOMRect | null = null;
-let pending_seek_seconds: number | null = null;
-let pending_seek_path: string | null = null;
-let pending_seek_started_at = performance.now();
-let visual_elapsed = 0;
 let handled_completion_path = "";
 let sidebar_resize_start_x = 0;
 let sidebar_resize_start_width = 250;
 let media_shortcut_unlisteners: UnlistenFn[] = [];
-let audio_player: AudioPlayer | null = null;
 let window_resize_unlisten: UnlistenFn | null = null;
 let window_close_unlisten: UnlistenFn | null = null;
 let media_shortcut_listeners_disposed = false;
@@ -160,7 +156,6 @@ let listening_track_id: string | null = null;
 let listening_started_at = 0;
 let closing_window = false;
 let app_window_shown = false;
-let playback_record_save_promise: Promise<void> | null = null;
 
 const sidebar_min_width = 72;
 const sidebar_max_width = 420;
@@ -169,8 +164,8 @@ const app_min_width = 600;
 const app_min_height = 700;
 const app_window = getCurrentWindow();
 const playback_modes: PlaybackModeItem[] = [
-  { mode: "random", icon: shuffle_icon, label: "随机播放" },
-  { mode: "shuffle", icon: disorder_icon, label: "乱序播放" },
+  { mode: "shuffle", icon: shuffle_icon, label: "随机列表" },
+  { mode: "random", icon: random_icon, label: "随机播放" },
   { mode: "repeat", icon: repeat_icon, label: "循环播放" },
   { mode: "repeat_one", icon: repeat_one_icon, label: "单曲循环" },
 ];
@@ -332,45 +327,18 @@ const selected_user_playlist = computed(() => {
 });
 
 function show_error_message(error: unknown) {
-  if (is_audio_play_interrupted(error)) return;
   notification.error(error instanceof Error ? error.message : String(error));
 }
 
-function ensure_audio_player() {
-  if (audio_player) return audio_player;
-  if (!audio_element.value) {
-    throw new Error("音频元素未初始化");
+function ensure_audio_engine() {
+  if (!audio_engine.value) {
+    throw new Error("音频组件未初始化");
   }
-  audio_player = new AudioPlayer(audio_element.value, {
-    status_change: (next_status) => {
-      apply_playback_status(next_status);
-    },
-    ended: (next_status) => {
-      void handle_playback_completion(next_status);
-    },
-    error: (error) => {
-      if (is_audio_error_ignorable(error)) return;
-      notification.error(error.message);
-      void invoke("record_audio_error", {
-        request: {
-          path: error.path,
-          source: error.source,
-          code: error.code,
-          message: error.message,
-          elapsed: error.elapsed,
-          readyState: error.ready_state,
-          networkState: error.network_state,
-        },
-      }).catch((log_error) => {
-        console.warn("无法记录音频错误", log_error);
-      });
-    },
-  });
-  return audio_player;
+  return audio_engine.value;
 }
 
 function audio_status() {
-  return ensure_audio_player().status();
+  return ensure_audio_engine().status();
 }
 
 async function choose_music_directory() {
@@ -505,7 +473,7 @@ async function load_startup_state() {
     await apply_config_state(startup.config);
     playlists.value = startup.playlists;
     play_statistics.value = startup.play_statistics;
-    player_queue.hydrate_playback_record(startup.playback_record ?? null);
+    player_queue.hydrate_playback_record();
     restoring_playback_record = true;
     library_loaded.value = startup.tracks.length > 0;
     player_queue.set_library_tracks(startup.tracks);
@@ -529,7 +497,7 @@ async function load_startup_state() {
 async function apply_config_state(config: AppConfig) {
   sidebar_width.value = clamp_sidebar_width(config.state.sidebar_width);
   playback_store.patch_status({ volume: config.state.volume });
-  ensure_audio_player().set_volume(config.state.volume);
+  ensure_audio_engine().set_volume(config.state.volume);
 
   if (config.state.width > 0 && config.state.height > 0) {
     try {
@@ -585,12 +553,10 @@ async function play(track: Track, seconds = 0) {
     await flush_listening_time();
     restored_playback_pending = false;
     handled_completion_path = "";
-    clear_pending_seek();
-    await ensure_audio_player().play(track, seconds);
+    await ensure_audio_engine().play(track, seconds);
     library_store.add_recent_track(track);
     play_statistics.value = await invoke<PlayStatistics>("record_track_started", { path: track.path });
     start_listening_session(track);
-    start_status_polling();
   } catch (error) {
     show_error_message(error);
   }
@@ -621,40 +587,38 @@ async function toggle_playback() {
 
   try {
     if (was_playing) {
-      ensure_audio_player().pause();
+      ensure_audio_engine().pause();
     } else {
-      await ensure_audio_player().resume();
+      await ensure_audio_engine().resume();
     }
   } catch (error) {
-    if (is_audio_play_interrupted(error)) return;
     show_error_message(error);
     return;
   }
   if (!was_playing && status.value.playing && current_track.value) {
     start_listening_session(current_track.value);
   }
-  start_status_polling();
 }
 
 async function previous_track() {
   const queue = playback_queue();
   if (!queue.length) return;
 
-  if (playback_mode.value === "random") {
+  if (playback_mode.value === "shuffle") {
     if (!active_queue.value.length) {
       set_queue_for_current_view();
     }
-    const random_mode_queue = playback_queue();
-    if (!random_mode_queue.length) return;
+    const shuffle_mode_queue = playback_queue();
+    if (!shuffle_mode_queue.length) return;
 
-    const index = queue_index(random_mode_queue);
+    const index = queue_index(shuffle_mode_queue);
     if (index > 0) {
-      await play(random_mode_queue[index - 1]);
+      await play(shuffle_mode_queue[index - 1]);
       return;
     }
 
-    const rerandomized_queue = player_queue.rerandomize_random_queue(current_track.value?.id ?? null);
-    const first_track = rerandomized_queue[0];
+    const reshuffled_queue = player_queue.reshuffle_queue(current_track.value?.id ?? null);
+    const first_track = reshuffled_queue[0];
     if (first_track) await play(first_track);
     return;
   }
@@ -672,8 +636,7 @@ async function stop_playback() {
   try {
     await flush_listening_time();
     restored_playback_pending = false;
-    clear_pending_seek();
-    ensure_audio_player().stop();
+    ensure_audio_engine().stop();
   } catch (error) {
     show_error_message(error);
   }
@@ -756,7 +719,7 @@ async function close_window_after_config_save() {
 
   closing_window = true;
   try {
-    await flush_playback_record_cache();
+    flush_playback_record_cache();
     await flush_app_config();
   } finally {
     await app_window.destroy();
@@ -765,9 +728,8 @@ async function close_window_after_config_save() {
 
 async function change_volume(event: Event) {
   const target = event.target as HTMLInputElement;
-  ensure_audio_player().set_volume(Number(target.value));
+  ensure_audio_engine().set_volume(Number(target.value));
   const next_status = audio_status();
-  apply_playback_status(next_status);
   app_config_store.update_state({ volume: next_status.volume });
 }
 
@@ -778,10 +740,8 @@ function update_progress_preview(event: PointerEvent) {
   const target = event.currentTarget as HTMLElement;
   const rect = progress_drag_rect ?? target.getBoundingClientRect();
   const ratio = Math.min(Math.max((event.clientX - rect.left) / rect.width, 0), 1);
-  progress_preview_percent = ratio * 100;
   progress_preview_seconds = Math.round(duration * ratio);
-  set_visual_elapsed(progress_preview_seconds);
-  render_progress(progress_preview_percent, progress_preview_seconds);
+  ensure_audio_engine().preview_seek(progress_preview_seconds);
 }
 
 async function commit_progress_seek(seconds = progress_preview_seconds) {
@@ -791,18 +751,15 @@ async function commit_progress_seek(seconds = progress_preview_seconds) {
   const target_seconds = Math.min(Math.max(seconds, 0), duration);
   if (restored_playback_pending && !status.value.playing) {
     playback_store.patch_status({ elapsed: target_seconds });
-    sync_visual_elapsed(status.value);
-    save_playback_record_cache();
+    ensure_audio_engine().apply_external_status(status.value);
+    save_playback_elapsed_cache(target_seconds, true);
     return;
   }
 
   try {
     handled_completion_path = "";
-    hold_progress_at_seek_target(target_seconds);
-    ensure_audio_player().seek(target_seconds);
-    apply_playback_status(audio_status());
+    ensure_audio_engine().seek(target_seconds);
   } catch (error) {
-    clear_pending_seek();
     show_error_message(error);
   }
 }
@@ -834,145 +791,11 @@ function cancel_progress_drag(event: PointerEvent) {
   playback_store.set_progress_dragging(false);
   progress_drag_rect = null;
   (event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId);
-  render_progress(progress_percent_for(visual_elapsed), visual_elapsed);
-}
-
-function start_status_polling() {
-  if (status_timer) window.clearInterval(status_timer);
-  status_timer = window.setInterval(() => {
-    const next_status = audio_status();
-    apply_playback_status(next_status);
-    void handle_playback_completion(next_status);
-  }, 1000);
-}
-
-function apply_playback_status(next_status: PlaybackStatus) {
-  playback_store.set_status(next_status);
-  player_queue.set_current_track_path(next_status.path);
-  if (hold_pending_seek_progress(next_status)) {
-    save_playback_record_cache();
-    if (next_status.playing) request_progress_frame();
-    return;
-  }
-  sync_visual_elapsed(next_status);
-  save_playback_record_cache();
-  if (next_status.playing) request_progress_frame();
-}
-
-function sync_visual_elapsed(next_status: PlaybackStatus) {
-  set_visual_elapsed(next_status.elapsed);
-  progress_sync_started_at = performance.now();
-  if (!progress_dragging.value) {
-    render_progress(progress_percent_for(next_status.elapsed), next_status.elapsed);
-  }
-}
-
-function hold_progress_at_seek_target(seconds: number) {
-  pending_seek_seconds = seconds;
-  pending_seek_path = status.value.path ?? null;
-  pending_seek_started_at = performance.now();
-  set_visual_elapsed(seconds);
-  render_progress(progress_percent_for(seconds), seconds);
-}
-
-function hold_pending_seek_progress(next_status: PlaybackStatus) {
-  if (pending_seek_seconds === null) return false;
-
-  if (next_status.path !== pending_seek_path) {
-    clear_pending_seek();
-    return false;
-  }
-
-  const matched = Math.abs(next_status.elapsed - pending_seek_seconds) <= 1;
-  if (matched) {
-    clear_pending_seek();
-    return false;
-  }
-
-  set_visual_elapsed(playback_elapsed_from_pending_seek());
-  progress_sync_started_at = pending_seek_started_at;
-  render_progress(progress_percent_for(visual_elapsed), visual_elapsed);
-  return true;
-}
-
-function playback_elapsed_from_pending_seek() {
-  const base = pending_seek_seconds ?? status.value.elapsed;
-  if (!status.value.playing) return base;
-  return base + (performance.now() - pending_seek_started_at) / 1000;
-}
-
-function clear_pending_seek() {
-  pending_seek_seconds = null;
-  pending_seek_path = null;
-}
-
-function request_progress_frame() {
-  if (progress_frame) return;
-  progress_frame = window.requestAnimationFrame(update_progress_frame);
-}
-
-function update_progress_frame(now: number) {
-  progress_frame = undefined;
-
-  const duration = current_track.value?.duration ?? 0;
-  if (!duration || !status.value.path) {
-    set_visual_elapsed(0);
-    render_progress(0, 0);
-    return;
-  }
-
-  if (status.value.playing) {
-    const base_elapsed = pending_seek_seconds ?? status.value.elapsed;
-    const started_at = pending_seek_seconds === null ? progress_sync_started_at : pending_seek_started_at;
-    const elapsed = base_elapsed + (now - started_at) / 1000;
-    if (!progress_dragging.value) {
-      set_visual_elapsed(Math.min(elapsed, duration));
-      render_progress(progress_percent_for(visual_elapsed), visual_elapsed);
-    }
-    if (!progress_dragging.value && visual_elapsed >= duration) {
-      void handle_playback_completion({
-        ...status.value,
-        playing: false,
-        elapsed: Math.floor(duration),
-      });
-      return;
-    }
-    request_progress_frame();
-    return;
-  }
-
-  set_visual_elapsed(Math.min(status.value.elapsed, duration));
-  if (!progress_dragging.value) {
-    render_progress(progress_percent_for(visual_elapsed), visual_elapsed);
-  }
-}
-
-function set_visual_elapsed(seconds: number) {
-  visual_elapsed = seconds;
-  playback_store.set_visual_elapsed(seconds);
-}
-
-function progress_percent_for(seconds: number) {
-  const duration = current_track.value?.duration ?? 0;
-  if (!duration) return 0;
-  return Math.min(Math.max((seconds / duration) * 100, 0), 100);
-}
-
-function render_progress(percent: number, seconds: number) {
-  main_player_bar.value?.render_progress(percent, seconds);
-  now_playing_player_bar.value?.render_progress(percent, seconds);
+  ensure_audio_engine().cancel_seek_preview();
 }
 
 function cache_elapsed_seconds() {
-  const duration = current_track.value?.duration ?? Number.POSITIVE_INFINITY;
-  const seconds =
-    pending_seek_seconds !== null
-      ? playback_elapsed_from_pending_seek()
-      : status.value.playing
-        ? visual_elapsed
-        : status.value.elapsed;
-
-  return Math.max(0, Math.floor(Math.min(seconds, duration)));
+  return audio_engine.value?.cache_elapsed_seconds() ?? Math.max(0, Math.floor(status.value.elapsed));
 }
 
 function playback_record_source_for_queue_source(source: QueueSource): PlaybackRecordSource {
@@ -1034,28 +857,29 @@ function current_playback_record(): PlaybackRecord | null {
     playback_mode: playback_mode.value,
     playlist: playback_record_primary_source(queue_source.value),
     secondary_playlist: playback_record_secondary_source(queue_source.value),
-    updated_at: Math.floor(Date.now() / 1000),
   };
 }
 
-function save_playback_record_cache() {
+function save_playback_record_metadata_cache() {
   if (restoring_playback_record) return;
   if (!library_loaded.value && !status.value.path) return;
 
   const record = current_playback_record();
   if (!record) return;
 
-  playback_record_save_promise = player_queue.save_playback_record(record).catch((error) => {
-    console.warn("无法保存播放记录缓存", error);
-  });
+  player_queue.save_playback_record_metadata(record);
 }
 
-async function flush_playback_record_cache() {
-  save_playback_record_cache();
-  if (playback_record_save_promise) {
-    await playback_record_save_promise;
-  }
+function save_playback_elapsed_cache(seconds = cache_elapsed_seconds(), force = false) {
+  if (restoring_playback_record) return;
+  audio_engine.value?.save_playback_elapsed_cache(seconds, force);
 }
+
+function flush_playback_record_cache() {
+  save_playback_record_metadata_cache();
+  save_playback_elapsed_cache(cache_elapsed_seconds(), true);
+}
+
 
 function restore_playback_record_cache() {
   const record = playback_record.value;
@@ -1089,7 +913,7 @@ function restore_playback_record_cache() {
       elapsed,
     });
     player_queue.set_current_track_path(restored_track.path);
-    sync_visual_elapsed(status.value);
+    ensure_audio_engine().apply_external_status(status.value);
     return true;
   } finally {
     restoring_playback_record = was_restoring_playback_record;
@@ -1117,7 +941,7 @@ function cycle_playback_mode() {
   player_queue.set_playback_mode(next_mode);
 }
 
-function random_queue_index(queue: Track[], current_index: number) {
+function random_track_index(queue: Track[], current_index: number) {
   if (queue.length <= 1) return 0;
   let next_index = current_index;
   while (next_index === current_index) {
@@ -1131,27 +955,27 @@ async function play_next_track(from_completion: boolean) {
   if (!queue.length) return false;
 
   const current_index = queue_index(queue);
-  if (playback_mode.value === "shuffle") {
-    await play(queue[random_queue_index(queue, current_index)]);
+  if (playback_mode.value === "random") {
+    await play(queue[random_track_index(queue, current_index)]);
     return true;
   }
 
-  if (playback_mode.value === "random") {
+  if (playback_mode.value === "shuffle") {
     if (!active_queue.value.length) {
       set_queue_for_current_view();
     }
-    const random_mode_queue = playback_queue();
-    if (!random_mode_queue.length) return false;
+    const shuffle_mode_queue = playback_queue();
+    if (!shuffle_mode_queue.length) return false;
 
-    const random_current_index = queue_index(random_mode_queue);
-    const next_index = random_current_index < 0 ? 0 : random_current_index + 1;
-    if (next_index < random_mode_queue.length) {
-      await play(random_mode_queue[next_index]);
+    const shuffle_current_index = queue_index(shuffle_mode_queue);
+    const next_index = shuffle_current_index < 0 ? 0 : shuffle_current_index + 1;
+    if (next_index < shuffle_mode_queue.length) {
+      await play(shuffle_mode_queue[next_index]);
       return true;
     }
 
-    const rerandomized_queue = player_queue.rerandomize_random_queue(current_track.value?.id ?? null);
-    const first_track = rerandomized_queue[0];
+    const reshuffled_queue = player_queue.reshuffle_queue(current_track.value?.id ?? null);
+    const first_track = reshuffled_queue[0];
     if (!first_track) return false;
 
     await play(first_track);
@@ -1660,7 +1484,7 @@ async function listen_window_close() {
 }
 
 function handle_before_unload() {
-  save_playback_record_cache();
+  flush_playback_record_cache();
   void flush_listening_time();
   void flush_app_config();
 }
@@ -1687,16 +1511,12 @@ function close_context_menus_on_key(event: KeyboardEvent) {
 }
 
 onBeforeUnmount(() => {
-  save_playback_record_cache();
+  flush_playback_record_cache();
   void flush_listening_time();
   void flush_app_config();
-  if (status_timer) window.clearInterval(status_timer);
-  if (progress_frame) window.cancelAnimationFrame(progress_frame);
   media_shortcut_listeners_disposed = true;
   media_shortcut_unlisteners.forEach((unlisten) => unlisten());
   media_shortcut_unlisteners = [];
-  audio_player?.destroy();
-  audio_player = null;
   window_resize_unlisten?.();
   window_resize_unlisten = null;
   window_close_unlisten?.();
@@ -1713,7 +1533,6 @@ onBeforeUnmount(() => {
 
 onMounted(() => {
   media_shortcut_listeners_disposed = false;
-  ensure_audio_player();
   window.addEventListener("beforeunload", handle_before_unload);
   window.addEventListener("pointerdown", close_context_menus_on_pointer);
   window.addEventListener("contextmenu", prevent_default_context_menu);
@@ -1755,13 +1574,23 @@ const album_items = computed<AlbumItem[]>(() => {
 });
 
 watch([current_queue, queue_source, playback_mode], () => {
-  save_playback_record_cache();
-}, { deep: true });
+  save_playback_record_metadata_cache();
+});
+
+watch(() => current_track.value?.id ?? null, () => {
+  save_playback_record_metadata_cache();
+  save_playback_elapsed_cache(cache_elapsed_seconds(), true);
+});
+
 </script>
 
 <template>
   <main class="app_shell" :class="{ sidebar_compact, sidebar_resizing }" :style="app_shell_style">
-    <audio ref="audio_element" class="audio_element" preload="auto" />
+    <AudioEngine
+      ref="audio_engine"
+      @ended="handle_playback_completion"
+      @playback_error="show_error_message"
+    />
     <LibrarySidebar
       @create_playlist="create_playlist"
       @reorder_playlists="reorder_playlists"
@@ -1832,7 +1661,6 @@ watch([current_queue, queue_source, playback_mode], () => {
     <KeepAlive>
       <PlayerBar
         v-if="!now_playing_open"
-        ref="main_player_bar"
         :playback_mode_button="playback_mode_button"
         @begin_progress_drag="begin_progress_drag"
         @drag_progress="drag_progress"
@@ -1852,7 +1680,6 @@ watch([current_queue, queue_source, playback_mode], () => {
       <KeepAlive>
         <NowPlayingPage
           v-if="now_playing_open"
-          ref="now_playing_player_bar"
           :playback_mode_button="playback_mode_button"
           @close="ui_store.close_now_playing()"
           @start_window_drag="start_window_drag"
@@ -1989,13 +1816,6 @@ button:focus-visible {
   background-color: var(--app_background_color, #ffffff);
 }
 
-.audio_element {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  pointer-events: none;
-}
 
 .app_shell::before {
   position: absolute;

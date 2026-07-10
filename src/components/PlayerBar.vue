@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onActivated, ref } from "vue";
+import { nextTick, onActivated, ref, watch } from "vue";
 import { storeToRefs } from "pinia";
 import lyrics_copy_icon from "../assets/icons/lyrics-copy.svg";
 import next_icon from "../assets/icons/next.svg";
@@ -38,7 +38,7 @@ const progress_handle_element = ref<HTMLElement | null>(null);
 const progress_tooltip_element = ref<HTMLElement | null>(null);
 const progress_tooltip_visible = ref(false);
 const playback_store = use_playback_store();
-const { current_track, status, progress_dragging } = storeToRefs(playback_store);
+const { current_track, status, progress_dragging, progress_percent, visual_elapsed } = storeToRefs(playback_store);
 
 function render_progress(percent: number, _seconds: number) {
   const safe_percent = Math.min(Math.max(percent, 0), 100);
@@ -105,7 +105,9 @@ onActivated(() => {
   void sync_current_progress();
 });
 
-defineExpose({ render_progress });
+watch([progress_percent, visual_elapsed], () => {
+  render_progress(progress_percent.value, visual_elapsed.value);
+});
 </script>
 
 <template>

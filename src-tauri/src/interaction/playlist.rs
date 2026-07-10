@@ -4,8 +4,7 @@
 //! 最近播放和用户歌单保存在歌单缓存目录，并允许前端手动修改。
 
 use super::models::*;
-use crate::utils::{short_hash, unix_timestamp};
-use serde::Serialize;
+use crate::utils::{short_hash, unix_timestamp, write_json_cache};
 use std::{
     collections::BTreeMap,
     fs,
@@ -523,18 +522,14 @@ pub(crate) fn next_user_playlist_index(playlists: &[PlaylistCache]) -> usize {
 /// 记录最近播放歌曲。
 ///
 /// 注意：这里只修改最近播放缓存，不会影响音频文件和用户歌单。
-pub(crate) fn record_recent_track(config: &AppConfig, path: &str) -> Result<(), String> {
+pub(crate) fn record_recent_track(
+    config: &AppConfig,
+    all_playlist: &AllPlaylistCache,
+    path: &str,
+) -> Result<(), String> {
     if path.is_empty() {
         return Ok(());
     }
-
-    if !all_playlist_cache_path(config).exists()
-        && !playlist_cache_path(config, "all_playlist.json").exists()
-    {
-        return Ok(());
-    }
-
-    let all_playlist = read_all_playlist_cache(config)?;
 
     let track_id = if all_playlist.tracks.contains_key(path) {
         path.to_string()
@@ -564,20 +559,6 @@ pub(crate) fn record_recent_track(config: &AppConfig, path: &str) -> Result<(), 
     recent.metadata = playlist_metadata(&recent.track_ids, &all_playlist.tracks, 0);
 
     write_json_cache(&recent_path, &recent, "最近播放缓存")
-}
-
-/// 写入任意 JSON 缓存文件。
-pub(crate) fn write_json_cache<T: Serialize>(
-    path: &Path,
-    value: &T,
-    label: &str,
-) -> Result<(), String> {
-    let content =
-        serde_json::to_string_pretty(value).map_err(|err| format!("无法序列化{label}: {err}"))?;
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|err| format!("无法创建{label}目录: {err}"))?;
-    }
-    fs::write(path, content).map_err(|err| format!("无法写入{label}: {err}"))
 }
 
 /// 将歌曲列表转换为按 id 查询的对象。

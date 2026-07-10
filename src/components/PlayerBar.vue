@@ -9,6 +9,8 @@ import playlist_icon from "../assets/icons/playlist.svg";
 import previous_icon from "../assets/icons/previous.svg";
 import volume_icon from "../assets/icons/volume.svg";
 import { use_playback_store } from "../stores/playback";
+import { use_app_actions_store } from "../stores/app_actions";
+import { use_ui_store } from "../stores/ui";
 import type { PlaybackModeItem } from "../types/music";
 import { cover_src, display_artist, display_title, format_duration, icon_style } from "../utils/track";
 
@@ -19,25 +21,13 @@ withDefaults(defineProps<{
   show_cover: true,
 });
 
-const emit = defineEmits<{
-  begin_progress_drag: [event: PointerEvent];
-  drag_progress: [event: PointerEvent];
-  end_progress_drag: [event: PointerEvent];
-  cancel_progress_drag: [event: PointerEvent];
-  previous_track: [];
-  toggle_playback: [];
-  next_track: [];
-  open_queue: [];
-  cycle_playback_mode: [];
-  change_volume: [event: Event];
-  open_now_playing: [];
-}>();
-
 const progress_fill_element = ref<HTMLElement | null>(null);
 const progress_handle_element = ref<HTMLElement | null>(null);
 const progress_tooltip_element = ref<HTMLElement | null>(null);
 const progress_tooltip_visible = ref(false);
 const playback_store = use_playback_store();
+const app_actions = use_app_actions_store();
+const ui_store = use_ui_store();
 const { current_track, status, progress_dragging, progress_percent, visual_elapsed } = storeToRefs(playback_store);
 
 function render_progress(percent: number, _seconds: number) {
@@ -83,22 +73,22 @@ function hide_progress_tooltip() {
 
 function begin_progress_interaction(event: PointerEvent) {
   show_progress_tooltip(event);
-  emit("begin_progress_drag", event);
+  app_actions.begin_progress_drag(event);
 }
 
 function move_progress_interaction(event: PointerEvent) {
   show_progress_tooltip(event);
-  emit("drag_progress", event);
+  app_actions.drag_progress(event);
 }
 
 function end_progress_interaction(event: PointerEvent) {
   show_progress_tooltip(event);
-  emit("end_progress_drag", event);
+  app_actions.end_progress_drag(event);
 }
 
 function cancel_progress_interaction(event: PointerEvent) {
   hide_progress_tooltip();
-  emit("cancel_progress_drag", event);
+  app_actions.cancel_progress_drag(event);
 }
 
 onActivated(() => {
@@ -143,7 +133,7 @@ watch([progress_percent, visual_elapsed], () => {
         type="button"
         title="打开播放页"
         :disabled="!current_track"
-        @click="emit('open_now_playing')"
+        @click="ui_store.open_now_playing()"
       >
         <span class="player_cover" :class="{ spinning_cover: status.playing && current_track }">
           <img v-if="current_track?.cover_cache_path" :src="cover_src(current_track)" alt="" />
@@ -158,20 +148,20 @@ watch([progress_percent, visual_elapsed], () => {
 
     <div class="player_center">
       <div class="control_row">
-        <button class="hover_border_control" type="button" title="上一首" @click="emit('previous_track')">
+        <button class="hover_border_control" type="button" title="上一首" @click="app_actions.previous_track()">
           <span class="svg_icon" :style="icon_style(previous_icon)" />
         </button>
-        <button class="play_button hover_border_control" type="button" title="播放或暂停" @click="emit('toggle_playback')">
+        <button class="play_button hover_border_control" type="button" title="播放或暂停" @click="app_actions.toggle_playback()">
           <span class="svg_icon" :style="icon_style(status.playing ? pause_icon : play_icon)" />
         </button>
-        <button class="hover_border_control" type="button" title="下一首" @click="emit('next_track')">
+        <button class="hover_border_control" type="button" title="下一首" @click="app_actions.next_track()">
           <span class="svg_icon" :style="icon_style(next_icon)" />
         </button>
       </div>
     </div>
 
     <div class="player_tools">
-      <button class="hover_border_control" type="button" title="播放队列" @click="emit('open_queue')">
+      <button class="hover_border_control" type="button" title="播放队列" @click="ui_store.open_playback_queue()">
         <span class="svg_icon" :style="icon_style(playlist_icon)" />
       </button>
       <button
@@ -179,7 +169,7 @@ watch([progress_percent, visual_elapsed], () => {
         type="button"
         :title="playback_mode_button.label"
         :aria-label="playback_mode_button.label"
-        @click="emit('cycle_playback_mode')"
+        @click="app_actions.cycle_playback_mode()"
       >
         <span class="svg_icon" :style="icon_style(playback_mode_button.icon)" />
       </button>
@@ -187,7 +177,7 @@ watch([progress_percent, visual_elapsed], () => {
         <span class="svg_icon" :style="icon_style(lyrics_copy_icon)" />
       </button>
       <span class="volume_icon svg_icon" :style="icon_style(volume_icon)" />
-      <input type="range" min="0" max="1.5" step="0.01" :value="status.volume" @input="emit('change_volume', $event)" />
+      <input type="range" min="0" max="1.5" step="0.01" :value="status.volume" @input="app_actions.change_volume($event)" />
     </div>
   </footer>
 </template>

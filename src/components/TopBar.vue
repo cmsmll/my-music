@@ -9,24 +9,17 @@ import tools_icon from "../assets/icons/tools.svg";
 import x_icon from "../assets/icons/x.svg";
 import { use_library_view_store } from "../stores/library_view";
 import { use_ui_store } from "../stores/ui";
+import { use_app_actions_store } from "../stores/app_actions";
 import { icon_style } from "../utils/track";
-
-const emit = defineEmits<{
-  open_tools: [];
-  reload_library: [];
-  minimize_window: [];
-  toggle_maximize_window: [];
-  close_window: [];
-  start_window_drag: [event: MouseEvent];
-}>();
 
 const library_view = use_library_view_store();
 const ui_store = use_ui_store();
+const app_actions = use_app_actions_store();
 const { query } = storeToRefs(library_view);
 </script>
 
 <template>
-  <header class="top_bar" @mousedown="emit('start_window_drag', $event)">
+  <header class="top_bar" @mousedown="app_actions.start_window_drag($event)">
     <label class="search_box">
       <span class="svg_icon" :style="icon_style(search_icon)" />
       <input
@@ -39,27 +32,27 @@ const { query } = storeToRefs(library_view);
     </label>
 
     <div class="toolbar">
-      <button class="tool_button hover_border_control" type="button" title="解码" @click="emit('open_tools')">
+      <button class="tool_button hover_border_control" type="button" title="解码" @click="app_actions.decode_music_files()">
         <span class="svg_icon" :style="icon_style(tools_icon)" />
       </button>
-      <button class="tool_button hover_border_control" type="button" title="重载" @click="emit('reload_library')">
+      <button class="tool_button hover_border_control" type="button" title="重载" @click="app_actions.reload_library()">
         <span class="svg_icon" :style="icon_style(refresh_icon)" />
       </button>
       <button class="tool_button hover_border_control" type="button" title="设置" @click="ui_store.open_settings()">
         <span class="svg_icon" :style="icon_style(settings_icon)" />
       </button>
-      <button class="window_button hover_border_control" type="button" title="最小化" @click="emit('minimize_window')">
+      <button class="window_button hover_border_control" type="button" title="最小化" @click="app_actions.minimize_window()">
         <span class="svg_icon" :style="icon_style(minimize_icon)" />
       </button>
       <button
         class="window_button hover_border_control"
         type="button"
         title="最大化"
-        @click="emit('toggle_maximize_window')"
+        @click="app_actions.toggle_maximize_window()"
       >
         <span class="svg_icon" :style="icon_style(maximize_icon)" />
       </button>
-      <button class="window_button close hover_border_control" type="button" title="关闭" @click="emit('close_window')">
+      <button class="window_button close hover_border_control" type="button" title="关闭" @click="app_actions.close_window()">
         <span class="svg_icon" :style="icon_style(x_icon)" />
       </button>
     </div>

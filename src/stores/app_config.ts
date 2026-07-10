@@ -5,9 +5,21 @@ import type { AppConfig, AppStateConfig, DecoderConfig, StyleConfig } from "../t
 
 let save_timer: ReturnType<typeof setTimeout> | undefined;
 let config_revision = 0;
+let save_promise: Promise<void> | null = null;
+let save_requested = false;
 
 function clone_config(config: AppConfig): AppConfig {
-  return JSON.parse(JSON.stringify(config)) as AppConfig;
+  return {
+    ...config,
+    music_directory: [...config.music_directory],
+    decoder: {
+      ...config.decoder,
+      scan_directory: [...config.decoder.scan_directory],
+    },
+    cache: { ...config.cache },
+    style: { ...config.style },
+    state: { ...config.state },
+  };
 }
 
 function merge_config(config: AppConfig, patch: Partial<AppConfig>): AppConfig {
@@ -115,20 +127,37 @@ export const use_app_config_store = defineStore("app_config", () => {
   async function save_config() {
     if (!config.value) return;
 
-    const snapshot = clone_config(config.value);
-    const snapshot_revision = config_revision;
-    saving.value = true;
-    save_error.value = "";
-
-    try {
-      const saved_config = await invoke<AppConfig>("update_app_config", {
-        config: snapshot,
+    save_requested = true;
+    if (!save_promise) {
+      save_promise = run_save_loop().finally(() => {
+        save_promise = null;
       });
-      if (snapshot_revision === config_revision) {
-        config.value = saved_config;
+    }
+    await save_promise;
+  }
+
+  async function run_save_loop() {
+    saving.value = true;
+    try {
+      while (save_requested && config.value) {
+        save_requested = false;
+        const snapshot = clone_config(config.value);
+        const snapshot_revision = config_revision;
+        save_error.value = "";
+
+        try {
+          const saved_config = await invoke<AppConfig>("update_app_config", {
+            config: snapshot,
+          });
+          if (snapshot_revision === config_revision) {
+            config.value = clone_config(saved_config);
+          } else {
+            save_requested = true;
+          }
+        } catch (error) {
+          save_error.value = String(error);
+        }
       }
-    } catch (error) {
-      save_error.value = String(error);
     } finally {
       saving.value = false;
     }

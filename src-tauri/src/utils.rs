@@ -6,9 +6,11 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::{
     fs,
+    io::Write,
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
+use tempfile::NamedTempFile;
 
 /// 获取当前应用所在目录。
 pub(crate) fn current_app_dir() -> PathBuf {
@@ -116,6 +118,29 @@ pub(crate) fn unix_timestamp() -> u64 {
         .as_secs()
 }
 
+/// 在目标文件所在目录写入临时文件，完整落盘后原子替换正式文件。
+pub(crate) fn atomic_write(path: &Path, content: &[u8], label: &str) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(parent).map_err(|err| format!("无法创建{label}目录: {err}"))?;
+
+    let mut temporary =
+        NamedTempFile::new_in(parent).map_err(|err| format!("无法创建{label}临时文件: {err}"))?;
+    temporary
+        .write_all(content)
+        .map_err(|err| format!("无法写入{label}临时文件: {err}"))?;
+    temporary
+        .as_file_mut()
+        .sync_all()
+        .map_err(|err| format!("无法同步{label}临时文件: {err}"))?;
+    temporary
+        .persist(path)
+        .map_err(|err| format!("无法替换{label}: {}", err.error))?;
+    Ok(())
+}
+
 /// 写入格式化 JSON 缓存文件。
 pub(crate) fn write_json_cache<T: Serialize>(
     path: &Path,
@@ -124,8 +149,25 @@ pub(crate) fn write_json_cache<T: Serialize>(
 ) -> Result<(), String> {
     let content =
         serde_json::to_string_pretty(value).map_err(|err| format!("无法序列化{label}: {err}"))?;
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|err| format!("无法创建{label}目录: {err}"))?;
+    atomic_write(path, content.as_bytes(), label)
+}
+#[cfg(test)]
+mod tests {
+    use super::atomic_write;
+    use tempfile::tempdir;
+
+    #[test]
+    fn atomic_write_replaces_existing_content_without_leaving_temp_files() {
+        let directory = tempdir().expect("create temp directory");
+        let path = directory.path().join("cache.json");
+        atomic_write(&path, b"old", "test cache").expect("write initial content");
+        atomic_write(&path, b"new content", "test cache").expect("replace content");
+
+        assert_eq!(std::fs::read(&path).expect("read cache"), b"new content");
+        let entries = std::fs::read_dir(directory.path())
+            .expect("read directory")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("collect entries");
+        assert_eq!(entries.len(), 1);
     }
-    fs::write(path, content).map_err(|err| format!("无法写入{label}: {err}"))
 }

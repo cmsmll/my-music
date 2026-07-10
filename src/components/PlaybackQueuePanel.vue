@@ -5,15 +5,12 @@ import CustomScrollbar from "./CustomScrollbar.vue";
 import { use_playback_store } from "../stores/playback";
 import { use_player_queue_store } from "../stores/player_queue";
 import { use_ui_store } from "../stores/ui";
+import { use_app_actions_store } from "../stores/app_actions";
 import type { Track } from "../types/music";
 import { cover_src, display_artist, display_title, format_duration } from "../utils/track";
 
-const emit = defineEmits<{
-  open_source: [];
-  play_track: [track: Track];
-}>();
-
 const player_queue = use_player_queue_store();
+const app_actions = use_app_actions_store();
 const playback_store = use_playback_store();
 const ui_store = use_ui_store();
 const { active_queue, queue_source } = storeToRefs(player_queue);
@@ -115,7 +112,7 @@ onBeforeUnmount(() => {
   <div class="queue_overlay" @click.self="ui_store.close_playback_queue()">
     <aside class="queue_panel" :class="{ playing: is_playing }" aria-label="播放队列">
       <header>
-        <button class="queue_title_button" type="button" :title="queue_title" @click="emit('open_source')">
+        <button class="queue_title_button" type="button" :title="queue_title" @click="app_actions.open_queue_source()">
           {{ queue_title }}
         </button>
         <p>{{ active_queue.length }} 首歌曲 {{ format_duration(queue_total_duration) }}</p>
@@ -135,7 +132,7 @@ onBeforeUnmount(() => {
           class="queue_item"
           :class="{ active: track_is_active(track) }"
           type="button"
-          @click="emit('play_track', track)"
+          @click="app_actions.play_queue_track(track)"
         >
           <span class="queue_cover" :class="{ spinning_cover: track_should_spin(track) }">
             <img v-if="track.cover_cache_path" :src="cover_src(track)" alt="" />

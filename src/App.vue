@@ -34,7 +34,9 @@ import TrackDetailDialog from "./components/TrackDetailDialog.vue";
 import TrackContextMenu from "./components/TrackContextMenu.vue";
 import TopBar from "./components/TopBar.vue";
 import { use_app_config_store } from "./stores/app_config";
+import { use_app_actions_store } from "./stores/app_actions";
 import { use_library_store } from "./stores/library";
+import { use_library_catalog_store } from "./stores/library_catalog";
 import { use_library_view_store } from "./stores/library_view";
 import { use_notification_store } from "./stores/notifications";
 import { use_playback_store } from "./stores/playback";
@@ -43,8 +45,6 @@ import { use_ui_store } from "./stores/ui";
 import type {
   AppConfig,
   AppStartup,
-  AlbumItem,
-  ArtistItem,
   DecoderRunSummary,
   LibraryRefreshResult,
   PlaybackMode,
@@ -108,7 +108,9 @@ type LibraryScanDialogState = {
 const player_queue = use_player_queue_store();
 const playback_store = use_playback_store();
 const app_config_store = use_app_config_store();
+const app_actions = use_app_actions_store();
 const library_store = use_library_store();
+const library_catalog = use_library_catalog_store();
 const library_view = use_library_view_store();
 const notification = use_notification_store();
 const ui_store = use_ui_store();
@@ -121,6 +123,7 @@ const {
   queue_source,
 } = storeToRefs(player_queue);
 const { status, current_track, progress_dragging } = storeToRefs(playback_store);
+const { tracks_by_id } = storeToRefs(library_catalog);
 const { config: app_config } = storeToRefs(app_config_store);
 const { selected_directories, library_loaded, playlists, play_statistics } = storeToRefs(library_store);
 const { active_view, query, selected_album, selected_artist, selected_playlist_id } = storeToRefs(library_view);
@@ -170,8 +173,6 @@ const playback_modes: PlaybackModeItem[] = [
   { mode: "repeat_one", icon: repeat_one_icon, label: "单曲循环" },
 ];
 
-const tracks_by_id = computed(() => new Map(tracks.value.map((track) => [track.id, track])));
-
 const display_tracks = computed(() => {
   const keyword = query.value.trim().toLowerCase();
   if (!keyword) return display_tracks_for_view(active_view.value);
@@ -188,62 +189,6 @@ function track_matches_query(track: Track, keyword: string) {
   }
   return `${display_title(track)} ${display_artist(track)} ${display_album(track)}`.toLowerCase().includes(keyword);
 }
-
-const album_count = computed(() => {
-  const albums = new Set(
-    tracks.value
-      .map((track) => display_album(track))
-      .filter((album) => album !== "未知专辑"),
-  );
-  return albums.size;
-});
-
-const artist_count = computed(() => {
-  const artists = new Set(
-    tracks.value
-      .map((track) => display_artist(track))
-      .filter((artist) => artist !== "未知歌手"),
-  );
-  return artists.size;
-});
-
-const artist_items = computed<ArtistItem[]>(() => {
-  const artists = new Map<string, ArtistItem>();
-
-  for (const track of tracks.value) {
-    const name = display_artist(track);
-    if (name === "未知歌手") continue;
-
-    const item =
-      artists.get(name) ??
-      ({
-        name,
-        track_count: 0,
-        total_duration: 0,
-        cover_track: undefined,
-      } satisfies ArtistItem);
-
-    item.track_count += 1;
-    item.total_duration += track.duration ?? 0;
-    if (!item.cover_track || (!item.cover_track.cover_cache_path && track.cover_cache_path)) {
-      item.cover_track = track;
-    }
-
-    artists.set(name, item);
-  }
-
-  return Array.from(artists.values()).sort((left, right) =>
-    left.name.localeCompare(right.name, "zh-Hans-CN"),
-  );
-});
-
-const total_duration = computed(() =>
-  tracks.value.reduce((total, track) => total + (track.duration ?? 0), 0),
-);
-
-const total_size = computed(() =>
-  tracks.value.reduce((total, track) => total + (track.file_size ?? 0), 0),
-);
 
 const sidebar_compact = computed(() => sidebar_width.value < sidebar_compact_width);
 
@@ -379,7 +324,6 @@ async function scan_directory(directories: string[]) {
     const result = await invoke<LibraryRefreshResult>("reload_music_library", { dirs: directories });
     library_loaded.value = true;
     player_queue.set_library_tracks(result.tracks);
-    playback_store.set_library_tracks(result.tracks);
     playlists.value = result.playlists;
     play_statistics.value = result.play_statistics;
     ensure_selected_playlist();
@@ -477,7 +421,6 @@ async function load_startup_state() {
     restoring_playback_record = true;
     library_loaded.value = startup.tracks.length > 0;
     player_queue.set_library_tracks(startup.tracks);
-    playback_store.set_library_tracks(startup.tracks);
     selected_directories.value = startup.config.music_directory;
     ensure_selected_playlist();
     const restored_playback_record = restore_playback_record_cache();
@@ -885,7 +828,7 @@ function restore_playback_record_cache() {
   const record = playback_record.value;
   if (!record || record.version !== 1) return false;
 
-  const restored_track = tracks_by_id.value.get(record.track_id);
+  const restored_track = tracks_by_id.value[record.track_id];
   if (!restored_track) return false;
 
   const was_restoring_playback_record = restoring_playback_record;
@@ -1052,10 +995,10 @@ function queue_source_for_view(view: ViewKey): QueueSource {
 
 function queue_tracks_for_view(view: ViewKey) {
   if (view === "artists" && selected_artist.value) {
-    return tracks.value.filter((track) => display_artist(track) === selected_artist.value);
+    return library_catalog.tracks_for_artist(selected_artist.value);
   }
   if (view === "albums" && selected_album.value) {
-    return tracks.value.filter((track) => display_album(track) === selected_album.value);
+    return library_catalog.tracks_for_album(selected_album.value);
   }
   if (view === "recent") return tracks_from_ids(playlists.value.recent.track_ids);
   if (view === "user_playlist") return tracks_from_ids(selected_user_playlist.value.track_ids);
@@ -1076,10 +1019,10 @@ function playlist_track_ids_for_source(source: QueueSource) {
 
 function queue_tracks_for_source(source: QueueSource) {
   if (source.type === "artist") {
-    return tracks.value.filter((track) => display_artist(track) === source.id);
+    return library_catalog.tracks_for_artist(source.id);
   }
   if (source.type === "album") {
-    return tracks.value.filter((track) => display_album(track) === source.id);
+    return library_catalog.tracks_for_album(source.id);
   }
   if (source.type === "recent" || source.type === "playlist") {
     return tracks_from_ids(playlist_track_ids_for_source(source));
@@ -1104,7 +1047,7 @@ function refresh_current_queue_source() {
 
 function tracks_from_ids(track_ids: string[], include_missing = false) {
   return track_ids
-    .map((track_id) => tracks_by_id.value.get(track_id) ?? (include_missing ? missing_track_from_id(track_id) : null))
+    .map((track_id) => tracks_by_id.value[track_id] ?? (include_missing ? missing_track_from_id(track_id) : null))
     .filter((track): track is Track => Boolean(track));
 }
 
@@ -1484,6 +1427,7 @@ async function listen_window_close() {
 }
 
 function handle_before_unload() {
+  app_actions.reset();
   flush_playback_record_cache();
   void flush_listening_time();
   void flush_app_config();
@@ -1510,7 +1454,33 @@ function close_context_menus_on_key(event: KeyboardEvent) {
   }
 }
 
+app_actions.register({
+  begin_progress_drag,
+  drag_progress,
+  end_progress_drag,
+  cancel_progress_drag,
+  previous_track,
+  toggle_playback,
+  next_track,
+  cycle_playback_mode,
+  change_volume,
+  play_track: play_track_from_view,
+  play_queue_track: play_track_from_queue,
+  open_queue_source,
+  create_playlist,
+  reorder_playlists,
+  open_playlist_menu: open_playlist_context_menu,
+  open_track_menu: open_track_context_menu,
+  begin_sidebar_resize: begin_sidebar_resize,
+  decode_music_files,
+  reload_library,
+  start_window_drag,
+  minimize_window,
+  toggle_maximize_window,
+  close_window,
+});
 onBeforeUnmount(() => {
+  app_actions.reset();
   flush_playback_record_cache();
   void flush_listening_time();
   void flush_app_config();
@@ -1542,37 +1512,6 @@ onMounted(() => {
   void load_startup_state();
 });
 
-const album_items = computed<AlbumItem[]>(() => {
-  const albums = new Map<string, AlbumItem>();
-
-  for (const track of tracks.value) {
-    const name = display_album(track);
-    if (name === "未知专辑") continue;
-
-    const item =
-      albums.get(name) ??
-      ({
-        name,
-        artist: display_artist(track),
-        track_count: 0,
-        total_duration: 0,
-        cover_track: undefined,
-      } satisfies AlbumItem);
-
-    item.track_count += 1;
-    item.total_duration += track.duration ?? 0;
-    if (!item.cover_track || (!item.cover_track.cover_cache_path && track.cover_cache_path)) {
-      item.cover_track = track;
-    }
-
-    albums.set(name, item);
-  }
-
-  return Array.from(albums.values()).sort((left, right) =>
-    left.name.localeCompare(right.name, "zh-Hans-CN"),
-  );
-});
-
 watch([current_queue, queue_source, playback_mode], () => {
   save_playback_record_metadata_cache();
 });
@@ -1591,40 +1530,15 @@ watch(() => current_track.value?.id ?? null, () => {
       @ended="handle_playback_completion"
       @playback_error="show_error_message"
     />
-    <LibrarySidebar
-      @create_playlist="create_playlist"
-      @reorder_playlists="reorder_playlists"
-      @open_playlist_menu="open_playlist_context_menu"
-      @begin_resize="begin_sidebar_resize"
-    />
+    <LibrarySidebar />
+
 
     <section class="workspace">
-      <TopBar
-        @open_tools="decode_music_files"
-        @reload_library="reload_library"
-        @minimize_window="minimize_window"
-        @toggle_maximize_window="toggle_maximize_window"
-        @close_window="close_window"
-        @start_window_drag="start_window_drag"
-      />
+      <TopBar />
 
-      <ContentArea
-        :loading="loading"
-        :tracks="tracks"
-        :display_tracks="display_tracks"
-        :status_path="status.path"
-        :is_playing="status.playing"
-        :playback_queue_source="queue_source"
-        :artist_items="artist_items"
-        :album_items="album_items"
-        :album_count="album_count"
-        :artist_count="artist_count"
-        :total_duration="total_duration"
-        :total_size="total_size"
-        :play_statistics="play_statistics"
-        @play_track="play_track_from_view"
-        @open_track_menu="open_track_context_menu"
-      />
+
+      <ContentArea :loading="loading" :display_tracks="display_tracks" />
+
     </section>
 
     <TrackContextMenu
@@ -1659,53 +1573,20 @@ watch(() => current_track.value?.id ?? null, () => {
     </ContextMenu>
 
     <KeepAlive>
-      <PlayerBar
-        v-if="!now_playing_open"
-        :playback_mode_button="playback_mode_button"
-        @begin_progress_drag="begin_progress_drag"
-        @drag_progress="drag_progress"
-        @end_progress_drag="end_progress_drag"
-        @cancel_progress_drag="cancel_progress_drag"
-        @previous_track="previous_track"
-        @toggle_playback="toggle_playback"
-        @next_track="next_track"
-        @open_queue="ui_store.open_playback_queue()"
-        @cycle_playback_mode="cycle_playback_mode"
-        @change_volume="change_volume"
-        @open_now_playing="ui_store.open_now_playing()"
-      />
+      <PlayerBar v-if="!now_playing_open" :playback_mode_button="playback_mode_button" />
+
     </KeepAlive>
 
     <Transition name="now_playing_slide">
       <KeepAlive>
-        <NowPlayingPage
-          v-if="now_playing_open"
-          :playback_mode_button="playback_mode_button"
-          @close="ui_store.close_now_playing()"
-          @start_window_drag="start_window_drag"
-          @minimize_window="minimize_window"
-          @toggle_maximize_window="toggle_maximize_window"
-          @close_window="close_window"
-          @begin_progress_drag="begin_progress_drag"
-          @drag_progress="drag_progress"
-          @end_progress_drag="end_progress_drag"
-          @cancel_progress_drag="cancel_progress_drag"
-          @previous_track="previous_track"
-          @toggle_playback="toggle_playback"
-          @next_track="next_track"
-          @open_queue="ui_store.open_playback_queue()"
-          @cycle_playback_mode="cycle_playback_mode"
-          @change_volume="change_volume"
-        />
+        <NowPlayingPage v-if="now_playing_open" :playback_mode_button="playback_mode_button" />
+
       </KeepAlive>
     </Transition>
 
     <KeepAlive>
-      <PlaybackQueuePanel
-        v-if="playback_queue_open"
-        @open_source="open_queue_source"
-        @play_track="play_track_from_queue"
-      />
+      <PlaybackQueuePanel v-if="playback_queue_open" />
+
     </KeepAlive>
 
     <SettingsPanel
@@ -1744,1208 +1625,3 @@ watch(() => current_track.value?.id ?? null, () => {
     <GlobalNotification />
   </main>
 </template>
-
-<style>
-:root {
-  color: var(--theme-title-color, #1e2026);
-  background: #f6f7fa;
-  font-family:
-    Inter, "Segoe UI", "Microsoft YaHei", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-  font-size: 16px;
-  font-synthesis: none;
-  line-height: 1.5;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-* {
-  box-sizing: border-box;
-  user-select: none;
-  -webkit-user-select: none;
-}
-
-body {
-  margin: 0;
-  min-width: 600px;
-  min-height: 700px;
-  overflow: hidden;
-}
-
-button,
-input {
-  font: inherit;
-}
-
-input,
-textarea,
-[contenteditable="true"] {
-  user-select: text;
-  -webkit-user-select: text;
-}
-
-button {
-  appearance: none;
-  -webkit-appearance: none;
-  border: 0;
-  cursor: pointer;
-  outline: none;
-  box-shadow: none;
-  -webkit-tap-highlight-color: transparent;
-}
-
-button:focus,
-button:focus-visible {
-  outline: none;
-  box-shadow: none;
-}
-
-.app_shell {
-  position: relative;
-  display: grid;
-  grid-template-areas:
-    "sidebar workspace"
-    "player player";
-  grid-template-columns: var(--sidebar_width, 250px) minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr) 86px;
-  height: 100vh;
-  min-width: 600px;
-  min-height: 700px;
-  overflow: hidden;
-  color: var(--theme-title-color, #1e2026);
-  background-color: var(--app_background_color, #ffffff);
-}
-
-
-.app_shell::before {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  content: "";
-  background-image: var(--app_background_image, none);
-  background-position: center;
-  background-size: cover;
-  background-repeat: no-repeat;
-  opacity: var(--app_background_image_opacity, 1);
-  pointer-events: none;
-}
-
-.app_shell > * {
-  position: relative;
-  z-index: 1;
-}
-
-.tool_button,
-.window_button,
-.player_tools button,
-.control_row button {
-  display: grid;
-  width: 38px;
-  height: 38px;
-  place-items: center;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  color: var(--theme-control-color, #1e2026);
-  background: transparent;
-  font-size: 1.25rem;
-  line-height: 1;
-}
-
-.svg_icon {
-  display: inline-block;
-  width: 20px;
-  height: 20px;
-  flex: 0 0 auto;
-  background: currentColor;
-  -webkit-mask: var(--icon) center / contain no-repeat;
-  mask: var(--icon) center / contain no-repeat;
-}
-
-.settings_panel h2,
-.settings_section h3,
-p {
-  margin: 0;
-}
-
-.workspace {
-  grid-area: workspace;
-  display: grid;
-  grid-template-rows: 78px minmax(0, 1fr);
-  min-width: 0;
-  min-height: 0;
-  background: transparent;
-}
-
-.now_playing_slide-enter-active,
-.now_playing_slide-leave-active {
-  transition:
-    transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 220ms ease;
-  will-change: transform, opacity;
-}
-
-.now_playing_slide-enter-from {
-  opacity: 0.8;
-  transform: translateY(100%);
-}
-
-.now_playing_slide-enter-to,
-.now_playing_slide-leave-from {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.now_playing_slide-leave-to {
-  opacity: 0.82;
-  transform: translateY(100%);
-}
-
-.tool_button .svg_icon,
-.window_button .svg_icon,
-.player_tools .svg_icon,
-.control_row .svg_icon {
-  width: 20px;
-  height: 20px;
-}
-
-.hover_border_control:hover {
-  border-color: var(--theme-title-color, #1e2026);
-  color: var(--theme-title-color, #1e2026);
-  background: transparent;
-}
-
-.content_area {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  padding: 22px 22px 0;
-}
-
-.muted {
-  color: var(--theme-subtitle-color, #8b919c);
-  font-size: 0.92rem;
-}
-
-.primary_button {
-  min-height: 38px;
-  border-radius: 8px;
-  padding: 0 16px;
-  color: #ffffff;
-  background: var(--theme-highlight-color, #426dff);
-  font-size: 0.95rem;
-  font-weight: 800;
-}
-
-.track_table {
-  flex: 1;
-  min-height: 0;
-}
-
-.track_table_content {
-  padding: 0 0 18px;
-}
-
-.track_table_view {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.virtual_track_spacer {
-  width: 100%;
-  flex: 0 0 auto;
-}
-
-.table_head,
-.table_row {
-  display: grid;
-  /* grid-template-columns: 68px minmax(200px, 1fr) minmax(150px, 0.8fr) 86px; */
-  grid-template-columns: 68px 1.35fr 1fr 86px;
-  align-items: center;
-  gap: 18px;
-  width: 100%;
-}
-
-.table_head {
-  flex: 0 0 auto;
-  height: 36px;
-  border-radius: 8px;
-  padding: 0 20px 0 0;
-  color: var(--theme-subtitle-color, #a0a5af);
-  font-size: 0.82rem;
-  font-weight: 800;
-}
-
-.table_row {
-  min-height: 74px;
-  border: var(--app_border_width, 2px) solid transparent;
-  border-radius: 8px;
-  padding: 8px 0;
-  color: var(--theme-title-color, #1e2026);
-  background: transparent;
-  text-align: left;
-}
-
-.table_row:hover,
-.table_row.active {
-  /* background: #f5f7ff; */
-  border-color: var(--theme-border-color, #e8e8e8);
-}
-
-.table_row.missing,
-.table_row.missing:hover {
-  background: #fff1f1;
-}
-
-.table_row.missing {
-  cursor: default;
-}
-
-.table_row.missing .song_text strong {
-  color: #a43838;
-}
-
-.playlist_context_menu {
-  min-width: 150px;
-}
-
-.context_menu_button {
-  min-height: 34px;
-  border-radius: 6px;
-  padding: 0 10px;
-  color: #20242c;
-  background: transparent;
-  font-size: 0.92rem;
-  font-weight: 800;
-  text-align: left;
-}
-
-.context_menu_button:hover {
-  color: #426dff;
-  background: #eaf0ff;
-}
-
-.context_menu_button.danger {
-  color: #b65b5b;
-}
-
-.context_menu_button.danger:hover {
-  color: #c33131;
-  background: #fff0f0;
-}
-
-.context_menu_button:disabled,
-.context_menu_button:disabled:hover {
-  color: #b3b8c2;
-  background: transparent;
-  cursor: default;
-}
-
-.index_cell,
-.duration_cell {
-  color: var(--theme-subtitle-color, #8b919c);
-  text-align: center;
-}
-
-.song_cell {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  min-width: 0;
-  transition:
-    transform 160ms ease,
-    color 160ms ease;
-}
-
-.cover_thumb,
-.player_cover,
-.album_art {
-  display: grid;
-  place-items: center;
-  overflow: hidden;
-  flex: 0 0 auto;
-  border-radius: 8px;
-  color: #ffffff;
-  font-weight: 900;
-}
-
-.cover_thumb {
-  width: 52px;
-  height: 52px;
-  font-size: 1.5rem;
-}
-
-.cover_thumb img,
-.player_cover img,
-.album_art img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.song_text {
-  display: grid;
-  min-width: 0;
-  gap: 3px;
-}
-
-.song_text strong,
-.song_text small,
-.album_cell,
-.now_text strong,
-.now_text small,
-.path_list p,
-.settings_section input {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.song_text strong {
-  font-size: 1rem;
-  transition: color 160ms ease;
-}
-
-.table_row:hover .song_cell {
-  transform: translateX(-6px);
-}
-
-.table_row:hover .song_text strong,
-.table_row.active .song_text strong {
-  color: var(--theme-highlight-color, #426dff);
-}
-
-.song_text small,
-.album_cell {
-  color: var(--theme-subtitle-color, #a0a5af);
-  font-size: 0.95rem;
-}
-
-.empty_state {
-  display: grid;
-  min-height: 220px;
-  place-items: center;
-  color: var(--theme-subtitle-color, #8b919c);
-}
-
-.placeholder_view {
-  flex: 1;
-  min-height: 0;
-}
-
-.placeholder_view_content {
-  padding: 18px 8px;
-}
-
-.placeholder_grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 18px;
-}
-
-.album_tile {
-  display: grid;
-  gap: 8px;
-  min-width: 0;
-}
-
-.media_tile {
-  border: 0;
-  padding: 0;
-  color: inherit;
-  background: transparent;
-  text-align: left;
-}
-
-.media_tile:hover strong {
-  color: var(--theme-highlight-color, #426dff);
-}
-
-.detail_header {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 14px;
-  min-height: 44px;
-  padding: 0 0 12px;
-}
-
-.detail_title {
-  display: grid;
-  min-width: 0;
-  gap: 2px;
-  border: 0;
-  padding: 0;
-  color: inherit;
-  background: transparent;
-  text-align: center;
-  cursor: pointer;
-}
-
-.detail_title:hover {
-  color: var(--theme-highlight-color, #3bce82);
-}
-
-.detail_title strong,
-.detail_meta {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.detail_meta {
-  justify-self: end;
-  color: var(--theme-subtitle-color, #8b919c);
-  font-size: 0.88rem;
-  font-weight: 700;
-  text-align: right;
-}
-
-.album_art,
-.artist_art {
-  width: 100%;
-  aspect-ratio: 1;
-  font-size: 3rem;
-}
-
-.artist_grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 18px;
-}
-
-.artist_tile {
-  display: grid;
-  gap: 7px;
-  min-width: 0;
-}
-
-.artist_art {
-  display: grid;
-  place-items: center;
-  overflow: hidden;
-  border-radius: 8px;
-  color: #ffffff;
-  background:
-    linear-gradient(145deg, #21242b, var(--theme-highlight-color, #426dff)),
-    #21242b;
-  font-weight: 900;
-}
-
-.artist_art img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.album_tile strong,
-.album_tile small,
-.artist_tile strong,
-.artist_tile small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.album_tile small,
-.artist_tile small {
-  color: var(--theme-subtitle-color, #8b919c);
-}
-
-.stats_view {
-  flex: 1;
-  min-height: 0;
-}
-
-.stats_view_content {
-  display: grid;
-  align-content: start;
-  gap: 24px;
-  padding: 18px 8px;
-}
-
-.stats_section {
-  display: grid;
-  gap: 14px;
-  min-width: 0;
-}
-
-.stats_section h2 {
-  margin: 0;
-  color: var(--theme-title-color, #1e2026);
-  font-size: 1.18rem;
-  font-weight: 900;
-}
-
-.stats_card_grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(130px, 1fr));
-  gap: 16px;
-}
-
-.music_stats_grid {
-  grid-template-columns: repeat(5, minmax(120px, 1fr));
-}
-
-.stats_card_grid article {
-  display: grid;
-  gap: 8px;
-  min-width: 0;
-  border: var(--app_border_width, 2px) solid var(--theme-border-color, #e8e8e8);
-  border-radius: 8px;
-  padding: 20px;
-  background: transparent;
-  transition:
-    border-color 160ms ease,
-    transform 160ms ease;
-}
-
-.stats_card_grid article:hover {
-  border-color: var(--theme-title-color, #1e2026);
-  transform: translateY(-1px);
-}
-
-.stats_card_grid strong {
-  overflow: hidden;
-  color: var(--theme-highlight-color, #426dff);
-  font-size: 1.55rem;
-  font-weight: 900;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.stats_card_grid span {
-  color: var(--theme-subtitle-color, #8b919c);
-  font-size: 0.92rem;
-  font-weight: 800;
-}
-
-.most_played_section {
-  padding-bottom: 18px;
-}
-
-.most_played_list {
-  display: grid;
-  gap: 4px;
-}
-
-.most_played_row {
-  display: grid;
-  grid-template-columns: 52px minmax(180px, 1fr) minmax(140px, 0.7fr) 76px;
-  align-items: center;
-  gap: 16px;
-  min-height: 54px;
-  border: var(--app_border_width, 2px) solid transparent;
-  border-radius: 8px;
-  padding: 6px 12px 6px 0;
-  color: var(--theme-title-color, #1e2026);
-  background: transparent;
-  transition:
-    border-color 160ms ease,
-    transform 160ms ease;
-}
-
-.most_played_row:hover {
-  border-color: var(--theme-border-color, #e8e8e8);
-  background: transparent;
-  transform: translateX(2px);
-}
-
-.most_played_song {
-  display: grid;
-  min-width: 0;
-  gap: 2px;
-}
-
-.most_played_song strong,
-.most_played_song small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.most_played_song strong {
-  color: var(--theme-title-color, #1e2026);
-  transition: color 160ms ease;
-}
-
-.most_played_row:hover .most_played_song strong {
-  color: var(--theme-highlight-color, #426dff);
-}
-
-.most_played_song small,
-.play_count_cell {
-  color: var(--theme-subtitle-color, #8b919c);
-  font-size: 0.9rem;
-}
-
-.play_count_cell {
-  justify-self: end;
-  font-weight: 800;
-}
-
-.spinning_cover {
-  border-radius: 50%;
-  animation: cover_spin 16s linear infinite;
-  will-change: transform;
-}
-
-@keyframes cover_spin {
-  from {
-    transform: rotate(0deg);
-  }
-
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.settings_overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 999;
-  display: flex;
-  overflow: hidden;
-  background-color: var(--app_background_color, #ffffff);
-}
-
-.settings_overlay::before {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  content: "";
-  background-image: var(--app_background_image, none);
-  background-position: center;
-  background-size: cover;
-  background-repeat: no-repeat;
-  opacity: var(--app_background_image_opacity, 1);
-  pointer-events: none;
-}
-
-.settings_overlay > * {
-  position: relative;
-  z-index: 1;
-}
-
-.queue_overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 999;
-  display: flex;
-  justify-content: flex-end;
-  background: rgba(18, 21, 28, 0.16);
-}
-
-.settings_panel {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 22px;
-  width: 100%;
-  height: 100%;
-  padding: 28px;
-  background: transparent;
-}
-
-.queue_panel {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  width: min(420px, 100vw);
-  height: 100%;
-  overflow: hidden;
-  border-radius: 10px 0 0 10px;
-  padding: 24px;
-  background: #ffffff;
-  box-shadow: -20px 0 60px rgba(19, 24, 34, 0.14);
-}
-
-.settings_panel header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.queue_panel header {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 14px;
-  min-width: 0;
-  padding-bottom: 18px;
-}
-
-.settings_panel h2 {
-  font-size: 1.45rem;
-}
-
-.settings_panel .primary_button {
-  border: 1px solid #e5e8ef;
-  color: var(--theme-highlight-color, #426dff);
-  background: transparent;
-}
-
-.settings_body {
-  display: grid;
-  grid-template-columns: 180px minmax(0, 1fr);
-  gap: 28px;
-  min-height: 0;
-}
-
-.settings_nav {
-  display: grid;
-  align-content: start;
-  gap: 8px;
-  min-height: 0;
-  overflow-y: auto;
-  scrollbar-width: none;
-}
-
-.settings_nav::-webkit-scrollbar {
-  display: none;
-}
-
-.settings_nav_item {
-  min-height: 48px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  padding: 0 16px;
-  color: var(--theme-title-color, #1e2026);
-  background: transparent;
-  font-size: 1.08rem;
-  font-weight: 900;
-  text-align: left;
-}
-
-.settings_nav_item:hover,
-.settings_nav_item.active {
-  color: var(--theme-highlight-color, #426dff);
-  background: transparent;
-}
-
-.settings_content {
-  min-width: 0;
-  min-height: 0;
-}
-
-.settings_content_inner {
-  padding-right: 4px;
-}
-
-.queue_title_button {
-  overflow: hidden;
-  margin: 0;
-  min-width: 0;
-  border: 0;
-  padding: 0;
-  color: #1e2026;
-  background: transparent;
-  font-size: 1.24rem;
-  font-weight: 800;
-  text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.queue_title_button:hover {
-  color: var(--theme-highlight-color, #426dff);
-}
-
-.settings_panel header p {
-  color: var(--theme-subtitle-color, #8b919c);
-}
-
-.queue_panel header p {
-  justify-self: end;
-  overflow: hidden;
-  margin: 0;
-  color: var(--theme-subtitle-color, #8b919c);
-  font-size: 0.9rem;
-  font-weight: 700;
-  text-align: right;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.queue_panel header > div {
-  min-width: 0;
-}
-
-.queue_list {
-  min-height: 0;
-}
-
-.queue_list_content {
-  padding-right: 6px;
-}
-
-.queue_item {
-  display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  min-height: 58px;
-  border-radius: 8px;
-  padding: 8px;
-  color: #1e2026;
-  background: transparent;
-  text-align: left;
-  transition:
-    transform 160ms ease,
-    background-color 160ms ease;
-}
-
-.queue_item:hover {
-  transform: translateX(-6px);
-}
-
-.queue_item:hover,
-.queue_item.active {
-  background: #f5f7ff;
-}
-
-.queue_cover {
-  display: grid;
-  place-items: center;
-  overflow: hidden;
-  width: 42px;
-  height: 42px;
-  border-radius: 8px;
-  color: #ffffff;
-  font-weight: 900;
-}
-
-.queue_cover.spinning_cover {
-  border-radius: 50%;
-  animation: cover_spin 16s linear infinite;
-  will-change: transform;
-}
-
-.queue_panel.playing .queue_item.active .queue_cover {
-  border-radius: 50%;
-  animation: cover_spin 16s linear infinite;
-  will-change: transform;
-}
-
-.queue_cover img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.queue_text {
-  display: grid;
-  min-width: 0;
-  gap: 2px;
-}
-
-.queue_text strong,
-.queue_text small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.queue_text strong {
-  color: #1e2026;
-  font-size: 0.94rem;
-  transition: color 160ms ease;
-}
-
-.queue_item:hover .queue_text strong,
-.queue_item.active .queue_text strong {
-  color: var(--theme-highlight-color, #426dff);
-}
-
-.queue_text small {
-  color: #8b919c;
-  font-size: 0.84rem;
-}
-
-.queue_duration {
-  color: #8b919c;
-  font-size: 0.84rem;
-}
-
-.queue_duration {
-  justify-self: end;
-}
-
-.settings_section {
-  display: grid;
-  align-content: start;
-  gap: 16px;
-}
-
-.settings_section h3 {
-  font-size: 1.25rem;
-  font-weight: 900;
-}
-
-.settings_field_group {
-  display: grid;
-  gap: 14px;
-}
-
-.settings_row,
-.settings_placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  min-width: 0;
-  border: 1px solid #e5e8ef;
-  border-radius: 8px;
-  padding: 14px;
-  background: transparent;
-}
-
-.settings_row > div,
-.settings_placeholder {
-  min-width: 0;
-}
-
-.settings_row strong,
-.settings_placeholder strong {
-  display: block;
-  color: var(--theme-title-color, #1e2026);
-  font-size: 0.96rem;
-}
-
-.settings_row span,
-.settings_placeholder span {
-  display: block;
-  overflow: hidden;
-  margin-top: 2px;
-  color: var(--theme-subtitle-color, #8b919c);
-  font-size: 0.82rem;
-  font-weight: 800;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.path_list {
-  display: grid;
-  gap: 8px;
-}
-
-.path_list_row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 40px;
-  gap: 8px;
-  min-width: 0;
-}
-
-.path_list p,
-.settings_section input {
-  width: 100%;
-  border: 1px solid #e5e8ef;
-  border-radius: 8px;
-  padding: 10px 12px;
-  color: #505763;
-  background: transparent;
-  outline: none;
-  box-shadow: none;
-}
-
-.settings_input_row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 40px 40px;
-  gap: 8px;
-  min-width: 0;
-}
-
-.path_list p:hover,
-.path_list p:active,
-.path_list p:focus,
-.path_list p:focus-visible,
-.settings_section input:hover,
-.settings_section input:active,
-.settings_section input:focus,
-.settings_section input:focus-visible,
-.settings_section .settings_radio_option:hover,
-.settings_section .settings_radio_option:active,
-.settings_section .settings_radio_option:focus-within {
-  border-color: #e5e8ef;
-  outline: none;
-  box-shadow: none;
-}
-
-.settings_section .settings_color_picker {
-  width: 40px;
-  height: 40px;
-  min-height: 40px;
-  border-radius: 8px;
-  padding: 4px;
-  cursor: pointer;
-}
-
-.settings_radio_field {
-  display: grid;
-  gap: 6px;
-  min-width: 0;
-  color: var(--theme-subtitle-color, #8b919c);
-  font-size: 0.84rem;
-  font-weight: 800;
-}
-
-.settings_radio_group {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  min-width: 0;
-}
-
-.settings_section .settings_radio_option {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 40px;
-  border: 1px solid #e5e8ef;
-  border-radius: 8px;
-  padding: 0 12px;
-  color: var(--theme-title-color, #1e2026);
-  background: transparent;
-  cursor: pointer;
-}
-
-.settings_section .settings_radio_option.active {
-  color: var(--theme-highlight-color, #426dff);
-}
-
-.settings_section .settings_radio_option input {
-  width: 14px;
-  height: 14px;
-  border: 0;
-  padding: 0;
-  background: transparent;
-  accent-color: var(--theme-highlight-color, #426dff);
-}
-
-.settings_color_picker::-webkit-color-swatch-wrapper {
-  padding: 0;
-}
-
-.settings_color_picker::-webkit-color-swatch {
-  border: 0;
-  border-radius: 6px;
-}
-
-.settings_opacity_control {
-  display: grid;
-  grid-template-columns: 92px minmax(120px, 1fr) 40px;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.settings_opacity_control > span {
-  margin: 0;
-  color: var(--theme-subtitle-color, #8b919c);
-  font-size: 0.82rem;
-  font-weight: 800;
-  white-space: nowrap;
-}
-
-.settings_opacity_control input[type="range"] {
-  width: 100%;
-  height: 40px;
-  border: 0;
-  padding: 0;
-  background: transparent;
-  accent-color: var(--theme-highlight-color, #426dff);
-}
-
-.settings_opacity_control input[type="range"]::-webkit-slider-runnable-track {
-  height: 6px;
-  border-radius: 999px;
-  background: #e5e8ef;
-}
-
-.settings_opacity_control input[type="range"]::-webkit-slider-thumb {
-  width: 16px;
-  height: 16px;
-  margin-top: -5px;
-  border: 3px solid #ffffff;
-  border-radius: 50%;
-  background: var(--theme-highlight-color, #426dff);
-  box-shadow: 0 2px 8px rgba(66, 109, 255, 0.28);
-  -webkit-appearance: none;
-}
-
-.settings_opacity_control input[type="range"]::-moz-range-track {
-  height: 6px;
-  border-radius: 999px;
-  background: #e5e8ef;
-}
-
-.settings_opacity_control input[type="range"]::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
-  border: 3px solid #ffffff;
-  border-radius: 50%;
-  background: var(--theme-highlight-color, #426dff);
-  box-shadow: 0 2px 8px rgba(66, 109, 255, 0.28);
-}
-
-.settings_default_button,
-.settings_file_button,
-.settings_delete_button {
-  min-height: 40px;
-  border: 1px solid #e5e8ef;
-  border-radius: 8px;
-  color: var(--theme-control-color, #1e2026);
-  background: transparent;
-  font-size: 0.88rem;
-  font-weight: 800;
-  outline: none;
-  box-shadow: none;
-}
-
-.settings_default_button {
-  display: grid;
-  width: 40px;
-  place-items: center;
-}
-
-.settings_file_button,
-.settings_delete_button {
-  display: grid;
-  width: 40px;
-  place-items: center;
-}
-
-.settings_default_button .svg_icon,
-.settings_file_button .svg_icon,
-.settings_delete_button .svg_icon {
-  width: 18px;
-  height: 18px;
-}
-
-.settings_section .settings_default_button:hover,
-.settings_section .settings_default_button:active,
-.settings_section .settings_default_button:focus,
-.settings_section .settings_default_button:focus-visible,
-.settings_section .settings_file_button:hover,
-.settings_section .settings_file_button:active,
-.settings_section .settings_file_button:focus,
-.settings_section .settings_file_button:focus-visible,
-.settings_section .settings_delete_button:hover,
-.settings_section .settings_delete_button:active,
-.settings_section .settings_delete_button:focus,
-.settings_section .settings_delete_button:focus-visible {
-  border-color: #e5e8ef;
-  outline: none;
-  box-shadow: none;
-}
-
-.settings_section label {
-  display: grid;
-  gap: 6px;
-  min-width: 0;
-  color: var(--theme-subtitle-color, #8b919c);
-  font-size: 0.84rem;
-  font-weight: 800;
-}
-</style>

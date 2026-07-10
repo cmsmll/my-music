@@ -6,6 +6,7 @@
 use super::models::*;
 use crate::logger::{self, LogKind};
 use crate::lyrics_search::{models, Lyrix, MusicPlayer};
+use crate::utils::atomic_write;
 use moka::future::Cache;
 use sha2::{Digest, Sha256};
 use std::{fs, path::PathBuf, sync::Arc, time::Duration};
@@ -145,7 +146,7 @@ impl LyricsSearchService {
             fs::create_dir_all(parent).map_err(|err| format!("无法创建歌词缓存目录: {err}"))?;
         }
 
-        fs::write(&path, &lyrics).map_err(|err| format!("无法写入歌词缓存: {err}"))?;
+        atomic_write(&path, lyrics.as_bytes(), "歌词缓存")?;
         let lyrics_hash = lyrics_hash(&lyrics);
 
         Ok(LyricsUseResult {

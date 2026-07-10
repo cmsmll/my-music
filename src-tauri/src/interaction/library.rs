@@ -8,7 +8,7 @@ use super::lyrics::*;
 use super::models::*;
 use super::playlist::*;
 use crate::logger::{self, LogKind};
-use crate::utils::unix_timestamp;
+use crate::utils::{atomic_write, unix_timestamp};
 use lofty::{
     file::{AudioFile, TaggedFileExt},
     prelude::Accessor,
@@ -145,10 +145,7 @@ pub(crate) fn write_library_cache(
     };
     let content =
         serde_json::to_string_pretty(&cache).map_err(|err| format!("无法序列化歌曲缓存: {err}"))?;
-    if let Some(parent) = cache_path.parent() {
-        fs::create_dir_all(parent).map_err(|err| format!("无法创建歌曲缓存目录: {err}"))?;
-    }
-    fs::write(cache_path, content).map_err(|err| format!("无法写入歌曲缓存: {err}"))
+    atomic_write(cache_path, content.as_bytes(), "歌曲缓存")
 }
 
 /// 删除旧缓存文件或旧版缓存目录。
@@ -380,7 +377,7 @@ pub(crate) fn cache_cover(
         }
     }
     let cover_data = picture.data().to_vec();
-    if let Err(err) = fs::write(&cache_path, &cover_data) {
+    if let Err(err) = atomic_write(&cache_path, &cover_data, "封面原始数据") {
         logger::error(
             LogKind::Library,
             format!(
@@ -434,7 +431,7 @@ fn write_webp_cover(data: &[u8], cache_path: &Path) -> Result<(), String> {
     let rgba = image.to_rgba8();
     let encoder = webp::Encoder::from_rgba(&rgba, rgba.width(), rgba.height());
     let webp = encoder.encode(COVER_WEBP_QUALITY);
-    fs::write(cache_path, &*webp).map_err(|err| format!("无法写入 WebP 封面: {err}"))
+    atomic_write(cache_path, &webp, "WebP 封面")
 }
 
 /// 从音频标签中提取内嵌歌词。
@@ -461,7 +458,7 @@ pub(crate) fn cache_lyrics(lyrics: &str, lyrics_cache_path: &str) -> Result<Cach
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|err| format!("无法创建歌词缓存目录: {err}"))?;
     }
-    fs::write(&path, lyrics).map_err(|err| format!("无法写入歌词缓存: {err}"))?;
+    atomic_write(&path, lyrics.as_bytes(), "歌词缓存")?;
     let hash = lyrics_hash(lyrics);
     Ok(CachedLyrics {
         path: path.to_string_lossy().to_string(),

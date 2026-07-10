@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { invoke } from "@tauri-apps/api/core";
-import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { computed, onBeforeUnmount, onMounted } from "vue";
 import folder_open_icon from "../assets/icons/folder-open.svg";
 import { use_notification_store } from "../stores/notifications";
@@ -65,33 +64,16 @@ async function open_directory(path: string) {
   await invoke("open_directory", { path });
 }
 
-async function open_track_folder(path?: string, open_mode: TrackDetailOpenMode = "reveal") {
+async function open_track_folder(path?: string) {
   if (!path) return;
-
-  if (open_mode === "directory") {
-    try {
-      await open_directory(path);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      notification.error(message);
-      console.warn("无法打开文件夹", error);
-    }
-    return;
-  }
-
   try {
-    await revealItemInDir(path);
+    await open_directory(path);
   } catch (error) {
-    try {
-      await open_directory(path);
-    } catch (fallback_error) {
-      const message = fallback_error instanceof Error ? fallback_error.message : String(fallback_error);
-      notification.error(message);
-      console.warn("无法打开文件夹", error, fallback_error);
-    }
+    const message = error instanceof Error ? error.message : String(error);
+    notification.error(message);
+    console.warn("无法打开文件夹", error);
   }
 }
-
 function close_on_escape(event: KeyboardEvent) {
   if (event.key === "Escape") emit("close");
 }
@@ -129,7 +111,7 @@ onBeforeUnmount(() => {
             type="button"
             title="打开文件夹"
             :disabled="!item.path"
-            @click="open_track_folder(item.path, item.open_mode)"
+            @click="open_track_folder(item.path)"
           >
             <span class="track_detail_folder_icon" :style="icon_style(folder_open_icon)" />
           </button>

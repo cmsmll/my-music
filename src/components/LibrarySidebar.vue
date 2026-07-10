@@ -9,24 +9,21 @@ import playlist_grid_icon from "../assets/icons/playlist-grid.svg";
 import plus_icon from "../assets/icons/plus.svg";
 import statistics_icon from "../assets/icons/statistics.svg";
 import { use_library_store } from "../stores/library";
+import { use_app_actions_store } from "../stores/app_actions";
+import { use_library_catalog_store } from "../stores/library_catalog";
 import { use_library_view_store } from "../stores/library_view";
 import { use_player_queue_store } from "../stores/player_queue";
-import type { PlaylistCache } from "../types/music";
-import { display_album, display_artist, icon_style } from "../utils/track";
-
-const emit = defineEmits<{
-  create_playlist: [name: string];
-  reorder_playlists: [playlist_ids: string[]];
-  open_playlist_menu: [playlist: PlaylistCache, event: MouseEvent];
-  begin_resize: [event: PointerEvent];
-}>();
+import { icon_style } from "../utils/track";
 
 const library_view = use_library_view_store();
+const app_actions = use_app_actions_store();
 const library_store = use_library_store();
 const player_queue = use_player_queue_store();
+const library_catalog = use_library_catalog_store();
 const { active_view, selected_playlist_id } = storeToRefs(library_view);
 const { playlists } = storeToRefs(library_store);
 const { library_tracks } = storeToRefs(player_queue);
+const { artist_count, album_count } = storeToRefs(library_catalog);
 
 const creating_playlist = ref(false);
 const new_playlist_name = ref("");
@@ -44,22 +41,6 @@ let suppress_playlist_click = false;
 
 const playlist_items = computed(() => playlists.value.my_playlists ?? []);
 const track_count = computed(() => library_tracks.value.length);
-const artist_count = computed(() => {
-  const artists = new Set(
-    library_tracks.value
-      .map((track) => display_artist(track))
-      .filter((artist) => artist !== "未知歌手"),
-  );
-  return artists.size;
-});
-const album_count = computed(() => {
-  const albums = new Set(
-    library_tracks.value
-      .map((track) => display_album(track))
-      .filter((album) => album !== "未知专辑"),
-  );
-  return albums.size;
-});
 const recent_count = computed(() => playlists.value.recent.metadata.track_count);
 
 async function start_create_playlist() {
@@ -77,7 +58,7 @@ function cancel_create_playlist() {
 function submit_create_playlist() {
   const name = new_playlist_name.value.trim();
   if (name) {
-    emit("create_playlist", name);
+    app_actions.create_playlist(name);
   }
   cancel_create_playlist();
 }
@@ -181,7 +162,7 @@ function reorder_playlist_ids(dragged_playlist_id: string, target_playlist_id: s
   if (target_index < 0) return;
 
   playlist_ids.splice(target_index + (insert_after ? 1 : 0), 0, dragged_id);
-  emit("reorder_playlists", playlist_ids);
+  app_actions.reorder_playlists(playlist_ids);
 }
 
 function reset_playlist_drag() {
@@ -266,7 +247,7 @@ function reset_playlist_drag() {
           :data-playlist-id="playlist.id"
           :title="String(playlist.metadata.track_count)"
           @click="click_playlist(playlist.id, $event)"
-          @contextmenu.stop.prevent="emit('open_playlist_menu', playlist, $event)"
+          @contextmenu.stop.prevent="app_actions.open_playlist_menu(playlist, $event)"
           @pointerdown="begin_playlist_pointer_drag(playlist.id, $event)"
           @pointermove="move_playlist_pointer_drag"
           @pointerup="end_playlist_pointer_drag"
@@ -299,7 +280,7 @@ function reset_playlist_drag() {
       role="separator"
       aria-orientation="vertical"
       aria-label="调整侧边栏宽度"
-      @pointerdown="emit('begin_resize', $event)"
+      @pointerdown="app_actions.begin_sidebar_resize($event)"
     />
   </aside>
 </template>

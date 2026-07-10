@@ -1,5 +1,6 @@
 import { defineStore } from "pinia";
-import { computed, ref } from "vue";
+import { computed, ref, shallowRef } from "vue";
+import { use_library_catalog_store } from "./library_catalog";
 import type { PlaybackMode, PlaybackRecord, QueueSource, Track } from "../types/music";
 
 const default_queue_source: QueueSource = {
@@ -29,7 +30,7 @@ function migrate_playback_mode_semantics(mode: unknown): PlaybackMode | undefine
   return mode;
 }
 
-function shuffle_tracks(tracks: Track[]) {
+function shuffle_tracks(tracks: string[]) {
   const shuffled = [...tracks];
   for (let index = shuffled.length - 1; index > 0; index -= 1) {
     const random_index = Math.floor(Math.random() * (index + 1));
@@ -79,130 +80,84 @@ function write_playback_elapsed(seconds: number) {
 }
 
 export const use_player_queue_store = defineStore("player_queue", () => {
-  const library_tracks = ref<Track[]>([]);
-  const current_queue = ref<Track[]>([]);
-  const shuffle_queue = ref<Track[]>([]);
+  const catalog = use_library_catalog_store();
+  const current_queue_ids = shallowRef<string[]>([]);
+  const shuffle_queue_ids = shallowRef<string[]>([]);
   const queue_source = ref<QueueSource>(default_queue_source);
   const current_track_path = ref<string | null>(null);
   const playback_mode = ref<PlaybackMode>("repeat");
   const playback_record = ref<PlaybackRecord | null>(null);
+
+  const library_tracks = computed(() => catalog.tracks);
+  const current_queue = computed(() => catalog.resolve_track_ids(current_queue_ids.value));
+  const shuffle_queue = computed(() => catalog.resolve_track_ids(shuffle_queue_ids.value));
   const active_queue = computed(() =>
     playback_mode.value === "shuffle" ? shuffle_queue.value : current_queue.value,
   );
-
   const current_index = computed(() => {
     if (!current_track_path.value) return -1;
     return active_queue.value.findIndex((track) => track.path === current_track_path.value);
   });
 
   function set_library_tracks(tracks: Track[]) {
-    library_tracks.value = tracks;
-    if (queue_source.value.type === "all" || !current_queue.value.length) {
+    catalog.set_tracks(tracks);
+    if (queue_source.value.type === "all" || !current_queue_ids.value.length) {
       set_current_queue(default_queue_source, tracks);
     }
   }
 
   function set_current_queue(source: QueueSource, tracks: Track[]) {
     queue_source.value = source;
-    current_queue.value = [...tracks];
-    shuffle_queue.value = build_shuffle_queue(tracks);
+    current_queue_ids.value = tracks.map((track) => track.id);
+    shuffle_queue_ids.value = build_shuffle_queue(current_queue_ids.value);
   }
 
-  function set_current_track_path(path?: string | null) {
-    current_track_path.value = path ?? null;
-  }
-
-  function upsert_track(track: Track) {
-    const update_track = (current: Track) => (current.id === track.id ? { ...current, ...track } : current);
-    library_tracks.value = library_tracks.value.map(update_track);
-  }
-
+  function set_current_track_path(path?: string | null) { current_track_path.value = path ?? null; }
+  function upsert_track(track: Track) { catalog.upsert_track(track); }
   function set_playback_mode(mode: PlaybackMode) {
     if (mode === "shuffle" && playback_mode.value !== "shuffle") {
-      shuffle_queue.value = build_shuffle_queue(current_queue.value);
+      shuffle_queue_ids.value = build_shuffle_queue(current_queue_ids.value);
     }
     playback_mode.value = mode;
   }
-
   function hydrate_playback_record(record?: PlaybackRecord | null) {
     playback_record.value = record ?? read_playback_record_from_storage();
   }
-
-  function set_playback_record(record: PlaybackRecord) {
-    playback_record.value = { ...record };
-  }
-
+  function set_playback_record(record: PlaybackRecord) { playback_record.value = { ...record }; }
   function save_playback_record(record: PlaybackRecord) {
-    set_playback_record(record);
-    write_playback_record_metadata(record);
-    write_playback_elapsed(record.elapsed);
+    set_playback_record(record); write_playback_record_metadata(record); write_playback_elapsed(record.elapsed);
   }
-
   function save_playback_record_metadata(record: PlaybackRecord) {
-    set_playback_record(record);
-    write_playback_record_metadata(record);
+    set_playback_record(record); write_playback_record_metadata(record);
   }
-
   function save_playback_elapsed(seconds: number) {
     const elapsed = Math.max(0, Math.floor(seconds));
     write_playback_elapsed(elapsed);
-    if (playback_record.value) {
-      playback_record.value = { ...playback_record.value, elapsed };
-    }
+    if (playback_record.value) playback_record.value = { ...playback_record.value, elapsed };
   }
-
-  function build_shuffle_queue(tracks: Track[], anchor_track_id?: string | null) {
-    const anchor_track = anchor_track_id
-      ? tracks.find((track) => track.id === anchor_track_id)
-      : undefined;
-    const other_tracks = anchor_track
-      ? tracks.filter((track) => track.id !== anchor_track.id)
-      : tracks;
-    return anchor_track
-      ? [anchor_track, ...shuffle_tracks(other_tracks)]
-      : shuffle_tracks(other_tracks);
+  function build_shuffle_queue(ids: string[], anchor_track_id?: string | null) {
+    const anchor = anchor_track_id && ids.includes(anchor_track_id) ? anchor_track_id : null;
+    const others = anchor ? ids.filter((id) => id !== anchor) : ids;
+    return anchor ? [anchor, ...shuffle_tracks(others)] : shuffle_tracks(others);
   }
-
   function shuffle_current_queue(anchor_track_id?: string | null) {
-    shuffle_queue.value = build_shuffle_queue(current_queue.value, anchor_track_id);
+    shuffle_queue_ids.value = build_shuffle_queue(current_queue_ids.value, anchor_track_id);
     return shuffle_queue.value;
   }
-
   function reshuffle_queue(excluded_first_track_id?: string | null) {
-    const source_queue = current_queue.value.length ? current_queue.value : shuffle_queue.value;
-    const next_queue = shuffle_tracks(source_queue);
-    if (excluded_first_track_id && next_queue.length > 1 && next_queue[0]?.id === excluded_first_track_id) {
-      const swap_index = next_queue.findIndex((track, index) => index > 0 && track.id !== excluded_first_track_id);
-      if (swap_index > 0) {
-        [next_queue[0], next_queue[swap_index]] = [next_queue[swap_index], next_queue[0]];
-      }
+    const source = current_queue_ids.value.length ? current_queue_ids.value : shuffle_queue_ids.value;
+    const next = shuffle_tracks(source);
+    if (excluded_first_track_id && next.length > 1 && next[0] === excluded_first_track_id) {
+      const index = next.findIndex((id, current) => current > 0 && id !== excluded_first_track_id);
+      if (index > 0) [next[0], next[index]] = [next[index], next[0]];
     }
-
-    shuffle_queue.value = next_queue;
+    shuffle_queue_ids.value = next;
     return shuffle_queue.value;
   }
 
-  return {
-    library_tracks,
-    current_queue,
-    shuffle_queue,
-    active_queue,
-    queue_source,
-    current_track_path,
-    playback_mode,
-    playback_record,
-    current_index,
-    set_library_tracks,
-    set_current_queue,
-    set_current_track_path,
-    upsert_track,
-    set_playback_mode,
-    hydrate_playback_record,
-    set_playback_record,
-    save_playback_record,
-    save_playback_record_metadata,
-    save_playback_elapsed,
-    shuffle_current_queue,
-    reshuffle_queue,
-  };
+  return { library_tracks, current_queue, shuffle_queue, active_queue, queue_source, current_track_path,
+    playback_mode, playback_record, current_index, set_library_tracks, set_current_queue,
+    set_current_track_path, upsert_track, set_playback_mode, hydrate_playback_record,
+    set_playback_record, save_playback_record, save_playback_record_metadata,
+    save_playback_elapsed, shuffle_current_queue, reshuffle_queue };
 });

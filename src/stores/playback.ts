@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
-import type { PlaybackStatus, Track } from "../types/music";
+import { use_library_catalog_store } from "./library_catalog";
+import type { PlaybackStatus } from "../types/music";
 
 const default_status: PlaybackStatus = {
   path: null,
@@ -10,8 +11,7 @@ const default_status: PlaybackStatus = {
 };
 
 export const use_playback_store = defineStore("playback", () => {
-  const tracks_by_id = ref<Record<string, Track>>({});
-  const tracks_by_path = ref<Record<string, Track>>({});
+  const catalog = use_library_catalog_store();
   const current_track_id = ref<string | null>(null);
   const current_track_path = ref<string | null>(null);
   const status = ref<PlaybackStatus>({ ...default_status });
@@ -20,11 +20,11 @@ export const use_playback_store = defineStore("playback", () => {
 
   const current_track = computed(() => {
     if (current_track_id.value) {
-      const track = tracks_by_id.value[current_track_id.value];
+      const track = catalog.track_by_id(current_track_id.value);
       if (track) return track;
     }
     if (current_track_path.value) {
-      return tracks_by_path.value[current_track_path.value] ?? null;
+      return catalog.track_by_path(current_track_path.value);
     }
     return null;
   });
@@ -34,26 +34,6 @@ export const use_playback_store = defineStore("playback", () => {
     if (!duration.value) return 0;
     return Math.min(Math.max((visual_elapsed.value / duration.value) * 100, 0), 100);
   });
-
-  function set_library_tracks(tracks: Track[]) {
-    tracks_by_id.value = Object.fromEntries(tracks.map((track) => [track.id, track]));
-    tracks_by_path.value = Object.fromEntries(tracks.map((track) => [track.path, track]));
-    sync_current_track_from_path(status.value.path ?? current_track_path.value);
-  }
-
-  function upsert_track(track: Track) {
-    tracks_by_id.value = {
-      ...tracks_by_id.value,
-      [track.id]: track,
-    };
-    if (track.path) {
-      tracks_by_path.value = {
-        ...tracks_by_path.value,
-        [track.path]: track,
-      };
-    }
-    sync_current_track_from_path(status.value.path ?? current_track_path.value);
-  }
 
   function set_status(next_status: PlaybackStatus) {
     status.value = { ...next_status };
@@ -77,7 +57,7 @@ export const use_playback_store = defineStore("playback", () => {
 
   function sync_current_track_from_path(path?: string | null) {
     current_track_path.value = path ?? null;
-    const track = path ? tracks_by_path.value[path] : null;
+    const track = catalog.track_by_path(path);
     current_track_id.value = track?.id ?? null;
   }
 
@@ -90,8 +70,7 @@ export const use_playback_store = defineStore("playback", () => {
   }
 
   return {
-    tracks_by_id,
-    tracks_by_path,
+
     current_track_id,
     current_track_path,
     status,
@@ -100,8 +79,7 @@ export const use_playback_store = defineStore("playback", () => {
     current_track,
     duration,
     progress_percent,
-    set_library_tracks,
-    upsert_track,
+
     set_status,
     patch_status,
     set_visual_elapsed,

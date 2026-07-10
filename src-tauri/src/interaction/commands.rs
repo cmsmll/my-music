@@ -159,11 +159,7 @@ pub(crate) fn open_directory(path: String) -> Result<(), String> {
         let message = format!("无法打开文件夹: {err}");
         logger::error(
             LogKind::App,
-            format!(
-                "打开目录失败 | 路径=\"{}\" | 原因=\"{}\"",
-                path.trim(),
-                err
-            ),
+            format!("打开目录失败 | 路径=\"{}\" | 原因=\"{}\"", path.trim(), err),
         );
         message
     })?;
@@ -509,9 +505,9 @@ pub(crate) fn record_track_started(
     path: String,
 ) -> Result<PlayStatistics, String> {
     let config = config_manager.get()?;
-    let _ = record_recent_track(&config, &path);
     let mut play_statistics = read_play_statistics(&config).unwrap_or_default();
     if let Ok(all_playlist) = read_all_playlist_cache(&config) {
+        let _ = record_recent_track(&config, &all_playlist, &path);
         if let Some(track) = all_playlist
             .tracks
             .values()

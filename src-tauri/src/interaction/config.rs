@@ -3,7 +3,7 @@
 //! 负责加载、合并、保存 `config.toml`，并为前端设置页和启动流程提供配置数据。
 
 use super::models::*;
-use crate::utils::{current_app_dir, safe_file_name, short_hash};
+use crate::utils::{atomic_write, current_app_dir, safe_file_name, short_hash};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -61,9 +61,9 @@ impl ConfigManager {
             },
         };
 
-        let config = fs::read_to_string(&config_path)
-            .ok()
-            .and_then(|content| parse_config(&content, &default_config))
+        let backup_path = config_backup_path(&config_path);
+        let config = read_config_file(&config_path, &default_config)
+            .or_else(|| read_config_file(&backup_path, &default_config))
             .unwrap_or_else(|| default_config.clone());
 
         Self {
@@ -131,7 +131,16 @@ impl ConfigManager {
         let config = self.get()?;
         let content =
             toml::to_string_pretty(&config).map_err(|err| format!("无法序列化配置文件: {err}"))?;
-        fs::write(&self.config_path, content).map_err(|err| format!("无法写入配置文件: {err}"))
+        if let Ok(previous_content) = fs::read_to_string(&self.config_path) {
+            if parse_config(&previous_content, &self.default_config).is_some() {
+                atomic_write(
+                    &config_backup_path(&self.config_path),
+                    previous_content.as_bytes(),
+                    "配置备份文件",
+                )?;
+            }
+        }
+        atomic_write(&self.config_path, content.as_bytes(), "配置文件")
     }
 
     /// 确保配置中依赖的缓存目录和解码输出目录存在。
@@ -168,6 +177,15 @@ impl ConfigManager {
     }
 }
 
+fn config_backup_path(config_path: &Path) -> PathBuf {
+    config_path.with_extension("toml.bak")
+}
+
+fn read_config_file(path: &Path, default_config: &AppConfig) -> Option<AppConfig> {
+    fs::read_to_string(path)
+        .ok()
+        .and_then(|content| parse_config(&content, default_config))
+}
 /// 解析旧版或新版配置文件，并用默认配置补齐缺失字段。
 pub(crate) fn parse_config(content: &str, default_config: &AppConfig) -> Option<AppConfig> {
     toml::from_str::<ConfigFile>(content).ok().map(|config| {

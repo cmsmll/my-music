@@ -29,7 +29,6 @@ const { current_track, progress_dragging, status } = storeToRefs(playback_store)
 let current_path: string | null = null;
 let volume_level = 1;
 let play_request_id = 0;
-let status_timer: number | undefined;
 let progress_frame: number | undefined;
 let progress_sync_started_at = performance.now();
 let pending_seek_seconds: number | null = null;
@@ -131,21 +130,18 @@ async function play(track: Track, seconds = 0) {
     }
   }
   await play_audio_for_request(request_id);
-  start_status_polling();
 }
 
 function pause() {
   play_request_id += 1;
   current_audio().pause();
   emit_status();
-  start_status_polling();
 }
 
 async function resume() {
   if (!current_path) return;
   const request_id = ++play_request_id;
   await play_audio_for_request(request_id);
-  start_status_polling();
 }
 
 function stop() {
@@ -182,13 +178,6 @@ function preview_seek(seconds: number) {
 
 function cancel_seek_preview() {
   set_visual_elapsed(visual_elapsed);
-}
-
-function start_status_polling() {
-  if (status_timer) window.clearInterval(status_timer);
-  status_timer = window.setInterval(() => {
-    emit_status();
-  }, 1000);
 }
 
 function apply_playback_status(next_status: PlaybackStatus) {
@@ -265,14 +254,7 @@ function update_progress_frame(now: number) {
     if (!progress_dragging.value) {
       set_visual_elapsed(Math.min(elapsed, duration));
     }
-    if (!progress_dragging.value && visual_elapsed >= duration) {
-      emit("ended", {
-        ...status.value,
-        playing: false,
-        elapsed: Math.floor(duration),
-      });
-      return;
-    }
+
     request_progress_frame();
     return;
   }
@@ -380,7 +362,6 @@ watch(() => current_track.value?.id ?? null, () => {
 });
 
 onBeforeUnmount(() => {
-  if (status_timer) window.clearInterval(status_timer);
   if (progress_frame) window.cancelAnimationFrame(progress_frame);
   try {
     stop();

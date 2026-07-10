@@ -14,6 +14,7 @@ import x_icon from "../assets/icons/x.svg";
 import LineLyricsRenderer from "./LineLyricsRenderer.vue";
 import PlayerBar from "./PlayerBar.vue";
 import { use_app_config_store } from "../stores/app_config";
+import { use_app_actions_store } from "../stores/app_actions";
 import { use_library_view_store } from "../stores/library_view";
 import { use_notification_store } from "../stores/notifications";
 import { use_playback_store } from "../stores/playback";
@@ -35,29 +36,12 @@ defineProps<{
 const player_queue = use_player_queue_store();
 const playback_store = use_playback_store();
 const app_config_store = use_app_config_store();
+const app_actions = use_app_actions_store();
 const library_view = use_library_view_store();
 const notification = use_notification_store();
 const ui_store = use_ui_store();
 const { current_track, status } = storeToRefs(playback_store);
 const { now_playing_open, playback_queue_open } = storeToRefs(ui_store);
-
-const emit = defineEmits<{
-  close: [];
-  start_window_drag: [event: MouseEvent];
-  minimize_window: [];
-  toggle_maximize_window: [];
-  close_window: [];
-  begin_progress_drag: [event: PointerEvent];
-  drag_progress: [event: PointerEvent];
-  end_progress_drag: [event: PointerEvent];
-  cancel_progress_drag: [event: PointerEvent];
-  previous_track: [];
-  toggle_playback: [];
-  next_track: [];
-  open_queue: [];
-  cycle_playback_mode: [];
-  change_volume: [event: Event];
-}>();
 
 const lyrics_loading = ref(false);
 const lyrics_text = ref("");
@@ -236,7 +220,6 @@ async function apply_lyrics_result(track: Track, result: LyricsSearchResult) {
   current_lyrics_hash.value = used.lyrics_hash;
   if (used.track) {
     player_queue.upsert_track(used.track);
-    playback_store.upsert_track(used.track);
   }
 }
 
@@ -353,7 +336,7 @@ function close_on_escape(event: KeyboardEvent) {
     lyrics_search_open.value = false;
     return;
   }
-  emit("close");
+  ui_store.close_now_playing();
 }
 
 onMounted(() => {
@@ -371,8 +354,8 @@ function toggle_compact_panel() {
 
 <template>
   <section class="now_playing_page">
-    <header class="now_playing_header" @mousedown="emit('start_window_drag', $event)">
-      <button class="now_playing_back" type="button" title="返回" @click="emit('close')">
+    <header class="now_playing_header" @mousedown="app_actions.start_window_drag($event)">
+      <button class="now_playing_back" type="button" title="返回" @click="ui_store.close_now_playing()">
         <span class="svg_icon" :style="icon_style(chevron_down_icon)" />
       </button>
       <div class="now_playing_window_tools">
@@ -386,18 +369,18 @@ function toggle_compact_panel() {
         >
           Auto
         </button>
-        <button class="window_button hover_border_control" type="button" title="最小化" @click="emit('minimize_window')">
+        <button class="window_button hover_border_control" type="button" title="最小化" @click="app_actions.minimize_window()">
           <span class="svg_icon" :style="icon_style(minimize_icon)" />
         </button>
         <button
           class="window_button hover_border_control"
           type="button"
           title="最大化"
-          @click="emit('toggle_maximize_window')"
+          @click="app_actions.toggle_maximize_window()"
         >
           <span class="svg_icon" :style="icon_style(maximize_icon)" />
         </button>
-        <button class="window_button close hover_border_control" type="button" title="关闭" @click="emit('close_window')">
+        <button class="window_button close hover_border_control" type="button" title="关闭" @click="app_actions.close_window()">
           <span class="svg_icon" :style="icon_style(x_icon)" />
         </button>
       </div>
@@ -525,16 +508,7 @@ function toggle_compact_panel() {
     <PlayerBar
       :playback_mode_button="playback_mode_button"
       :show_cover="false"
-      @begin_progress_drag="emit('begin_progress_drag', $event)"
-      @drag_progress="emit('drag_progress', $event)"
-      @end_progress_drag="emit('end_progress_drag', $event)"
-      @cancel_progress_drag="emit('cancel_progress_drag', $event)"
-      @previous_track="emit('previous_track')"
-      @toggle_playback="emit('toggle_playback')"
-      @next_track="emit('next_track')"
-      @open_queue="emit('open_queue')"
-      @cycle_playback_mode="emit('cycle_playback_mode')"
-      @change_volume="emit('change_volume', $event)"
+
     />
   </section>
 </template>

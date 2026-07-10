@@ -3,30 +3,28 @@ import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { storeToRefs } from "pinia";
 import CustomScrollbar from "./CustomScrollbar.vue";
 import { use_library_view_store } from "../stores/library_view";
-import type { AlbumItem, ArtistItem, PlayStatistics, QueueSource, Track, TrackPlayStatistic } from "../types/music";
+import { use_library_catalog_store } from "../stores/library_catalog";
+import { use_library_store } from "../stores/library";
+import { use_playback_store } from "../stores/playback";
+import { use_player_queue_store } from "../stores/player_queue";
+import { use_app_actions_store } from "../stores/app_actions";
+import type { Track, TrackPlayStatistic } from "../types/music";
 import { cover_src, display_album, display_artist, display_title, format_duration, format_file_size, is_missing_track } from "../utils/track";
 
 const props = defineProps<{
   loading: boolean;
-  tracks: Track[];
   display_tracks: Track[];
-  status_path?: string | null;
-  is_playing: boolean;
-  playback_queue_source: QueueSource;
-  artist_items: ArtistItem[];
-  album_items: AlbumItem[];
-  album_count: number;
-  artist_count: number;
-  total_duration: number;
-  total_size: number;
-  play_statistics: PlayStatistics;
 }>();
 
-const emit = defineEmits<{
-  play_track: [track: Track];
-  open_track_menu: [track: Track, event: MouseEvent];
-}>();
-
+const catalog = use_library_catalog_store();
+const library_store = use_library_store();
+const playback_store = use_playback_store();
+const player_queue = use_player_queue_store();
+const app_actions = use_app_actions_store();
+const { tracks, artist_items, album_items, artist_count, album_count, total_duration, total_size } = storeToRefs(catalog);
+const { play_statistics } = storeToRefs(library_store);
+const { status } = storeToRefs(playback_store);
+const { queue_source: playback_queue_source } = storeToRefs(player_queue);
 type CustomScrollbarExpose = {
   refresh: () => void;
   set_scroll_top: (value: number) => void;
@@ -204,11 +202,11 @@ async function restore_media_grid_scroll() {
 }
 
 async function locate_status_track() {
-  if (!props.status_path) return;
+  if (!status.value.path) return;
 
   await nextTick();
 
-  const index = props.display_tracks.findIndex((track) => track.path === props.status_path);
+  const index = props.display_tracks.findIndex((track) => track.path === status.value.path);
   if (index < 0 || !track_table.value) return;
 
   const client_height = track_table.value.get_client_height();
@@ -224,59 +222,59 @@ function detail_total_duration() {
 function visible_list_matches_playback_source() {
   if (selected_artist.value) {
     return (
-      props.playback_queue_source.type === "artist" &&
-      props.playback_queue_source.id === selected_artist.value
+      playback_queue_source.value.type === "artist" &&
+      playback_queue_source.value.id === selected_artist.value
     );
   }
   if (selected_album.value) {
-    return props.playback_queue_source.type === "album" && props.playback_queue_source.id === selected_album.value;
+    return playback_queue_source.value.type === "album" && playback_queue_source.value.id === selected_album.value;
   }
   if (active_view.value === "user_playlist") {
     return (
-      props.playback_queue_source.type === "playlist" &&
-      props.playback_queue_source.id === selected_playlist_id.value
+      playback_queue_source.value.type === "playlist" &&
+      playback_queue_source.value.id === selected_playlist_id.value
     );
   }
-  return props.playback_queue_source.type === active_view.value;
+  return playback_queue_source.value.type === active_view.value;
 }
 
 function track_should_spin(track: Track) {
   return Boolean(
-    props.is_playing &&
-    track.path === props.status_path &&
+    status.value.playing &&
+    track.path === status.value.path &&
     visible_list_matches_playback_source(),
   );
 }
 
 function artist_card_should_spin(name: string) {
   return Boolean(
-    props.is_playing &&
+    status.value.playing &&
     active_view.value === "artists" &&
     !selected_artist.value &&
     !query.value.trim() &&
-    props.playback_queue_source.type === "artist" &&
-    props.playback_queue_source.id === name,
+    playback_queue_source.value.type === "artist" &&
+    playback_queue_source.value.id === name,
   );
 }
 
 function album_card_should_spin(name: string) {
   return Boolean(
-    props.is_playing &&
+    status.value.playing &&
     active_view.value === "albums" &&
     !selected_album.value &&
     !query.value.trim() &&
-    props.playback_queue_source.type === "album" &&
-    props.playback_queue_source.id === name,
+    playback_queue_source.value.type === "album" &&
+    playback_queue_source.value.id === name,
   );
 }
 
 function play_track(track: Track) {
   if (is_missing_track(track)) return;
-  emit("play_track", track);
+  app_actions.play_track(track);
 }
 
 const most_played_tracks = computed(() =>
-  Object.values(props.play_statistics.tracks)
+  Object.values(play_statistics.value.tracks)
     .filter((track) => track.play_count > 0)
     .sort((left, right) => {
       if (right.play_count !== left.play_count) return right.play_count - left.play_count;
@@ -290,20 +288,20 @@ const favorite_album = computed(() => favorite_group("album"));
 
 const filtered_artist_items = computed(() => {
   const keyword = query.value.trim().toLowerCase();
-  if (!keyword) return props.artist_items;
-  return props.artist_items.filter((artist) => artist.name.toLowerCase().includes(keyword));
+  if (!keyword) return artist_items.value;
+  return artist_items.value.filter((artist) => artist.name.toLowerCase().includes(keyword));
 });
 
 const filtered_album_items = computed(() => {
   const keyword = query.value.trim().toLowerCase();
-  if (!keyword) return props.album_items;
-  return props.album_items.filter((album) => album.name.toLowerCase().includes(keyword));
+  if (!keyword) return album_items.value;
+  return album_items.value.filter((album) => album.name.toLowerCase().includes(keyword));
 });
 
 function favorite_group(field: "artist" | "album") {
   const groups = new Map<string, number>();
 
-  for (const track of Object.values(props.play_statistics.tracks)) {
+  for (const track of Object.values(play_statistics.value.tracks)) {
     const name = (field === "artist" ? track.artist : track.album).trim();
     const fallback = field === "artist" ? "未知歌手" : "未知专辑";
     groups.set(name || fallback, (groups.get(name || fallback) ?? 0) + track.play_count);
@@ -404,8 +402,8 @@ onMounted(() => {
         @scroll="handle_track_table_scroll" @resize="update_virtual_viewport">
         <div class="virtual_track_spacer" :style="{ height: `${virtual_top_padding}px` }" />
         <button v-for="row in virtual_track_rows" :key="row.track.id" class="table_row"
-          :class="{ active: row.track.path === status_path, missing: is_missing_track(row.track) }" type="button"
-          @click="play_track(row.track)" @contextmenu.stop.prevent="emit('open_track_menu', row.track, $event)">
+          :class="{ active: row.track.path === status.path, missing: is_missing_track(row.track) }" type="button"
+          @click="play_track(row.track)" @contextmenu.stop.prevent="app_actions.open_track_menu(row.track, $event)">
           <span class="index_cell">{{ row.index + 1 }}</span>
           <span class="song_cell">
             <span class="cover_thumb" :class="{ spinning_cover: track_should_spin(row.track) }">

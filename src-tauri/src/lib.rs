@@ -70,13 +70,22 @@ fn single_instance_plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> 
     tauri_plugin_single_instance::init(|app, _argv, _cwd| {
         if let Some(window) = app.get_webview_window("main") {
             if let Err(err) = window.unminimize() {
-                logger::warn(LogKind::App, format!("单例唤起窗口取消最小化失败 | 原因=\"{err}\""));
+                logger::warn(
+                    LogKind::App,
+                    format!("单例唤起窗口取消最小化失败 | 原因=\"{err}\""),
+                );
             }
             if let Err(err) = window.show() {
-                logger::warn(LogKind::App, format!("单例唤起窗口显示失败 | 原因=\"{err}\""));
+                logger::warn(
+                    LogKind::App,
+                    format!("单例唤起窗口显示失败 | 原因=\"{err}\""),
+                );
             }
             if let Err(err) = window.set_focus() {
-                logger::warn(LogKind::App, format!("单例唤起窗口聚焦失败 | 原因=\"{err}\""));
+                logger::warn(
+                    LogKind::App,
+                    format!("单例唤起窗口聚焦失败 | 原因=\"{err}\""),
+                );
             }
         } else {
             logger::warn(LogKind::App, "单例唤起窗口失败 | 原因=\"未找到 main 窗口\"");
@@ -101,13 +110,6 @@ fn initialize_deferred_modules(handle: tauri::AppHandle) {
         logger::error(
             LogKind::App,
             format!("后台初始化文件选择插件失败 | 原因=\"{err}\""),
-        );
-    }
-
-    if let Err(err) = handle.plugin(tauri_plugin_opener::init()) {
-        logger::error(
-            LogKind::App,
-            format!("后台初始化文件打开插件失败 | 原因=\"{err}\""),
         );
     }
 }

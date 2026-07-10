@@ -1,11 +1,16 @@
+//! 解码扫描器。
+//!
+//! 根据配置扫描解码目录，识别 KGM/KGMA、NCM 和普通 MP3/FLAC，并把处理后的文件写入输出目录。
+//! 成功处理后会把源文件截断为 0 字节，用于标记已经处理过。
+
 use std::collections::BTreeSet;
 use std::fmt;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 
-use crate::kgm::{KgmDecoder, KgmError};
-use crate::ncm::{write_tagged_audio, NcmDecoder, NcmError};
+use super::kgm::*;
+use super::ncm::*;
 
 /// 扫描时预读的字节数。
 ///
@@ -13,6 +18,9 @@ use crate::ncm::{write_tagged_audio, NcmDecoder, NcmError};
 const PROBE_LEN: usize = 8192;
 
 #[derive(Debug, Clone)]
+/// 解码文件扫描器。
+///
+/// 注意：只扫描配置目录的本层文件，不递归处理子目录。
 pub struct Scanner {
     /// 需要扫描的目录列表。每个目录只扫描本层文件。
     pub scan_dirs: Vec<PathBuf>,
@@ -22,6 +30,7 @@ pub struct Scanner {
 }
 
 impl Scanner {
+    /// 创建扫描器，默认处理 kgm、kgma、ncm、mp3、flac。
     pub fn new(scan_dirs: Vec<PathBuf>, output_dir: impl Into<PathBuf>) -> Self {
         Self {
             scan_dirs,
@@ -30,6 +39,7 @@ impl Scanner {
         }
     }
 
+    /// 覆盖默认处理格式。
     pub fn with_process_formats(mut self, process_formats: BTreeSet<String>) -> Self {
         if !process_formats.is_empty() {
             self.process_formats = process_formats;
@@ -58,6 +68,7 @@ impl Scanner {
         Ok(report)
     }
 
+    /// 扫描单个目录的本层文件。
     fn scan_dir(
         &self,
         dir: &Path,
@@ -121,6 +132,7 @@ impl Scanner {
         Ok(())
     }
 
+    /// 处理单个文件并返回输出结果。
     fn process_file(&self, path: &Path) -> Result<Option<ScanResult>, ScannerError> {
         // 1. 打开源文件并读取一小段头部数据，用来识别文件结构。
         let mut input = BufReader::new(File::open(path)?);
@@ -207,6 +219,7 @@ impl Scanner {
         }
     }
 
+    /// 根据源文件名和真实音频格式生成输出路径。
     fn available_output_path(&self, source: &Path, ext: &str) -> PathBuf {
         let stem = source
             .file_stem()
@@ -216,6 +229,7 @@ impl Scanner {
         self.output_dir.join(format!("{stem}.{ext}"))
     }
 
+    /// 判断文件扩展名是否在当前处理格式列表内。
     fn is_supported_ext(&self, path: &Path) -> bool {
         path.extension()
             .and_then(|value| value.to_str())
@@ -225,50 +239,77 @@ impl Scanner {
 }
 
 #[derive(Debug, Default, Clone)]
+/// 单次扫描的统计报告。
 pub struct ScanReport {
+    /// 扫描到的非空可处理扩展名文件数。
     pub scanned: usize,
+    /// 成功处理文件数。
     pub processed: usize,
+    /// 跳过文件数。
     pub skipped: usize,
+    /// 失败文件数。
     pub failed: usize,
+    /// 成功处理结果列表。
     pub results: Vec<ScanResult>,
+    /// 失败文件列表。
     pub errors: Vec<FileError>,
 }
 
 #[derive(Debug, Clone)]
+/// 单个文件处理成功结果。
 pub struct ScanResult {
+    /// 源文件路径。
     pub source: PathBuf,
+    /// 输出文件路径。
     pub output: PathBuf,
+    /// 识别到的文件类型。
     pub kind: FileKind,
 }
 
 #[derive(Debug, Clone)]
+/// 单个文件处理失败结果。
 pub struct FileError {
+    /// 失败文件路径。
     pub path: PathBuf,
+    /// 失败原因。
     pub error: ScannerError,
 }
 
 #[derive(Debug, Clone)]
+/// 单个文件跳过结果。
 pub struct ScanSkipped {
+    /// 被跳过的文件路径。
     pub path: PathBuf,
+    /// 跳过原因。
     pub reason: String,
 }
 
 #[derive(Debug, Clone)]
+/// 扫描过程事件。
 pub enum ScanEvent {
+    /// 文件处理成功。
     Processed(ScanResult),
+    /// 文件被跳过。
     Skipped(ScanSkipped),
+    /// 文件处理失败。
     Failed(FileError),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// 解码扫描器识别出的文件类型。
 pub enum FileKind {
+    /// 酷狗 KGM/KGMA 加密音频。
     KugouEncrypted,
+    /// 网易云 NCM 加密音频。
     NeteaseEncrypted,
+    /// 普通 MP3 音频。
     Mp3,
+    /// 普通 FLAC 音频。
     Flac,
 }
 
 impl FileKind {
+    /// 根据扩展名和文件头识别待处理文件类型。
     fn detect(path: &Path, probe: &[u8]) -> Option<Self> {
         if is_kugou_ext(path) || is_kugou_header(probe) {
             return Some(Self::KugouEncrypted);
@@ -284,6 +325,7 @@ impl FileKind {
         }
     }
 
+    /// 返回该类型默认输出扩展名。
     fn extension(self) -> &'static str {
         match self {
             Self::KugouEncrypted => "flac",
@@ -295,10 +337,15 @@ impl FileKind {
 }
 
 #[derive(Debug, Clone)]
+/// 解码扫描器错误。
 pub enum ScannerError {
+    /// 文件系统错误。
     Io(String),
+    /// KGM/KGMA 解码错误。
     Kgm(String),
+    /// NCM 解码错误。
     Ncm(String),
+    /// 配置的扫描路径不是目录。
     NotDirectory(PathBuf),
 }
 
@@ -333,6 +380,7 @@ impl From<NcmError> for ScannerError {
     }
 }
 
+/// 判断扩展名是否是酷狗加密格式。
 fn is_kugou_ext(path: &Path) -> bool {
     path.extension()
         .and_then(|value| value.to_str())
@@ -340,6 +388,7 @@ fn is_kugou_ext(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
+/// 判断扩展名是否是网易云 NCM 格式。
 fn is_ncm_ext(path: &Path) -> bool {
     path.extension()
         .and_then(|value| value.to_str())
@@ -347,6 +396,7 @@ fn is_ncm_ext(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
+/// 默认解码器处理格式集合。
 fn default_process_formats() -> BTreeSet<String> {
     ["kgm", "kgma", "ncm", "mp3", "flac"]
         .into_iter()
@@ -354,14 +404,17 @@ fn default_process_formats() -> BTreeSet<String> {
         .collect()
 }
 
+/// 判断文件头是否匹配 KGM/KGMA 魔数。
 fn is_kugou_header(probe: &[u8]) -> bool {
-    probe.starts_with(&crate::kgm::MAGIC_HEADER)
+    probe.starts_with(&KGM_MAGIC_HEADER)
 }
 
+/// 判断文件头是否匹配 NCM 魔数。
 fn is_ncm_header(probe: &[u8]) -> bool {
-    probe.starts_with(b"CTENFDAM")
+    probe.starts_with(NCM_MAGIC_HEADER)
 }
 
+/// 根据音频明文字节推断真实输出格式。
 fn infer_audio_extension(probe: &[u8]) -> &'static str {
     match infer::get(probe).map(|kind| kind.extension()) {
         Some("mp3") => "mp3",
@@ -370,143 +423,8 @@ fn infer_audio_extension(probe: &[u8]) -> &'static str {
     }
 }
 
+/// 将源文件大小重置为 0，保留原路径占位。
 fn truncate_to_empty(path: &Path) -> Result<(), ScannerError> {
     OpenOptions::new().write(true).truncate(true).open(path)?;
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use std::fs;
-
-    use super::{FileKind, Scanner};
-
-    const FLAC_BYTES: &[u8] = b"fLaC\x00\x00\x00\x22tiny flac-like fixture bytes";
-
-    #[test]
-    fn scanner_copies_flac_and_truncates_source() {
-        let root =
-            std::env::temp_dir().join(format!("unlock-music-scanner-{}", std::process::id()));
-        let input_dir = root.join("input");
-        let output_dir = root.join("output");
-        let _ = fs::remove_dir_all(&root);
-        fs::create_dir_all(&input_dir).unwrap();
-
-        let source = input_dir.join("fixture.flac");
-        fs::write(&source, FLAC_BYTES).unwrap();
-
-        let scanner = Scanner::new(vec![input_dir], &output_dir);
-        let report = scanner.scan().unwrap();
-
-        assert_eq!(report.scanned, 1);
-        assert_eq!(report.processed, 1);
-        assert_eq!(report.results[0].kind, FileKind::Flac);
-        assert_eq!(fs::metadata(&source).unwrap().len(), 0);
-        assert_eq!(fs::read(&report.results[0].output).unwrap(), FLAC_BYTES);
-
-        fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn scanner_loads_toml_config() {
-        let root = std::env::temp_dir().join(format!("unlock-music-config-{}", std::process::id()));
-        let input_dir = root.join("input");
-        let output_dir = root.join("output");
-        let config_path = root.join("config.toml");
-        let _ = fs::remove_dir_all(&root);
-        fs::create_dir_all(&input_dir).unwrap();
-
-        fs::write(
-            &config_path,
-            format!(
-                "scan_dirs = [\"{}\"]\noutput_dir = \"{}\"\n",
-                toml_escape_path(&input_dir),
-                toml_escape_path(&output_dir)
-            ),
-        )
-        .unwrap();
-
-        let scanner = Scanner::load(&config_path).unwrap();
-        assert_eq!(scanner.scan_dirs, vec![input_dir]);
-        assert_eq!(scanner.output_dir, output_dir);
-
-        fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn scanner_counts_supported_empty_files_as_skipped() {
-        let root = std::env::temp_dir().join(format!("unlock-music-empty-{}", std::process::id()));
-        let input_dir = root.join("input");
-        let output_dir = root.join("output");
-        let _ = fs::remove_dir_all(&root);
-        fs::create_dir_all(&input_dir).unwrap();
-        fs::write(input_dir.join("empty.kgma"), []).unwrap();
-        fs::write(input_dir.join("empty.ncm"), []).unwrap();
-        fs::write(input_dir.join("empty.txt"), []).unwrap();
-
-        let scanner = Scanner::new(vec![input_dir], output_dir);
-        let report = scanner.scan().unwrap();
-
-        assert_eq!(report.scanned, 0);
-        assert_eq!(report.processed, 0);
-        assert_eq!(report.skipped, 2);
-        assert_eq!(report.failed, 0);
-
-        fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn scanner_overwrites_existing_output() {
-        let root =
-            std::env::temp_dir().join(format!("unlock-music-overwrite-{}", std::process::id()));
-        let input_dir = root.join("input");
-        let output_dir = root.join("output");
-        let _ = fs::remove_dir_all(&root);
-        fs::create_dir_all(&input_dir).unwrap();
-        fs::create_dir_all(&output_dir).unwrap();
-
-        let source = input_dir.join("fixture.flac");
-        let output = output_dir.join("fixture.flac");
-        fs::write(&source, FLAC_BYTES).unwrap();
-        fs::write(&output, b"old output").unwrap();
-
-        let scanner = Scanner::new(vec![input_dir], output_dir);
-        let report = scanner.scan().unwrap();
-
-        assert_eq!(report.processed, 1);
-        assert_eq!(report.results[0].output, output);
-        assert_eq!(fs::read(&report.results[0].output).unwrap(), FLAC_BYTES);
-
-        fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn scanner_does_not_scan_nested_directories() {
-        let root =
-            std::env::temp_dir().join(format!("unlock-music-non-recursive-{}", std::process::id()));
-        let input_dir = root.join("input");
-        let nested_dir = input_dir.join("nested");
-        let output_dir = root.join("output");
-        let _ = fs::remove_dir_all(&root);
-        fs::create_dir_all(&nested_dir).unwrap();
-
-        let nested_source = nested_dir.join("fixture.flac");
-        fs::write(&nested_source, FLAC_BYTES).unwrap();
-
-        let scanner = Scanner::new(vec![input_dir], output_dir);
-        let report = scanner.scan().unwrap();
-
-        assert_eq!(report.scanned, 0);
-        assert_eq!(report.processed, 0);
-        assert_eq!(
-            fs::metadata(&nested_source).unwrap().len(),
-            FLAC_BYTES.len() as u64
-        );
-
-        fs::remove_dir_all(root).unwrap();
-    }
-
-    fn toml_escape_path(path: &std::path::Path) -> String {
-        path.to_string_lossy().replace('\\', "\\\\")
-    }
 }

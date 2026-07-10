@@ -1,3 +1,7 @@
+//! 通用工具函数。
+//!
+//! 这里放跨模块复用的小工具，例如应用目录定位、安全文件名、短哈希和 JSON 缓存写入。
+
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::{
@@ -5,6 +9,8 @@ use std::{
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
+
+/// 获取当前应用所在目录。
 pub(crate) fn current_app_dir() -> PathBuf {
     std::env::current_exe()
         .ok()
@@ -13,6 +19,7 @@ pub(crate) fn current_app_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
+/// 将任意名称转换为 Windows 可保存的文件名。
 pub(crate) fn safe_file_name(name: &str) -> String {
     let safe: String = name
         .chars()
@@ -36,6 +43,7 @@ pub(crate) fn safe_file_name(name: &str) -> String {
     }
 }
 
+/// 判断文件名是否命中 Windows 保留设备名。
 fn is_windows_reserved_name(name: &str) -> bool {
     let stem = name
         .split('.')
@@ -70,6 +78,7 @@ fn is_windows_reserved_name(name: &str) -> bool {
     )
 }
 
+/// 将名称转换为更适合缓存文件名的 ASCII 名称。
 pub(crate) fn safe_cache_name(name: &str) -> String {
     let safe: String = name
         .chars()
@@ -90,6 +99,7 @@ pub(crate) fn safe_cache_name(name: &str) -> String {
     }
 }
 
+/// 生成稳定的 8 字节短哈希。
 pub(crate) fn short_hash(value: &str) -> String {
     let digest = Sha256::digest(value.as_bytes());
     digest[..8]
@@ -98,12 +108,15 @@ pub(crate) fn short_hash(value: &str) -> String {
         .collect()
 }
 
+/// 返回当前 Unix 秒级时间戳。
 pub(crate) fn unix_timestamp() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs()
 }
+
+/// 写入格式化 JSON 缓存文件。
 pub(crate) fn write_json_cache<T: Serialize>(
     path: &Path,
     value: &T,

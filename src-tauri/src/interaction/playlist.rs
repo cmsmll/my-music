@@ -1,7 +1,9 @@
-use crate::models::{
-    AllPlaylistCache, AppConfig, PlaylistBundle, PlaylistCache, PlaylistMetadata, PlaylistSummary,
-    Track,
-};
+//! 歌单缓存服务。
+//!
+//! “全部”缓存保存在曲库缓存目录；歌手、专辑是系统扫描生成的汇总数据；
+//! 最近播放和用户歌单保存在歌单缓存目录，并允许前端手动修改。
+
+use super::models::*;
 use crate::utils::{short_hash, unix_timestamp};
 use serde::Serialize;
 use std::{
@@ -10,6 +12,10 @@ use std::{
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
+
+/// 根据全部歌曲重建系统歌单缓存，并保留用户歌单。
+///
+/// 注意：歌手和专辑是系统扫描结果，会随曲库重载更新；用户歌单不会因重载被删除。
 pub(crate) fn write_playlist_caches(config: &AppConfig, tracks: &[Track]) -> Result<(), String> {
     let all_tracks = track_map_from_tracks(tracks);
     let generated_at = unix_timestamp();
@@ -79,6 +85,7 @@ pub(crate) fn write_playlist_caches(config: &AppConfig, tracks: &[Track]) -> Res
     Ok(())
 }
 
+/// 读取前端启动和刷新后需要的歌单集合。
 pub(crate) fn load_playlist_bundle(config: &AppConfig) -> Result<PlaylistBundle, String> {
     let my_playlists = load_my_playlist_caches(config)?;
     let my_playlist = my_playlists
@@ -99,6 +106,7 @@ pub(crate) fn load_playlist_bundle(config: &AppConfig) -> Result<PlaylistBundle,
     })
 }
 
+/// 根据歌手或专辑分组写入系统汇总歌单。
 pub(crate) fn write_group_playlists(
     config: &AppConfig,
     group_dir: &str,
@@ -164,6 +172,7 @@ pub(crate) fn write_group_playlists(
     Ok(aggregate)
 }
 
+/// 清理旧版本为每个歌手/专辑单独生成文件的缓存目录。
 fn cleanup_legacy_group_root(
     config: &AppConfig,
     group_dir: &str,
@@ -185,6 +194,7 @@ fn cleanup_legacy_group_root(
     Ok(())
 }
 
+/// 清理已经废弃的系统歌单缓存文件。
 fn cleanup_obsolete_system_playlist(
     config: &AppConfig,
     file_name: &str,
@@ -202,6 +212,7 @@ fn cleanup_obsolete_system_playlist(
     Ok(())
 }
 
+/// 读取已有歌单并按最新曲库修正元数据，不存在时创建默认歌单。
 pub(crate) fn existing_playlist_or_default(
     path: &Path,
     id: &str,
@@ -227,6 +238,7 @@ pub(crate) fn existing_playlist_or_default(
     playlist
 }
 
+/// 创建空歌单缓存结构。
 pub(crate) fn empty_playlist(id: &str, name: &str, kind: &str) -> PlaylistCache {
     PlaylistCache {
         id: id.to_string(),
@@ -245,6 +257,7 @@ pub(crate) fn empty_playlist(id: &str, name: &str, kind: &str) -> PlaylistCache 
     }
 }
 
+/// 根据歌曲 id 列表计算歌单元数据。
 pub(crate) fn playlist_metadata(
     track_ids: &[String],
     all_tracks: &BTreeMap<String, Track>,
@@ -272,6 +285,7 @@ pub(crate) fn playlist_metadata(
     }
 }
 
+/// 从完整歌单缓存生成侧边栏和详情页使用的摘要。
 pub(crate) fn playlist_summary_from_cache(
     playlist: &PlaylistCache,
     cache_path: &Path,
@@ -288,6 +302,7 @@ pub(crate) fn playlist_summary_from_cache(
     }
 }
 
+/// 根据分组子项汇总歌手/专辑入口的元数据。
 fn group_metadata(children: &[PlaylistSummary]) -> PlaylistMetadata {
     let mut track_count = 0;
     let mut total_duration = 0;
@@ -310,6 +325,7 @@ fn group_metadata(children: &[PlaylistSummary]) -> PlaylistMetadata {
     }
 }
 
+/// 读取单个歌单缓存文件。
 pub(crate) fn read_playlist_cache(path: &Path) -> Result<Option<PlaylistCache>, String> {
     if !path.exists() {
         return Ok(None);
@@ -320,6 +336,7 @@ pub(crate) fn read_playlist_cache(path: &Path) -> Result<Option<PlaylistCache>, 
     Ok(Some(playlist))
 }
 
+/// 读取系统歌单缓存，并兼容旧版歌单缓存目录。
 fn read_system_playlist_cache(
     config: &AppConfig,
     file_name: &str,
@@ -338,6 +355,7 @@ fn read_system_playlist_cache(
     Ok(playlist)
 }
 
+/// 读取默认“我的歌单”。
 pub(crate) fn load_my_playlist_cache(config: &AppConfig) -> Result<Option<PlaylistCache>, String> {
     let primary_path = my_playlist_cache_path(config, "my_playlist.json");
     let fallback_path = playlist_cache_path(config, "my_playlist.json");
@@ -360,6 +378,7 @@ pub(crate) fn load_my_playlist_cache(config: &AppConfig) -> Result<Option<Playli
     Ok(playlist)
 }
 
+/// 读取所有用户歌单，并按 index 元数据排序。
 pub(crate) fn load_my_playlist_caches(config: &AppConfig) -> Result<Vec<PlaylistCache>, String> {
     let mut playlists = Vec::new();
     if let Some(playlist) = load_my_playlist_cache(config)? {
@@ -399,6 +418,7 @@ pub(crate) fn load_my_playlist_caches(config: &AppConfig) -> Result<Vec<Playlist
     Ok(playlists)
 }
 
+/// 根据歌单 id 查找对应用户歌单缓存文件。
 pub(crate) fn user_playlist_cache_path(
     config: &AppConfig,
     playlist_id: &str,
@@ -429,6 +449,7 @@ pub(crate) fn user_playlist_cache_path(
     Err(format!("找不到歌单: {playlist_id}"))
 }
 
+/// 读取指定 id 的用户歌单，不存在时创建空结构兜底。
 pub(crate) fn read_user_playlist_for_id(
     config: &AppConfig,
     playlist_id: &str,
@@ -443,6 +464,7 @@ pub(crate) fn read_user_playlist_for_id(
         .unwrap_or_else(|| empty_playlist(playlist_id, "我的歌单", "user")))
 }
 
+/// 更新用户歌单的歌曲数量、总时长和封面等元数据。
 pub(crate) fn update_user_playlist_metadata(
     playlist: &mut PlaylistCache,
     all_tracks: &BTreeMap<String, Track>,
@@ -454,6 +476,7 @@ pub(crate) fn update_user_playlist_metadata(
     playlist.metadata.index = index;
 }
 
+/// 读取“全部”歌单缓存，也就是前端共享的曲库数据库。
 pub(crate) fn read_all_playlist_cache(config: &AppConfig) -> Result<AllPlaylistCache, String> {
     let all_playlist_path = all_playlist_cache_path(config);
     let fallback_path = playlist_cache_path(config, "all_playlist.json");
@@ -463,6 +486,7 @@ pub(crate) fn read_all_playlist_cache(config: &AppConfig) -> Result<AllPlaylistC
     serde_json::from_str(&content).map_err(|err| format!("无法解析全部歌单缓存: {err}"))
 }
 
+/// 为新建用户歌单生成唯一 id。
 pub(crate) fn unique_user_playlist_id(name: &str) -> String {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -471,6 +495,7 @@ pub(crate) fn unique_user_playlist_id(name: &str) -> String {
     format!("playlist_{}", short_hash(&format!("{name}-{nanos}")))
 }
 
+/// 校验用户歌单名称不能重复。
 pub(crate) fn ensure_unique_playlist_name(
     playlists: &[PlaylistCache],
     name: &str,
@@ -485,6 +510,7 @@ pub(crate) fn ensure_unique_playlist_name(
     Ok(())
 }
 
+/// 计算新建用户歌单默认排序位置。
 pub(crate) fn next_user_playlist_index(playlists: &[PlaylistCache]) -> usize {
     playlists
         .iter()
@@ -494,6 +520,9 @@ pub(crate) fn next_user_playlist_index(playlists: &[PlaylistCache]) -> usize {
         .unwrap_or(0)
 }
 
+/// 记录最近播放歌曲。
+///
+/// 注意：这里只修改最近播放缓存，不会影响音频文件和用户歌单。
 pub(crate) fn record_recent_track(config: &AppConfig, path: &str) -> Result<(), String> {
     if path.is_empty() {
         return Ok(());
@@ -537,6 +566,29 @@ pub(crate) fn record_recent_track(config: &AppConfig, path: &str) -> Result<(), 
     write_json_cache(&recent_path, &recent, "最近播放缓存")
 }
 
+/// 读取轻量播放记录缓存。
+pub(crate) fn read_playback_record(config: &AppConfig) -> Result<Option<PlaybackRecord>, String> {
+    let path = playback_record_cache_path(config);
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let content =
+        fs::read_to_string(&path).map_err(|err| format!("无法读取播放记录缓存: {err}"))?;
+    let record =
+        serde_json::from_str(&content).map_err(|err| format!("无法解析播放记录缓存: {err}"))?;
+    Ok(Some(record))
+}
+
+/// 写入轻量播放记录缓存。
+pub(crate) fn write_playback_record(
+    config: &AppConfig,
+    record: &PlaybackRecord,
+) -> Result<(), String> {
+    write_json_cache(&playback_record_cache_path(config), record, "播放记录缓存")
+}
+
+/// 写入任意 JSON 缓存文件。
 pub(crate) fn write_json_cache<T: Serialize>(
     path: &Path,
     value: &T,
@@ -550,6 +602,7 @@ pub(crate) fn write_json_cache<T: Serialize>(
     fs::write(path, content).map_err(|err| format!("无法写入{label}: {err}"))
 }
 
+/// 将歌曲列表转换为按 id 查询的对象。
 pub(crate) fn track_map_from_tracks(tracks: &[Track]) -> BTreeMap<String, Track> {
     tracks
         .iter()
@@ -557,6 +610,7 @@ pub(crate) fn track_map_from_tracks(tracks: &[Track]) -> BTreeMap<String, Track>
         .collect()
 }
 
+/// 判断是否是用户创建的歌单缓存文件。
 fn is_user_playlist_cache_file(path: &Path) -> bool {
     let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
         return false;
@@ -566,26 +620,37 @@ fn is_user_playlist_cache_file(path: &Path) -> bool {
         && !file_name.ends_with("_playlist.json")
 }
 
+/// 从歌曲对象列表提取歌曲 id。
 pub(crate) fn track_ids_from_tracks(tracks: &[Track]) -> Vec<String> {
     tracks.iter().map(|track| track.id.clone()).collect()
 }
 
+/// 返回“全部”歌单缓存路径。
 fn all_playlist_cache_path(config: &AppConfig) -> PathBuf {
     PathBuf::from(&config.cache.library_cache_dir).join("all_playlist.json")
 }
 
+/// 返回曲库目录下的系统歌单缓存路径。
 fn library_playlist_cache_path(config: &AppConfig, file_name: &str) -> PathBuf {
     PathBuf::from(&config.cache.library_cache_dir).join(file_name)
 }
 
+/// 返回歌单缓存目录下的缓存文件路径。
 pub(crate) fn playlist_cache_path(config: &AppConfig, file_name: &str) -> PathBuf {
     PathBuf::from(&config.cache.playlist_cache_dir).join(file_name)
 }
 
+/// 返回播放记录缓存路径。
+pub(crate) fn playback_record_cache_path(config: &AppConfig) -> PathBuf {
+    playlist_cache_path(config, "playback_record.json")
+}
+
+/// 返回用户歌单缓存目录下的缓存文件路径。
 pub(crate) fn my_playlist_cache_path(config: &AppConfig, file_name: &str) -> PathBuf {
     PathBuf::from(&config.cache.playlist_cache_dir).join(file_name)
 }
 
+/// 规范化歌手或专辑分组名称。
 pub(crate) fn normalized_group_name(value: &str, fallback: &str) -> String {
     let value = value.trim();
     if value.is_empty() {

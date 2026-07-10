@@ -78,6 +78,7 @@ export type AppStartup = {
   tracks: Track[];
   playlists: PlaylistBundle;
   play_statistics: PlayStatistics;
+  playback_record?: PlaybackRecord | null;
 };
 
 export type LibraryRefreshResult = {
@@ -119,12 +120,28 @@ export type LyricsUseResult = {
 
 export type ViewKey = "all" | "artists" | "albums" | "stats" | "recent" | "user_playlist";
 
-export type PlaybackMode = "shuffle" | "repeat" | "repeat_one";
+export type PlaybackMode = "random" | "shuffle" | "repeat" | "repeat_one";
 
 export type PlaybackModeItem = {
   mode: PlaybackMode;
   icon: string;
   label: string;
+};
+
+export type PlaybackRecordSource = {
+  source_type: QueueSourceType;
+  id: string;
+  label: string;
+};
+
+export type PlaybackRecord = {
+  version: 1;
+  track_id: string;
+  elapsed: number;
+  playback_mode: PlaybackMode;
+  playlist: PlaybackRecordSource;
+  secondary_playlist?: PlaybackRecordSource | null;
+  updated_at: number;
 };
 
 export type ArtistItem = {

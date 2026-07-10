@@ -1,23 +1,36 @@
-use crate::models::{AppConfig, CacheConfig, CacheConfigFile, ConfigFile, MusicDirectoryConfig};
+//! 应用配置交互服务。
+//!
+//! 负责加载、合并、保存 `config.toml`，并为前端设置页和启动流程提供配置数据。
+
+use super::models::*;
 use crate::utils::{current_app_dir, safe_file_name, short_hash};
 use std::{
     fs,
     path::{Path, PathBuf},
     sync::Mutex,
 };
+/// 应用配置管理器。
+///
+/// 注意：内部配置通过 `Mutex` 保护；更新配置后需要显式保存并确保目录结构。
 pub(crate) struct ConfigManager {
+    /// `config.toml` 文件路径。
     config_path: PathBuf,
+    /// 默认配置。
     default_config: AppConfig,
+    /// 当前内存配置。
     config: Mutex<AppConfig>,
 }
 
 impl ConfigManager {
+    /// 创建配置管理器并读取 exe 同目录下的 `config.toml`。
+    ///
+    /// 注意：这里只加载配置到内存，目录创建和落盘由 `initialize_storage` 处理。
     pub(crate) fn new() -> Self {
         let app_dir = current_app_dir();
         let config_path = app_dir.join("config.toml");
         let default_config = AppConfig {
             music_directory: Vec::new(),
-            decoder: crate::models::DecoderConfig {
+            decoder: DecoderConfig {
                 output_dir: String::new(),
                 process_formats: "mp3,flac,kgm,kgma,ncm".to_string(),
                 scan_directory: Vec::new(),
@@ -30,7 +43,7 @@ impl ConfigManager {
                 spectrum_cache_dir: app_dir.join("spectrum-cache").to_string_lossy().to_string(),
                 log_cache_dir: app_dir.join("log-cache").to_string_lossy().to_string(),
             },
-            style: crate::models::StyleConfig {
+            style: StyleConfig {
                 background_color: "#ffffff".to_string(),
                 background_image: String::new(),
                 background_image_opacity: 1.0,
@@ -40,7 +53,7 @@ impl ConfigManager {
                 border_color: "#e8e8e8".to_string(),
                 show_border: true,
             },
-            state: crate::models::AppStateConfig {
+            state: AppStateConfig {
                 width: 1280,
                 height: 820,
                 volume: 1.0,
@@ -61,6 +74,7 @@ impl ConfigManager {
         }
     }
 
+    /// 返回当前内存中的配置副本。
     pub(crate) fn get(&self) -> Result<AppConfig, String> {
         self.config
             .lock()
@@ -68,15 +82,18 @@ impl ConfigManager {
             .map(|config| config.clone())
     }
 
+    /// 返回默认配置副本，用于前端设置页的“默认”操作。
     pub(crate) fn get_default(&self) -> AppConfig {
         self.default_config.clone()
     }
 
+    /// 初始化配置依赖的缓存目录并写回规范化后的配置文件。
     pub(crate) fn initialize_storage(&self) -> Result<(), String> {
         self.ensure_layout()?;
         self.save()
     }
 
+    /// 使用前端传入的新配置覆盖当前配置，并创建相关目录后保存。
     pub(crate) fn update_config(&self, next_config: AppConfig) -> Result<AppConfig, String> {
         {
             let mut config = self
@@ -90,6 +107,9 @@ impl ConfigManager {
         self.get()
     }
 
+    /// 追加音乐目录配置。
+    ///
+    /// 注意：这里仅修改配置，不主动扫描曲库，曲库刷新由前端手动触发。
     pub(crate) fn add_music_directories(&self, dirs: Vec<String>) -> Result<AppConfig, String> {
         {
             let mut config = self
@@ -107,6 +127,7 @@ impl ConfigManager {
         self.get()
     }
 
+    /// 将当前内存配置写入 `config.toml`。
     fn save(&self) -> Result<(), String> {
         let config = self.get()?;
         let content =
@@ -114,6 +135,7 @@ impl ConfigManager {
         fs::write(&self.config_path, content).map_err(|err| format!("无法写入配置文件: {err}"))
     }
 
+    /// 确保配置中依赖的缓存目录和解码输出目录存在。
     fn ensure_layout(&self) -> Result<(), String> {
         let config = self.get()?;
         fs::create_dir_all(&config.cache.library_cache_dir)
@@ -135,6 +157,7 @@ impl ConfigManager {
         Ok(())
     }
 
+    /// 根据音乐目录生成对应的曲库缓存文件路径。
     pub(crate) fn library_cache_path(&self, music_dir: &str) -> Result<PathBuf, String> {
         let config = self.get()?;
         let dir_path = Path::new(music_dir);
@@ -148,9 +171,10 @@ impl ConfigManager {
     }
 }
 
+/// 解析旧版或新版配置文件，并用默认配置补齐缺失字段。
 pub(crate) fn parse_config(content: &str, default_config: &AppConfig) -> Option<AppConfig> {
     toml::from_str::<ConfigFile>(content).ok().map(|config| {
-        let decoder = config.decoder.unwrap_or(crate::models::DecoderConfigFile {
+        let decoder = config.decoder.unwrap_or(DecoderConfigFile {
             output_dir: None,
             process_formats: None,
             scan_directory: None,
@@ -165,7 +189,7 @@ pub(crate) fn parse_config(content: &str, default_config: &AppConfig) -> Option<
             my_playlist_cache_dir: None,
             log_dir: None,
         });
-        let style = config.style.unwrap_or(crate::models::StyleConfigFile {
+        let style = config.style.unwrap_or(StyleConfigFile {
             background_color: None,
             background_image: None,
             background_image_opacity: None,
@@ -176,7 +200,7 @@ pub(crate) fn parse_config(content: &str, default_config: &AppConfig) -> Option<
             control_color: None,
             show_border: None,
         });
-        let state = config.state.unwrap_or(crate::models::AppStateConfigFile {
+        let state = config.state.unwrap_or(AppStateConfigFile {
             width: None,
             height: None,
             volume: None,
@@ -191,7 +215,7 @@ pub(crate) fn parse_config(content: &str, default_config: &AppConfig) -> Option<
                 .music_directory
                 .map(MusicDirectoryConfig::into_vec)
                 .unwrap_or_else(|| default_config.music_directory.clone()),
-            decoder: crate::models::DecoderConfig {
+            decoder: DecoderConfig {
                 output_dir: decoder
                     .output_dir
                     .unwrap_or_else(|| default_config.decoder.output_dir.clone()),
@@ -233,7 +257,7 @@ pub(crate) fn parse_config(content: &str, default_config: &AppConfig) -> Option<
                     .or(config.log_dir)
                     .unwrap_or_else(|| default_config.cache.log_cache_dir.clone()),
             },
-            style: crate::models::StyleConfig {
+            style: StyleConfig {
                 background_color: style
                     .background_color
                     .unwrap_or_else(|| default_config.style.background_color.clone()),
@@ -260,7 +284,7 @@ pub(crate) fn parse_config(content: &str, default_config: &AppConfig) -> Option<
                     .show_border
                     .unwrap_or(default_config.style.show_border),
             },
-            state: crate::models::AppStateConfig {
+            state: AppStateConfig {
                 width: state.width.unwrap_or(default_config.state.width),
                 height: state.height.unwrap_or(default_config.state.height),
                 volume: state.volume.unwrap_or(default_config.state.volume),
@@ -275,6 +299,7 @@ pub(crate) fn parse_config(content: &str, default_config: &AppConfig) -> Option<
     })
 }
 
+/// 清理配置中的空值、重复目录和越界状态值。
 fn sanitize_config(mut config: AppConfig) -> AppConfig {
     config
         .music_directory
@@ -291,9 +316,24 @@ fn sanitize_config(mut config: AppConfig) -> AppConfig {
     config.state.width = config.state.width.max(600);
     config.state.height = config.state.height.max(700);
     config.state.sidebar_width = config.state.sidebar_width.clamp(72, 420);
+    config.cache.playlist_cache_dir =
+        normalize_playlist_cache_dir(&config.cache.playlist_cache_dir);
     config
 }
 
+/// 将旧版默认的 `my-playlist-cache` 目录名迁移为 `playlist-cache`。
+fn normalize_playlist_cache_dir(value: &str) -> String {
+    let path = PathBuf::from(value);
+    if path.file_name().and_then(|name| name.to_str()) != Some("my-playlist-cache") {
+        return value.to_string();
+    }
+
+    path.parent()
+        .map(|parent| parent.join("playlist-cache").to_string_lossy().to_string())
+        .unwrap_or_else(|| "playlist-cache".to_string())
+}
+
+/// 规范化解码器处理格式列表。
 fn sanitize_process_formats(value: &str) -> String {
     let mut formats: Vec<String> = value
         .split(',')
@@ -308,6 +348,7 @@ fn sanitize_process_formats(value: &str) -> String {
     }
 }
 
+/// 保持原有顺序去重字符串列表。
 fn dedup_strings(values: &mut Vec<String>) {
     let mut unique_values = Vec::new();
     values.retain(|value| {

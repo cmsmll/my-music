@@ -75,6 +75,8 @@ const lyrics_search_results = ref<LyricsSearchResult[]>([]);
 const current_lyrics_hash = ref<string | null>(null);
 const lyrics_use_pending_hash = ref("");
 const auto_lyrics_attempted_track_ids = ref(new Set<string>());
+const auto_lyrics_searching = ref(false);
+const auto_lyrics_searching_track_id = ref<string | null>(null);
 let lyrics_search_request_id = 0;
 let auto_lyrics_request_id = 0;
 let lyrics_load_request_id = 0;
@@ -142,11 +144,20 @@ async function load_lyrics(track?: Track | null) {
 }
 
 async function open_lyrics_search() {
+  if (auto_lyrics_searching.value) {
+    notify_auto_lyrics_searching();
+    return;
+  }
   lyrics_search_open.value = true;
   await search_current_lyrics();
 }
 
 async function search_current_lyrics(force_refresh = false) {
+  if (auto_lyrics_searching.value) {
+    notify_auto_lyrics_searching();
+    return;
+  }
+
   const track = current_track.value;
   lyrics_search_error.value = "";
   lyrics_search_results.value = [];
@@ -183,14 +194,16 @@ async function search_current_lyrics(force_refresh = false) {
 
 async function search_lyrics_for_track(track: Track, force_refresh = false) {
   return await invoke<LyricsSearchResponse>("search_lyrics", {
-    trackId: track.id,
-    title: display_title(track),
-    artist: display_artist(track),
-    album: display_album(track),
-    duration: track.duration ? Math.round(track.duration) : null,
-    lyricsCachePath: track.lyrics_cache_path,
-    lyricsCacheHash: track.lyrics_cache_hash,
-    forceRefresh: force_refresh,
+    request: {
+      trackId: track.id,
+      title: display_title(track),
+      artist: display_artist(track),
+      album: display_album(track),
+      duration: track.duration ? Math.round(track.duration) : null,
+      lyricsCachePath: track.lyrics_cache_path,
+      lyricsCacheHash: track.lyrics_cache_hash,
+      forceRefresh: force_refresh,
+    },
   });
 }
 
@@ -267,6 +280,10 @@ function set_auto_attempted(track: Track, attempted: boolean) {
   auto_lyrics_attempted_track_ids.value = next;
 }
 
+function notify_auto_lyrics_searching() {
+  notification.warning("正在搜索中，请稍后再试");
+}
+
 function select_auto_lyrics_result(results: LyricsSearchResult[]) {
   return (
     results.find((result) => {
@@ -281,6 +298,8 @@ async function maybe_auto_load_lyrics(track?: Track | null, has_local_lyrics = l
   if (display_title(track) === "未知歌曲") return;
 
   const request_id = ++auto_lyrics_request_id;
+  auto_lyrics_searching.value = true;
+  auto_lyrics_searching_track_id.value = track.id;
   set_auto_attempted(track, true);
   notification.info("Auto 正在搜索歌词");
 
@@ -305,6 +324,11 @@ async function maybe_auto_load_lyrics(track?: Track | null, has_local_lyrics = l
     console.warn("自动获取歌词失败", error);
     if (request_id === auto_lyrics_request_id && current_track.value?.id === track.id) {
       notification.error("Auto 获取歌词失败");
+    }
+  } finally {
+    if (request_id === auto_lyrics_request_id) {
+      auto_lyrics_searching.value = false;
+      auto_lyrics_searching_track_id.value = null;
     }
   }
 }

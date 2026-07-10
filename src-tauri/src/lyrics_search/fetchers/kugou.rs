@@ -1,0 +1,176 @@
+use super::base_api::BaseApi;
+use crate::lyrics_search::error::fetcher::JsonError;
+use crate::lyrics_search::error::LyrixResult;
+use serde::Deserialize;
+
+/// 酷狗歌词接口客户端。
+pub struct KugouFetcher {
+    api: BaseApi,
+}
+
+impl KugouFetcher {
+    pub fn new() -> Self {
+        Self {
+            api: BaseApi::new(None, None),
+        }
+    }
+
+    pub fn with_client(client: reqwest::Client) -> Self {
+        Self {
+            api: BaseApi::with_client(client, None, None),
+        }
+    }
+
+    /// 搜索歌曲
+    pub async fn get_search_song(
+        &self,
+        keywords: &str,
+    ) -> LyrixResult<Option<SearchSongResponse1>> {
+        let url = format!(
+            "http://mobilecdn.kugou.com/api/v3/search/song?format=json&keyword={}&page=1&pagesize=20&showtype=1",
+            urlencoding::encode(keywords)
+        );
+        let resp = self.api.get_async(&url).await?;
+        let result: Option<SearchSongResponse1> =
+            serde_json::from_str(&resp).map_err(|e| JsonError {
+                api: "KugouSearchSong".to_string(),
+                source: e,
+            })?;
+        Ok(result)
+    }
+
+    /// 下载 KRC 歌词 需要解密
+    pub async fn get_download_krc(
+        &self,
+        id: &str,
+        access_key: &str,
+    ) -> LyrixResult<Option<DownloadKrcResponse1>> {
+        let url = format!(
+            "https://lyrics.kugou.com/download?ver=1&client=pc&id={}&accesskey={}&fmt=krc&charset=utf8",
+            id, access_key
+        );
+        let resp = self.api.get_async(&url).await?;
+        let result: Option<DownloadKrcResponse1> =
+            serde_json::from_str(&resp).map_err(|e| JsonError {
+                api: "KugouDownloadKrc".to_string(),
+                source: e,
+            })?;
+        Ok(result)
+    }
+
+    /// 获取歌词
+    pub async fn get_search_lyrics(
+        &self,
+        keywords: Option<&str>,
+        hash: Option<&str>,
+    ) -> LyrixResult<Option<SearchLyricsResponse1>> {
+        let hash_val = hash.unwrap_or("");
+        let keyword_val = keywords.unwrap_or("");
+        let url = format!(
+            "https://lyrics.kugou.com/search?ver=1&man=yes&client=pc&keyword={}&hash={}",
+            urlencoding::encode(keyword_val),
+            hash_val
+        );
+        let resp = self.api.get_async(&url).await?;
+        let result: Option<SearchLyricsResponse1> =
+            serde_json::from_str(&resp).map_err(|e| JsonError {
+                api: "KugouSearchLyrics".to_string(),
+                source: e,
+            })?;
+        Ok(result)
+    }
+}
+
+impl Default for KugouFetcher {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ===== Response Models =====
+
+#[derive(Debug, Deserialize, Default)]
+/// 酷狗歌曲搜索接口响应。
+pub struct SearchSongResponse1 {
+    pub status: Option<i32>,
+    pub error: Option<String>,
+    pub data: Option<SearchSongData1>,
+    #[serde(rename = "errcode")]
+    pub error_code: Option<i32>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+/// 酷狗歌曲搜索响应中的 data 字段。
+pub struct SearchSongData1 {
+    pub timestamp: Option<i64>,
+    pub total: Option<i32>,
+    pub info: Option<Vec<SearchSongInfo1>>,
+}
+
+#[derive(Debug, Deserialize, Default, Clone)]
+/// 酷狗歌曲搜索结果项。
+pub struct SearchSongInfo1 {
+    #[serde(rename = "hash")]
+    pub hash: Option<String>,
+    #[serde(rename = "songname")]
+    pub song_name: Option<String>,
+    #[serde(rename = "album_name")]
+    pub album_name: Option<String>,
+    #[serde(rename = "songname_original")]
+    pub song_name_original: Option<String>,
+    #[serde(rename = "singername")]
+    pub singer_name: Option<String>,
+    pub duration: Option<i32>,
+    #[serde(rename = "filename")]
+    pub filename: Option<String>,
+    pub group: Option<Vec<SearchSongInfo1>>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+/// 酷狗歌词搜索接口响应。
+pub struct SearchLyricsResponse1 {
+    pub status: Option<i32>,
+    pub info: Option<String>,
+    #[serde(rename = "errcode")]
+    pub error_code: Option<i32>,
+    #[serde(rename = "errmsg")]
+    pub error_message: Option<String>,
+    pub proposal: Option<String>,
+    pub candidates: Option<Vec<LyricsCandidate1>>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+/// 酷狗歌词候选项。
+pub struct LyricsCandidate1 {
+    pub id: Option<String>,
+    #[serde(rename = "product_from")]
+    pub product_from: Option<String>,
+    #[serde(rename = "accesskey")]
+    pub access_key: Option<String>,
+    pub singer: Option<String>,
+    pub song: Option<String>,
+    pub duration: Option<i32>,
+    pub uid: Option<String>,
+    pub nickname: Option<String>,
+    pub language: Option<String>,
+    #[serde(rename = "krctype")]
+    pub krc_type: Option<i32>,
+    pub score: Option<i32>,
+    #[serde(rename = "contenttype")]
+    pub content_type: Option<i32>,
+    #[serde(rename = "content_format")]
+    pub content_format: Option<i32>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+/// 酷狗 KRC 下载接口响应。
+pub struct DownloadKrcResponse1 {
+    pub content: Option<String>,
+    pub info: Option<String>,
+    pub status: Option<i32>,
+    #[serde(rename = "contenttype")]
+    pub content_type: Option<i32>,
+    #[serde(rename = "error_code")]
+    pub error_code: Option<i32>,
+    pub fmt: Option<String>,
+}

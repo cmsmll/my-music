@@ -1,26 +1,41 @@
-use crate::models::AppConfig;
-use crate::scanner::{ScanEvent, Scanner};
-use crate::utils::unix_timestamp;
+//! 解码功能的前端交互调度。
+//!
+//! 这个模块读取配置中的扫描目录、输出目录和处理格式，调用底层 `decoder`
+//! 功能域执行实际解码，并整理成前端弹窗需要展示的统计信息。
+
+use super::models::*;
+use crate::decoder::*;
+use crate::logger::{self, LogKind};
 use serde::Serialize;
 use std::{
     collections::BTreeSet,
-    fs::{self, OpenOptions},
-    io::Write,
     path::{Path, PathBuf},
 };
 
 #[derive(Debug, Clone, Default, Serialize)]
+/// 解码任务执行摘要。
 pub(crate) struct DecoderRunSummary {
+    /// 是否真正执行了解码扫描。
     pub(crate) executed: bool,
+    /// 扫描到的文件数。
     pub(crate) scanned: usize,
+    /// 成功处理的文件数。
     pub(crate) processed: usize,
+    /// 跳过的文件数。
     pub(crate) skipped: usize,
+    /// 失败的文件数。
     pub(crate) failed: usize,
+    /// 解码输出目录。
     pub(crate) output_dir: String,
+    /// 有效扫描目录数量。
     pub(crate) scan_directory_count: usize,
+    /// 给前端弹窗展示的摘要消息。
     pub(crate) message: String,
 }
 
+/// 按当前配置执行一次解码任务，并返回前端可直接展示的摘要。
+///
+/// 注意：调用方应放到阻塞任务中执行，避免扫描和文件写入卡住 Tauri 主线程。
 pub(crate) fn run_decoder(config: &AppConfig) -> DecoderRunSummary {
     let output_dir = config.decoder.output_dir.trim();
     if output_dir.is_empty() {
@@ -145,6 +160,7 @@ pub(crate) fn run_decoder(config: &AppConfig) -> DecoderRunSummary {
     }
 }
 
+/// 解析配置中的处理格式，例如 `mp3,flac,kgm`。
 fn process_formats(value: &str) -> BTreeSet<String> {
     value
         .split(',')
@@ -153,6 +169,7 @@ fn process_formats(value: &str) -> BTreeSet<String> {
         .collect()
 }
 
+/// 将扫描目录列表拼成日志友好的字符串。
 fn join_paths(paths: &[PathBuf]) -> String {
     paths
         .iter()
@@ -161,6 +178,7 @@ fn join_paths(paths: &[PathBuf]) -> String {
         .join(";")
 }
 
+/// 将处理格式集合拼成日志友好的字符串。
 fn join_formats(formats: &BTreeSet<String>) -> String {
     if formats.is_empty() {
         "默认".to_string()
@@ -169,62 +187,37 @@ fn join_formats(formats: &BTreeSet<String>) -> String {
     }
 }
 
-fn write_decoder_operation_log(config: &AppConfig, action: &str, detail: &str) {
-    let log_dir = PathBuf::from(&config.cache.log_cache_dir);
-    let _ = fs::create_dir_all(&log_dir);
-    let log_path = log_dir.join("decoder.log");
-    let Ok(mut file) = OpenOptions::new().create(true).append(true).open(log_path) else {
-        return;
-    };
-
-    let _ = writeln!(
-        file,
-        "[{}] 解码操作 | 操作={} | 详情=\"{}\"",
-        unix_timestamp(),
-        action,
-        log_value(detail),
+/// 记录解码流程级日志。
+fn write_decoder_operation_log(_config: &AppConfig, action: &str, detail: &str) {
+    logger::info(
+        LogKind::Decoder,
+        format!("解码操作 | 操作={} | 详情=\"{}\"", action, detail,),
     );
 }
 
-fn write_decoder_info_log(config: &AppConfig, source: &Path, output: &Path, kind: &str) {
-    let log_dir = PathBuf::from(&config.cache.log_cache_dir);
-    let _ = fs::create_dir_all(&log_dir);
-    let log_path = log_dir.join("decoder.log");
-    let Ok(mut file) = OpenOptions::new().create(true).append(true).open(log_path) else {
-        return;
-    };
-
-    let _ = writeln!(
-        file,
-        "[{}] 解码成功 | 类型={} | 源文件=\"{}\" | 输出=\"{}\" | 源文件大小已重置为0",
-        unix_timestamp(),
-        kind,
-        log_value(&source.to_string_lossy()),
-        log_value(&output.to_string_lossy()),
+/// 记录单个文件解码成功日志。
+fn write_decoder_info_log(_config: &AppConfig, source: &Path, output: &Path, kind: &str) {
+    logger::info(
+        LogKind::Decoder,
+        format!(
+            "解码成功 | 类型={} | 源文件=\"{}\" | 输出=\"{}\" | 源文件大小已重置为0",
+            kind,
+            &source.to_string_lossy(),
+            &output.to_string_lossy(),
+        ),
     );
 }
 
-fn write_decoder_error_log(config: &AppConfig, path: Option<&Path>, stage: &str, reason: &str) {
-    let log_dir = PathBuf::from(&config.cache.log_cache_dir);
-    let _ = fs::create_dir_all(&log_dir);
-    let log_path = log_dir.join("decoder.log");
-    let Ok(mut file) = OpenOptions::new().create(true).append(true).open(log_path) else {
-        return;
-    };
-
+/// 记录解码失败日志。
+fn write_decoder_error_log(_config: &AppConfig, path: Option<&Path>, stage: &str, reason: &str) {
     let song = path
-        .map(|path| log_value(&path.to_string_lossy()))
-        .unwrap_or_else(|| "无".to_string());
-    let _ = writeln!(
-        file,
-        "[{}] 解码失败 | 文件=\"{}\" | 阶段={} | 原因=\"{}\"",
-        unix_timestamp(),
-        song,
-        stage,
-        log_value(reason),
+        .map(|path| path.to_string_lossy())
+        .unwrap_or_else(|| "无".into());
+    logger::error(
+        LogKind::Decoder,
+        format!(
+            "解码失败 | 文件=\"{}\" | 阶段={} | 原因=\"{}\"",
+            song, stage, reason,
+        ),
     );
-}
-
-fn log_value(value: &str) -> String {
-    value.replace('\\', "\\\\").replace('"', "\\\"")
 }

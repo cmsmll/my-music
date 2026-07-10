@@ -1,3 +1,8 @@
+//! NCM 容器解码器。
+//!
+//! 负责解析网易云 NCM 容器头、解密音频 key、提取 metadata/封面，
+//! 并在写出 MP3/FLAC 时补回基础标签信息。
+
 use std::fmt;
 use std::io::{self, Read, Seek, SeekFrom, Write};
 
@@ -7,7 +12,7 @@ use base64::engine::general_purpose;
 use base64::Engine;
 use serde_json::Value;
 
-const MAGIC_HEADER: &[u8; 8] = b"CTENFDAM";
+pub const NCM_MAGIC_HEADER: &[u8; 8] = b"CTENFDAM";
 const METADATA_PREFIX: &[u8] = b"163 key(Don't modify):";
 
 /// NCM 文件头部用于解密音频 key 的固定 AES-128 key。
@@ -21,11 +26,17 @@ const META_KEY: [u8; 16] = [
 ];
 
 #[derive(Debug)]
+/// NCM 解码错误。
 pub enum NcmError {
+    /// 文件读取失败。
     Io(io::Error),
+    /// 文件头不是支持的 NCM 格式。
     InvalidHeader,
+    /// 音频 key 无效。
     InvalidKey,
+    /// metadata 无效。
     InvalidMetadata,
+    /// AES padding 无效。
     InvalidPadding,
 }
 
@@ -71,10 +82,11 @@ pub struct NcmDecoder<R> {
 }
 
 impl<R: Read + Seek> NcmDecoder<R> {
+    /// 创建 NCM 解码器并定位到真实音频流起点。
     pub fn new(mut inner: R) -> Result<Self, NcmError> {
         let mut header = [0_u8; 10];
         inner.read_exact(&mut header)?;
-        if !header.starts_with(MAGIC_HEADER) {
+        if !header.starts_with(NCM_MAGIC_HEADER) {
             return Err(NcmError::InvalidHeader);
         }
 
@@ -112,10 +124,12 @@ impl<R: Read + Seek> NcmDecoder<R> {
         })
     }
 
+    /// 返回从 NCM metadata 中解析出的歌曲标签。
     pub fn metadata(&self) -> &NcmMetadata {
         &self.metadata
     }
 
+    /// 返回 NCM 容器内的封面字节。
     pub fn cover(&self) -> &[u8] {
         &self.cover
     }
@@ -133,6 +147,7 @@ impl<R: Read + Seek> Read for NcmDecoder<R> {
     }
 }
 
+/// 写出解密后的音频，并尽量恢复 metadata 和封面。
 pub fn write_tagged_audio(
     writer: &mut impl Write,
     audio: &[u8],
@@ -147,12 +162,14 @@ pub fn write_tagged_audio(
     }
 }
 
+/// 读取 little-endian u32。
 fn read_u32_le(reader: &mut impl Read) -> Result<u32, NcmError> {
     let mut bytes = [0_u8; 4];
     reader.read_exact(&mut bytes)?;
     Ok(u32::from_le_bytes(bytes))
 }
 
+/// 解析封面布局并把读取位置移动到音频数据起点。
 fn seek_to_audio_start<R: Read + Seek>(
     inner: &mut R,
     media_info_pos: u64,
@@ -178,11 +195,15 @@ fn seek_to_audio_start<R: Read + Seek>(
     Ok(modern.cover)
 }
 
+/// NCM 容器中封面段和音频段的布局信息。
 struct CoverLayout {
+    /// 封面字节。
     cover: Vec<u8>,
+    /// 音频数据起始位置。
     audio_pos: u64,
 }
 
+/// 读取新版 NCM 封面布局。
 fn read_modern_cover_layout<R: Read + Seek>(
     inner: &mut R,
     media_info_pos: u64,
@@ -203,6 +224,7 @@ fn read_modern_cover_layout<R: Read + Seek>(
     Ok(CoverLayout { cover, audio_pos })
 }
 
+/// 读取旧版 NCM 封面布局。
 fn read_legacy_cover_layout<R: Read + Seek>(
     inner: &mut R,
     media_info_pos: u64,
@@ -222,6 +244,7 @@ fn read_legacy_cover_layout<R: Read + Seek>(
     Ok(CoverLayout { cover, audio_pos })
 }
 
+/// 试探指定位置解密后是否像真实音频头。
 fn looks_like_audio_at<R: Read + Seek>(
     inner: &mut R,
     pos: u64,
@@ -241,6 +264,7 @@ fn looks_like_audio_at<R: Read + Seek>(
         || probe.starts_with(&[0xff, 0xf2]))
 }
 
+/// 使用 key box 就地解密音频字节。
 fn decrypt_audio_chunk(key_box: &[u8; 256], pos: u64, audio: &mut [u8]) {
     for (offset, byte) in audio.iter_mut().enumerate() {
         let j = ((pos + offset as u64 + 1) & 0xff) as usize;
@@ -250,6 +274,7 @@ fn decrypt_audio_chunk(key_box: &[u8; 256], pos: u64, audio: &mut [u8]) {
     }
 }
 
+/// 执行 AES-128-ECB 解密并移除 PKCS#7 padding。
 fn aes_128_ecb_decrypt(data: &[u8], key: &[u8; 16]) -> Result<Vec<u8>, NcmError> {
     if data.is_empty() || !data.len().is_multiple_of(16) {
         return Err(NcmError::InvalidKey);
@@ -280,6 +305,7 @@ fn aes_128_ecb_decrypt(data: &[u8], key: &[u8; 16]) -> Result<Vec<u8>, NcmError>
     Ok(out)
 }
 
+/// 解密并解析 NCM metadata JSON。
 fn decode_metadata(data: &[u8]) -> Result<NcmMetadata, NcmError> {
     if data.is_empty() {
         return Ok(NcmMetadata::default());
@@ -337,6 +363,7 @@ fn decode_metadata(data: &[u8]) -> Result<NcmMetadata, NcmError> {
     })
 }
 
+/// 根据解密出的音频 key 构建 NCM 流解密 key box。
 fn build_key_box(key: &[u8]) -> [u8; 256] {
     let mut key_box = [0_u8; 256];
     for (index, byte) in key_box.iter_mut().enumerate() {
@@ -359,6 +386,7 @@ fn build_key_box(key: &[u8]) -> [u8; 256] {
     key_box
 }
 
+/// 给 MP3 音频写入 ID3v2.3 标题、歌手、专辑和封面。
 fn write_mp3_with_id3(
     writer: &mut impl Write,
     audio: &[u8],
@@ -390,6 +418,7 @@ fn write_mp3_with_id3(
     writer.write_all(audio)
 }
 
+/// 追加一个 UTF-16 文本 ID3 帧。
 fn push_text_frame(frames: &mut Vec<u8>, id: &[u8; 4], text: &str) {
     let mut payload = Vec::new();
     payload.push(1);
@@ -401,6 +430,7 @@ fn push_text_frame(frames: &mut Vec<u8>, id: &[u8; 4], text: &str) {
     push_id3_frame(frames, id, &payload);
 }
 
+/// 追加一个封面 APIC ID3 帧。
 fn push_apic_frame(frames: &mut Vec<u8>, cover: &[u8]) {
     let mut payload = Vec::new();
     payload.push(0);
@@ -413,6 +443,7 @@ fn push_apic_frame(frames: &mut Vec<u8>, cover: &[u8]) {
     push_id3_frame(frames, b"APIC", &payload);
 }
 
+/// 追加通用 ID3 帧。
 fn push_id3_frame(frames: &mut Vec<u8>, id: &[u8; 4], payload: &[u8]) {
     frames.extend_from_slice(id);
     frames.extend_from_slice(&(payload.len() as u32).to_be_bytes());
@@ -420,6 +451,7 @@ fn push_id3_frame(frames: &mut Vec<u8>, id: &[u8; 4], payload: &[u8]) {
     frames.extend_from_slice(payload);
 }
 
+/// 将长度编码成 ID3 使用的 syncsafe u32。
 fn syncsafe_u32(value: u32) -> [u8; 4] {
     [
         ((value >> 21) & 0x7f) as u8,
@@ -429,6 +461,7 @@ fn syncsafe_u32(value: u32) -> [u8; 4] {
     ]
 }
 
+/// 给 FLAC 音频追加 Vorbis Comment 和 PICTURE 元数据块。
 fn write_flac_with_metadata(
     writer: &mut impl Write,
     audio: &[u8],
@@ -490,6 +523,7 @@ fn write_flac_with_metadata(
     writer.write_all(&audio[4..])
 }
 
+/// 构建 FLAC Vorbis Comment 数据块内容。
 fn build_vorbis_comment(metadata: &NcmMetadata) -> Vec<u8> {
     let mut comments = Vec::new();
     if let Some(title) = metadata.title.as_deref() {
@@ -517,6 +551,7 @@ fn build_vorbis_comment(metadata: &NcmMetadata) -> Vec<u8> {
     out
 }
 
+/// 构建 FLAC PICTURE 数据块内容。
 fn build_flac_picture(cover: &[u8]) -> Vec<u8> {
     let mime = cover_mime(cover);
     let mut out = Vec::new();
@@ -533,6 +568,7 @@ fn build_flac_picture(cover: &[u8]) -> Vec<u8> {
     out
 }
 
+/// 写入一个 FLAC metadata block。
 fn write_flac_block(
     writer: &mut impl Write,
     block_type: u8,
@@ -550,6 +586,7 @@ fn write_flac_block(
     writer.write_all(payload)
 }
 
+/// 根据封面魔数判断 MIME 类型。
 fn cover_mime(cover: &[u8]) -> &'static str {
     if cover.starts_with(&[0xff, 0xd8, 0xff]) {
         "image/jpeg"

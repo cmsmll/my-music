@@ -1,3 +1,8 @@
+//! KGM/KGMA 流式解码器。
+//!
+//! 该格式使用文件私有 key、公开 key 和修补表组合异或还原音频字节。
+//! 解码器实现 `Read`，调用方可以直接把它复制到输出文件。
+
 use std::fmt;
 use std::io::{self, Read};
 use std::ops::Range;
@@ -20,7 +25,7 @@ const PUB_KEY_LEN: u64 = 1_170_494_464;
 const PUB_KEY_STEP: u64 = 16;
 
 /// KGM/KGMA 的魔数。只有文件以这段字节开头时才按酷狗加密音频处理。
-pub const MAGIC_HEADER: [u8; 28] = [
+pub const KGM_MAGIC_HEADER: [u8; 28] = [
     0x7c, 0xd5, 0x32, 0xeb, 0x86, 0x02, 0x7f, 0x4b, 0xa8, 0xaf, 0xa6, 0x8e, 0x0f, 0xff, 0x99, 0x14,
     0x00, 0x04, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
 ];
@@ -47,8 +52,11 @@ const PUB_KEY_MEND: [u8; 272] = [
 ];
 
 #[derive(Debug)]
+/// KGM/KGMA 解码错误。
 pub enum KgmError {
+    /// 文件读取失败。
     Io(io::Error),
+    /// 文件头不是支持的 KGM/KGMA 格式。
     InvalidHeader,
 }
 
@@ -80,11 +88,12 @@ pub struct KgmDecoder<R> {
 }
 
 impl<R: Read> KgmDecoder<R> {
+    /// 创建 KGM/KGMA 解码器并消费 1024 字节加密头。
     pub fn new(mut inner: R) -> Result<Self, KgmError> {
         let mut header = [0_u8; HEADER_LEN];
         inner.read_exact(&mut header)?;
 
-        if !header.starts_with(&MAGIC_HEADER) {
+        if !header.starts_with(&KGM_MAGIC_HEADER) {
             return Err(KgmError::InvalidHeader);
         }
 
@@ -128,6 +137,9 @@ impl<R: Read> Read for KgmDecoder<R> {
     }
 }
 
+/// 获取指定范围所需的公开 key 切片。
+///
+/// 注意：公开 key 首次使用时会从内置 xz 数据懒加载解压。
 fn public_key(range: Range<u64>) -> &'static [u8] {
     static KEY: LazyLock<Vec<u8>> = LazyLock::new(|| {
         let mut decoder = XzDecoder::new(KUGOU_KEY_XZ);

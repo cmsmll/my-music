@@ -1,10 +1,15 @@
-use crate::models::{AppConfig, PlayStatistics, Track, TrackPlayStatistic};
+//! 播放统计缓存服务。
+//!
+//! 负责统计页面展示的数据，包括累计播放次数、累计聆听时长和单曲播放记录。
+
+use super::models::*;
 use crate::utils::{unix_timestamp, write_json_cache};
 use std::{
     fs,
     path::{Path, PathBuf},
 };
 
+/// 读取播放统计缓存；不存在时返回空统计。
 pub(crate) fn read_play_statistics(config: &AppConfig) -> Result<PlayStatistics, String> {
     let path = play_statistics_cache_path(config);
     if !path.exists() {
@@ -15,6 +20,7 @@ pub(crate) fn read_play_statistics(config: &AppConfig) -> Result<PlayStatistics,
     serde_json::from_str(&content).map_err(|err| format!("无法解析播放统计缓存: {err}"))
 }
 
+/// 写入播放统计缓存。
 pub(crate) fn write_play_statistics(
     config: &AppConfig,
     statistics: &PlayStatistics,
@@ -26,6 +32,7 @@ pub(crate) fn write_play_statistics(
     )
 }
 
+/// 记录一次歌曲开始播放。
 pub(crate) fn record_track_play(
     config: &AppConfig,
     track: &Track,
@@ -49,6 +56,7 @@ pub(crate) fn record_track_play(
     Ok(statistics)
 }
 
+/// 累加指定歌曲的实际聆听秒数。
 pub(crate) fn record_track_listening_seconds(
     config: &AppConfig,
     track: Option<&Track>,
@@ -91,10 +99,12 @@ pub(crate) fn record_track_listening_seconds(
     Ok(statistics)
 }
 
+/// 返回播放统计缓存文件路径。
 fn play_statistics_cache_path(config: &AppConfig) -> PathBuf {
     Path::new(&config.cache.library_cache_dir).join("play-statistics.json")
 }
 
+/// 从歌曲信息生成一条新的统计记录。
 fn statistic_from_track(track: &Track) -> TrackPlayStatistic {
     TrackPlayStatistic {
         track_id: track.id.clone(),

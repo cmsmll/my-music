@@ -16,7 +16,7 @@ const emit = defineEmits<{
 const player_queue = use_player_queue_store();
 const playback_store = use_playback_store();
 const ui_store = use_ui_store();
-const { current_queue, queue_source } = storeToRefs(player_queue);
+const { active_queue, queue_source } = storeToRefs(player_queue);
 const { current_track, status } = storeToRefs(playback_store);
 const { playback_queue_open } = storeToRefs(ui_store);
 type CustomScrollbarExpose = {
@@ -38,7 +38,7 @@ const queue_title = computed(() => {
 });
 
 const queue_total_duration = computed(() =>
-  current_queue.value.reduce((total, track) => total + (track.duration ?? 0), 0),
+  active_queue.value.reduce((total, track) => total + (track.duration ?? 0), 0),
 );
 
 const is_playing = computed(() => status.value.playing);
@@ -50,12 +50,12 @@ const virtual_queue_visible_count = computed(() =>
 );
 const virtual_queue_items = computed(() => {
   const start = virtual_queue_start_index.value;
-  return current_queue.value.slice(start, start + virtual_queue_visible_count.value);
+  return active_queue.value.slice(start, start + virtual_queue_visible_count.value);
 });
 const virtual_queue_top_padding = computed(() => virtual_queue_start_index.value * queue_row_height);
 const virtual_queue_bottom_padding = computed(() =>
   Math.max(
-    (current_queue.value.length - virtual_queue_start_index.value - virtual_queue_items.value.length) *
+    (active_queue.value.length - virtual_queue_start_index.value - virtual_queue_items.value.length) *
       queue_row_height,
     0,
   ),
@@ -84,7 +84,7 @@ function handle_queue_scroll() {
 async function scroll_active_track_into_view() {
   await nextTick();
   if (!queue_list.value) return;
-  const active_index = current_queue.value.findIndex(track_is_active);
+  const active_index = active_queue.value.findIndex(track_is_active);
   if (active_index < 0) return;
   const client_height = queue_list.value.get_client_height();
   const top = Math.max(active_index * queue_row_height - client_height / 2 + queue_row_height / 2, 0);
@@ -118,7 +118,7 @@ onBeforeUnmount(() => {
         <button class="queue_title_button" type="button" :title="queue_title" @click="emit('open_source')">
           {{ queue_title }}
         </button>
-        <p>{{ current_queue.length }} 首歌曲 {{ format_duration(queue_total_duration) }}</p>
+        <p>{{ active_queue.length }} 首歌曲 {{ format_duration(queue_total_duration) }}</p>
       </header>
 
       <CustomScrollbar
@@ -149,7 +149,7 @@ onBeforeUnmount(() => {
         </button>
         <div class="virtual_track_spacer" :style="{ height: `${virtual_queue_bottom_padding}px` }" />
 
-        <p v-if="!current_queue.length" class="empty_state">当前播放队列为空。</p>
+        <p v-if="!active_queue.length" class="empty_state">当前播放队列为空。</p>
       </CustomScrollbar>
     </aside>
   </div>

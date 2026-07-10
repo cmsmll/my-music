@@ -1,23 +1,19 @@
-use crate::config::ConfigManager;
-use crate::decoder::{run_decoder as run_config_decoder, DecoderRunSummary};
-use crate::library::{
-    load_cached_all_directories, reload_all_directories, update_track_lyrics_cache_hash,
-};
-use crate::lyrics::LyricsSearchService;
-use crate::media_shortcuts::register_media_shortcuts as register_system_media_shortcuts;
-use crate::models::{
-    AppConfig, AppStartup, LibraryRefreshResult, LyricsSearchResponse, LyricsUseResult,
-    PlayStatistics, PlaylistBundle, Track,
-};
-use crate::playlist::{
-    empty_playlist, ensure_unique_playlist_name, load_my_playlist_caches, load_playlist_bundle,
-    my_playlist_cache_path, next_user_playlist_index, playlist_cache_path, read_all_playlist_cache,
-    read_playlist_cache, read_user_playlist_for_id, record_recent_track, unique_user_playlist_id,
-    update_user_playlist_metadata, user_playlist_cache_path,
-};
-use crate::statistics::{read_play_statistics, record_track_listening_seconds, record_track_play};
+//! Tauri 命令入口。
+//!
+//! 这里的函数直接暴露给前端 `invoke` 调用，只做参数校验、任务切换和调用应用服务。
+//! 耗时的扫描、歌词写入等操作需要放到 `spawn_blocking`，避免阻塞 WebView 交互。
+
+use super::config::ConfigManager;
+use super::decoder::{run_decoder as run_config_decoder, DecoderRunSummary};
+use super::library::*;
+use super::lyrics::LyricsSearchService;
+use super::media_shortcuts::register_media_shortcuts as register_system_media_shortcuts;
+use super::models::*;
+use super::playlist::*;
+use super::statistics::*;
+use crate::logger::{self, LogKind};
 use crate::utils::{safe_cache_name, short_hash, unix_timestamp, write_json_cache};
-use std::{fs, fs::OpenOptions, io::Write, path::PathBuf};
+use std::{fs, path::PathBuf};
 use tauri::Manager;
 
 /// 获取应用启动所需的配置、曲库缓存、歌单缓存和播放统计。
@@ -30,12 +26,25 @@ pub(crate) async fn get_startup_state(app: tauri::AppHandle) -> Result<AppStartu
         let config = config_manager.get()?;
         let tracks = load_cached_all_directories(&config_manager, &config)?;
         let playlists = load_playlist_bundle(&config).unwrap_or_else(|err| {
-            eprintln!("读取启动歌单缓存失败: {err}");
+            logger::warn(
+                LogKind::App,
+                format!("读取启动歌单缓存失败 | 原因=\"{}\"", &err,),
+            );
             empty_playlist_bundle()
         });
         let play_statistics = read_play_statistics(&config).unwrap_or_else(|err| {
-            eprintln!("读取启动播放统计失败: {err}");
+            logger::warn(
+                LogKind::App,
+                format!("读取启动播放统计失败 | 原因=\"{}\"", &err,),
+            );
             PlayStatistics::default()
+        });
+        let playback_record = read_playback_record(&config).unwrap_or_else(|err| {
+            logger::warn(
+                LogKind::App,
+                format!("读取启动播放记录缓存失败 | 原因=\"{}\"", &err),
+            );
+            None
         });
 
         Ok(AppStartup {
@@ -44,6 +53,7 @@ pub(crate) async fn get_startup_state(app: tauri::AppHandle) -> Result<AppStartu
             tracks,
             playlists,
             play_statistics,
+            playback_record,
         })
     })
     .await
@@ -56,7 +66,12 @@ pub(crate) fn update_app_config(
     config_manager: tauri::State<'_, ConfigManager>,
     config: AppConfig,
 ) -> Result<AppConfig, String> {
-    config_manager.update_config(config)
+    let previous_log_dir = config_manager.get()?.cache.log_cache_dir;
+    let config = config_manager.update_config(config)?;
+    if previous_log_dir != config.cache.log_cache_dir {
+        logger::set_log_dir(config.cache.log_cache_dir.clone());
+    }
+    Ok(config)
 }
 
 /// 添加音乐目录并强制重载完整曲库，所有旧歌曲缓存都会被最新扫描结果替换。
@@ -141,6 +156,16 @@ pub(crate) fn get_playlist_bundle(
     load_playlist_bundle(&config)
 }
 
+/// 保存前端同步过来的轻量播放记录。
+#[tauri::command]
+pub(crate) fn save_playback_record(
+    config_manager: tauri::State<'_, ConfigManager>,
+    record: PlaybackRecord,
+) -> Result<(), String> {
+    let config = config_manager.get()?;
+    write_playback_record(&config, &record)
+}
+
 /// 读取歌曲歌词缓存文本，文件不存在或路径为空时返回空值。
 #[tauri::command]
 pub(crate) fn read_lyrics_cache(path: String) -> Result<Option<String>, String> {
@@ -163,27 +188,9 @@ pub(crate) fn read_lyrics_cache(path: String) -> Result<Option<String>, String> 
 #[tauri::command]
 pub(crate) async fn search_lyrics(
     lyrics_search: tauri::State<'_, LyricsSearchService>,
-    track_id: String,
-    title: String,
-    artist: String,
-    album: String,
-    duration: Option<u64>,
-    lyrics_cache_path: String,
-    lyrics_cache_hash: Option<String>,
-    force_refresh: bool,
+    request: LyricsSearchRequest,
 ) -> Result<LyricsSearchResponse, String> {
-    lyrics_search
-        .search(
-            track_id,
-            title,
-            artist,
-            album,
-            duration,
-            lyrics_cache_path,
-            lyrics_cache_hash,
-            force_refresh,
-        )
-        .await
+    lyrics_search.search(request).await
 }
 
 /// 使用指定搜索结果的歌词内容，写入当前歌曲固定歌词缓存路径，并同步歌曲缓存中的歌词哈希。
@@ -213,6 +220,7 @@ pub(crate) async fn use_lyrics_search_result(
     .map_err(|_| "歌词使用任务异常退出".to_string())?
 }
 
+/// 校验前端传入的音乐目录，并转换为可保存的字符串路径。
 fn validate_music_dirs(dirs: Vec<String>) -> Result<Vec<String>, String> {
     let mut valid_dirs = Vec::new();
     for dir in dirs {
@@ -225,6 +233,7 @@ fn validate_music_dirs(dirs: Vec<String>) -> Result<Vec<String>, String> {
     Ok(valid_dirs)
 }
 
+/// 构造启动失败兜底用的空歌单集合。
 fn empty_playlist_bundle() -> PlaylistBundle {
     PlaylistBundle {
         recent: empty_playlist("recent", "最近播放", "recent"),
@@ -444,26 +453,28 @@ pub(crate) fn record_track_started(
 
 /// 记录音频播放错误，便于排查 WebView 媒体解码和本地资源加载问题。
 #[tauri::command]
-pub(crate) fn record_audio_error(
-    config_manager: tauri::State<'_, ConfigManager>,
-    path: Option<String>,
-    source: String,
-    code: Option<u16>,
-    message: String,
-    elapsed: u64,
-    ready_state: u16,
-    network_state: u16,
-) -> Result<(), String> {
-    let config = config_manager.get()?;
-    write_audio_error_log(
-        &config,
-        path.as_deref(),
-        &source,
-        code,
-        &message,
-        elapsed,
-        ready_state,
-        network_state,
+pub(crate) fn record_audio_error(request: AudioErrorRecord) -> Result<(), String> {
+    let file_path = request
+        .path
+        .as_deref()
+        .map(str::to_string)
+        .unwrap_or_else(|| "无".to_string());
+    let code = request
+        .code
+        .map(|code| code.to_string())
+        .unwrap_or_else(|| "无".to_string());
+    logger::error(
+        LogKind::Audio,
+        format!(
+            "音频播放失败 | 文件=\"{}\" | 地址=\"{}\" | 错误码={} | 秒数={} | ready_state={} | network_state={} | 原因=\"{}\"",
+            file_path,
+            &request.source,
+            code,
+            request.elapsed,
+            request.ready_state,
+            request.network_state,
+            &request.message,
+        ),
     );
     Ok(())
 }
@@ -490,43 +501,4 @@ pub(crate) fn record_listening_time(
         .as_ref()
         .and_then(|playlist| playlist.tracks.get(&track_id));
     record_track_listening_seconds(&config, track, &track_id, seconds)
-}
-
-fn write_audio_error_log(
-    config: &AppConfig,
-    path: Option<&str>,
-    source: &str,
-    code: Option<u16>,
-    message: &str,
-    elapsed: u64,
-    ready_state: u16,
-    network_state: u16,
-) {
-    let log_dir = PathBuf::from(&config.cache.log_cache_dir);
-    let _ = fs::create_dir_all(&log_dir);
-    let log_path = log_dir.join("audio.log");
-    let Ok(mut file) = OpenOptions::new().create(true).append(true).open(log_path) else {
-        return;
-    };
-
-    let file_path = path.map(log_value).unwrap_or_else(|| "无".to_string());
-    let code = code
-        .map(|code| code.to_string())
-        .unwrap_or_else(|| "无".to_string());
-    let _ = writeln!(
-        file,
-        "[{}] 音频播放失败 | 文件=\"{}\" | 地址=\"{}\" | 错误码={} | 秒数={} | ready_state={} | network_state={} | 原因=\"{}\"",
-        unix_timestamp(),
-        file_path,
-        log_value(source),
-        code,
-        elapsed,
-        ready_state,
-        network_state,
-        log_value(message),
-    );
-}
-
-fn log_value(value: &str) -> String {
-    value.replace('\\', "\\\\").replace('"', "\\\"")
 }

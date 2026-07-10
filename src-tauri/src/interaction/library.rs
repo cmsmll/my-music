@@ -1,9 +1,13 @@
-use crate::config::ConfigManager;
-use crate::lyrics::{current_lyrics_hash, lyrics_hash};
-use crate::models::{
-    AppConfig, LibraryCache, MetadataSource, Track, TrackCacheEntries, TrackMetadata,
-};
-use crate::playlist::{track_map_from_tracks, write_playlist_caches};
+//! 曲库扫描和歌曲元数据缓存。
+//!
+//! 负责从音乐目录扫描音频、提取标题/歌手/专辑/封面/歌词等信息，并维护“全部歌曲”
+//! 这份核心缓存。其他歌单、歌手、专辑等数据都依赖这里生成的歌曲对象。
+
+use super::config::ConfigManager;
+use super::lyrics::*;
+use super::models::*;
+use super::playlist::*;
+use crate::logger::{self, LogKind};
 use crate::utils::unix_timestamp;
 use lofty::{
     file::{AudioFile, TaggedFileExt},
@@ -14,6 +18,7 @@ use lofty::{
 use std::{
     fs,
     path::{Path, PathBuf},
+    time::Instant,
 };
 use symphonia::core::{
     formats::FormatOptions, io::MediaSourceStream, meta::MetadataOptions, probe::Hint,
@@ -23,6 +28,9 @@ use walkdir::WalkDir;
 const SUPPORTED_EXTENSIONS: &[&str] = &["mp3", "flac", "wav", "ogg", "m4a", "aac"];
 const COVER_WEBP_QUALITY: f32 = 50.0;
 
+/// 重新扫描所有配置的音乐目录，并覆盖对应曲库缓存。
+///
+/// 注意：这是手动重载曲库使用的入口，会先删除旧缓存再写入最新扫描结果。
 pub(crate) fn reload_all_directories(
     config_manager: &ConfigManager,
     config: &AppConfig,
@@ -54,6 +62,7 @@ pub(crate) fn reload_all_directories(
     Ok(all_tracks)
 }
 
+/// 启动时读取已有曲库缓存，不扫描文件系统。
 pub(crate) fn load_cached_all_directories(
     config_manager: &ConfigManager,
     config: &AppConfig,
@@ -73,7 +82,16 @@ pub(crate) fn load_cached_all_directories(
                 }
                 all_tracks.append(&mut tracks);
             }
-            Err(err) => eprintln!("读取启动曲库缓存失败: {err}"),
+            Err(err) => {
+                logger::warn(
+                    LogKind::Library,
+                    format!(
+                        "读取启动曲库缓存失败 | 文件=\"{}\" | 原因=\"{}\"",
+                        &cache_path.to_string_lossy(),
+                        &err,
+                    ),
+                );
+            }
         }
     }
 
@@ -87,6 +105,7 @@ pub(crate) fn load_cached_all_directories(
     Ok(all_tracks)
 }
 
+/// 扫描单个音乐目录下所有支持格式的音频文件。
 pub(crate) fn scan_tracks(root: &Path, config: &AppConfig) -> Result<Vec<Track>, String> {
     let mut tracks = Vec::new();
     for entry in WalkDir::new(root).follow_links(false).into_iter().flatten() {
@@ -101,6 +120,7 @@ pub(crate) fn scan_tracks(root: &Path, config: &AppConfig) -> Result<Vec<Track>,
     Ok(tracks)
 }
 
+/// 读取单个曲库缓存文件。
 pub(crate) fn read_library_cache(cache_path: &Path) -> Result<Vec<Track>, String> {
     let content =
         fs::read_to_string(cache_path).map_err(|err| format!("无法读取歌曲缓存: {err}"))?;
@@ -109,6 +129,7 @@ pub(crate) fn read_library_cache(cache_path: &Path) -> Result<Vec<Track>, String
     Ok(cache.tracks.into_tracks())
 }
 
+/// 写入单个曲库缓存文件，歌曲按 id 存成对象便于前端快速查找。
 pub(crate) fn write_library_cache(
     cache_path: &Path,
     music_directory: &str,
@@ -130,6 +151,7 @@ pub(crate) fn write_library_cache(
     fs::write(cache_path, content).map_err(|err| format!("无法写入歌曲缓存: {err}"))
 }
 
+/// 删除旧缓存文件或旧版缓存目录。
 fn clear_existing_cache(cache_path: &Path, label: &str) -> Result<(), String> {
     if cache_path.is_dir() {
         fs::remove_dir_all(cache_path).map_err(|err| format!("无法删除{label}: {err}"))?;
@@ -139,6 +161,7 @@ fn clear_existing_cache(cache_path: &Path, label: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// 判断文件扩展名是否属于当前曲库支持的普通音频格式。
 pub(crate) fn is_supported_audio(path: &Path) -> bool {
     path.extension()
         .and_then(|extension| extension.to_str())
@@ -150,6 +173,7 @@ pub(crate) fn is_supported_audio(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
+/// 根据文件路径生成前端使用的歌曲对象。
 pub(crate) fn track_from_path(path: &Path, config: &AppConfig) -> Track {
     let metadata = parse_track_metadata(path, config);
 
@@ -175,6 +199,7 @@ pub(crate) fn track_from_path(path: &Path, config: &AppConfig) -> Track {
     }
 }
 
+/// 补齐旧缓存缺少的文件大小和歌词哈希等字段。
 fn fill_missing_track_cache_info(tracks: &mut [Track]) -> bool {
     let mut changed = false;
     for track in tracks {
@@ -200,6 +225,7 @@ fn fill_missing_track_cache_info(tracks: &mut [Track]) -> bool {
     changed
 }
 
+/// 把旧版嵌套 metadata 字段迁移到扁平歌曲字段。
 fn promote_legacy_metadata(track: &mut Track, metadata: TrackMetadata) {
     if track.bitrate.is_none() {
         track.bitrate = metadata.bitrate;
@@ -233,6 +259,9 @@ fn promote_legacy_metadata(track: &mut Track, metadata: TrackMetadata) {
     }
 }
 
+/// 解析歌曲元数据。
+///
+/// 注意：内嵌标签缺失时会回退到“歌手-歌名”的文件名规则和父目录专辑名。
 pub(crate) fn parse_track_metadata(path: &Path, config: &AppConfig) -> TrackMetadata {
     let file_name = path
         .file_stem()
@@ -324,6 +353,9 @@ pub(crate) fn parse_track_metadata(path: &Path, config: &AppConfig) -> TrackMeta
     }
 }
 
+/// 提取内嵌封面到封面缓存目录。
+///
+/// 注意：先写入原始封面字节保证前端立即可用，再后台压缩为 WebP 覆盖同一路径。
 pub(crate) fn cache_cover(
     tag: &lofty::tag::Tag,
     audio_path: &Path,
@@ -334,24 +366,68 @@ pub(crate) fn cache_cover(
         .join(format!("{}.webp", cache_file_stem(audio_path)));
 
     if let Some(parent) = cache_path.parent() {
-        let _ = fs::create_dir_all(parent);
+        if let Err(err) = fs::create_dir_all(parent) {
+            logger::error(
+                LogKind::Library,
+                format!(
+                    "封面缓存目录创建失败 | 音频=\"{}\" | 目录=\"{}\" | 原因=\"{}\"",
+                    &audio_path.to_string_lossy(),
+                    &parent.to_string_lossy(),
+                    &err.to_string(),
+                ),
+            );
+            return None;
+        }
     }
     let cover_data = picture.data().to_vec();
-    let _ = fs::write(&cache_path, &cover_data);
+    if let Err(err) = fs::write(&cache_path, &cover_data) {
+        logger::error(
+            LogKind::Library,
+            format!(
+                "封面原始数据写入失败 | 音频=\"{}\" | 文件=\"{}\" | 字节={} | 原因=\"{}\"",
+                &audio_path.to_string_lossy(),
+                &cache_path.to_string_lossy(),
+                cover_data.len(),
+                &err.to_string(),
+            ),
+        );
+        return None;
+    }
     let result = cache_path.to_string_lossy().to_string();
     tokio::task::spawn_blocking(move || {
-        if let Err(err) = write_webp_cover(&cover_data, &cache_path) {
-            eprintln!(
-                "封面 WebP 转换失败 | 文件=\"{}\" | 原因=\"{}\"",
-                cache_path.to_string_lossy(),
-                err
-            );
+        let started_at = Instant::now();
+        let cover_size = cover_data.len();
+        match write_webp_cover(&cover_data, &cache_path) {
+            Ok(()) => {
+                logger::info(
+                    LogKind::Library,
+                    format!(
+                        "封面 WebP 转换完成 | 流程=读取内嵌封面->写入原始封面->WebP压缩覆盖 | 文件=\"{}\" | 原始字节={} | 耗时={}ms",
+                        &cache_path.to_string_lossy(),
+                        cover_size,
+                        started_at.elapsed().as_millis(),
+                    ),
+                );
+            }
+            Err(err) => {
+                logger::error(
+                    LogKind::Library,
+                    format!(
+                        "封面 WebP 转换失败 | 流程=读取内嵌封面->写入原始封面->WebP压缩覆盖 | 文件=\"{}\" | 原始字节={} | 耗时={}ms | 原因=\"{}\"",
+                        &cache_path.to_string_lossy(),
+                        cover_size,
+                        started_at.elapsed().as_millis(),
+                        &err,
+                    ),
+                );
+            }
         }
     });
 
     Some(result)
 }
 
+/// 将封面字节转换为 WebP 并覆盖缓存文件。
 fn write_webp_cover(data: &[u8], cache_path: &Path) -> Result<(), String> {
     let image =
         image::load_from_memory(data).map_err(|err| format!("无法解析封面图片内容: {err}"))?;
@@ -361,6 +437,7 @@ fn write_webp_cover(data: &[u8], cache_path: &Path) -> Result<(), String> {
     fs::write(cache_path, &*webp).map_err(|err| format!("无法写入 WebP 封面: {err}"))
 }
 
+/// 从音频标签中提取内嵌歌词。
 pub(crate) fn extract_embedded_lyrics(tag: &lofty::tag::Tag) -> Option<String> {
     [ItemKey::Lyrics, ItemKey::UnsyncLyrics]
         .into_iter()
@@ -370,11 +447,15 @@ pub(crate) fn extract_embedded_lyrics(tag: &lofty::tag::Tag) -> Option<String> {
         .map(String::from)
 }
 
+/// 写入歌词缓存后的结果。
 pub(crate) struct CachedLyrics {
+    /// 歌词缓存路径。
     path: String,
+    /// 歌词内容哈希。
     hash: String,
 }
 
+/// 将歌词写入固定歌词缓存路径，并计算歌词哈希。
 pub(crate) fn cache_lyrics(lyrics: &str, lyrics_cache_path: &str) -> Result<CachedLyrics, String> {
     let path = PathBuf::from(lyrics_cache_path);
     if let Some(parent) = path.parent() {
@@ -388,6 +469,9 @@ pub(crate) fn cache_lyrics(lyrics: &str, lyrics_cache_path: &str) -> Result<Cach
     })
 }
 
+/// 更新歌曲缓存中的歌词路径和歌词哈希。
+///
+/// 注意：更新“全部歌曲”缓存后会同步刷新依赖它的歌单缓存。
 pub(crate) fn update_track_lyrics_cache_hash(
     config_manager: &ConfigManager,
     config: &AppConfig,
@@ -426,12 +510,14 @@ pub(crate) fn update_track_lyrics_cache_hash(
     Ok(updated_track)
 }
 
+/// 去掉空白字符串，返回非空字符串。
 pub(crate) fn non_empty_owned(value: Option<String>) -> Option<String> {
     value
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
 }
 
+/// 根据歌曲文件名生成固定歌词缓存路径。
 pub(crate) fn lyrics_cache_path(path: &Path, config: &AppConfig) -> String {
     PathBuf::from(&config.cache.lyrics_cache_dir)
         .join(format!("{}.lrc", cache_file_stem(path)))
@@ -439,6 +525,7 @@ pub(crate) fn lyrics_cache_path(path: &Path, config: &AppConfig) -> String {
         .to_string()
 }
 
+/// 获取用于封面和歌词缓存文件名的歌曲文件名主体。
 fn cache_file_stem(path: &Path) -> String {
     path.file_stem()
         .and_then(|name| name.to_str())
@@ -447,6 +534,7 @@ fn cache_file_stem(path: &Path) -> String {
         .unwrap_or_else(|| "unknown-track".to_string())
 }
 
+/// 按“歌手-歌名”规则解析文件名。
 pub(crate) fn parse_artist_and_title(file_name: &str) -> (String, String) {
     let Some((artist, title)) = file_name.split_once('-') else {
         return ("未知歌手".to_string(), file_name.to_string());
@@ -462,6 +550,7 @@ pub(crate) fn parse_artist_and_title(file_name: &str) -> (String, String) {
     (artist.to_string(), title.to_string())
 }
 
+/// 使用 Symphonia 读取音频时长。
 pub(crate) fn duration_seconds(path: &Path) -> Option<u64> {
     let file = fs::File::open(path).ok()?;
     let media_stream = MediaSourceStream::new(Box::new(file), Default::default());

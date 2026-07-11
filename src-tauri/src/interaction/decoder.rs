@@ -19,7 +19,7 @@ pub(crate) struct DecoderRunSummary {
     pub(crate) executed: bool,
     /// 扫描到的文件数。
     pub(crate) scanned: usize,
-    /// 成功处理的文件数。
+    /// 成功解码的文件数。
     pub(crate) processed: usize,
     /// 跳过的文件数。
     pub(crate) skipped: usize,
@@ -124,15 +124,15 @@ pub(crate) fn run_decoder(config: &AppConfig) -> DecoderRunSummary {
     }) {
         Ok(report) => {
             let message = format!(
-                "已扫描 {} 个文件，处理 {} 个，跳过 {} 个，失败 {} 个",
-                report.scanned, report.processed, report.skipped, report.failed,
+                "已扫描 {} 个文件，解码 {} 个，失败 {} 个，跳过 {} 个",
+                report.scanned, report.processed, report.failed, report.skipped,
             );
             write_decoder_operation_log(
                 config,
                 "解码扫描完成",
                 &format!(
-                    "已扫描={} | 已处理={} | 已跳过={} | 失败={}",
-                    report.scanned, report.processed, report.skipped, report.failed,
+                    "已扫描={} | 已解码={} | 失败={} | 已跳过={}",
+                    report.scanned, report.processed, report.failed, report.skipped,
                 ),
             );
             DecoderRunSummary {

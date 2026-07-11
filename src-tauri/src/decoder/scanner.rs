@@ -97,6 +97,8 @@ impl Scanner {
                 continue;
             }
 
+            report.scanned += 1;
+
             if meta.len() == 0 {
                 report.skipped += 1;
                 on_event(ScanEvent::Skipped(ScanSkipped {
@@ -106,7 +108,6 @@ impl Scanner {
                 continue;
             }
 
-            report.scanned += 1;
             match self.process_file(&path) {
                 Ok(Some(result)) => {
                     report.processed += 1;
@@ -241,9 +242,9 @@ impl Scanner {
 #[derive(Debug, Default, Clone)]
 /// 单次扫描的统计报告。
 pub struct ScanReport {
-    /// 扫描到的非空可处理扩展名文件数。
+    /// 扫描到的可处理扩展名文件数，包含已处理、跳过和失败的文件。
     pub scanned: usize,
-    /// 成功处理文件数。
+    /// 成功解码文件数。
     pub processed: usize,
     /// 跳过文件数。
     pub skipped: usize,

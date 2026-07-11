@@ -21,7 +21,10 @@ use std::{
     time::Instant,
 };
 use symphonia::core::{
-    formats::FormatOptions, io::MediaSourceStream, meta::MetadataOptions, probe::Hint,
+    formats::{probe::Hint, FormatOptions, TrackType},
+    io::MediaSourceStream,
+    meta::MetadataOptions,
+    units::Timestamp,
 };
 use walkdir::WalkDir;
 
@@ -558,21 +561,19 @@ pub(crate) fn duration_seconds(path: &Path) -> Option<u64> {
     }
 
     let probed = symphonia::default::get_probe()
-        .format(
+        .probe(
             &hint,
             media_stream,
-            &FormatOptions::default(),
-            &MetadataOptions::default(),
+            FormatOptions::default(),
+            MetadataOptions::default(),
         )
         .ok()?;
     let track = probed
-        .format
-        .default_track()
-        .or_else(|| probed.format.tracks().first())?;
+        .default_track(TrackType::Audio)
+        .or_else(|| probed.first_track(TrackType::Audio))?;
     let duration = track
-        .codec_params
         .time_base?
-        .calc_time(track.codec_params.n_frames?);
+        .calc_time(Timestamp::new(track.duration?.get().try_into().ok()?))?;
 
-    Some(duration.seconds)
+    duration.as_secs().try_into().ok()
 }

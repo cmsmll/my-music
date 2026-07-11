@@ -5,13 +5,18 @@
 
 use crate::logger::{self, LogKind};
 use std::sync::atomic::{AtomicBool, Ordering};
-use tauri::Emitter;
-use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Shortcut, ShortcutState};
+use tauri::{Emitter, Manager};
+use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 const MEDIA_PLAY_PAUSE_EVENT: &str = "media-play-pause";
 const MEDIA_PREVIOUS_EVENT: &str = "media-previous";
 const MEDIA_NEXT_EVENT: &str = "media-next";
 static MEDIA_SHORTCUTS_REGISTERED: AtomicBool = AtomicBool::new(false);
+
+/// 判断是否为窗口显示/隐藏快捷键。
+fn is_toggle_window_shortcut(shortcut: &Shortcut) -> bool {
+    shortcut.key == Code::Backslash && shortcut.mods == Modifiers::CONTROL
+}
 
 /// 将系统快捷键映射为前端监听的事件名。
 fn media_shortcut_event(shortcut: &Shortcut) -> Option<&'static str> {
@@ -30,6 +35,11 @@ pub(crate) fn media_shortcut_plugin<R: tauri::Runtime>() -> tauri::plugin::Tauri
     tauri_plugin_global_shortcut::Builder::new()
         .with_handler(|app, shortcut, event| {
             if event.state() != ShortcutState::Pressed {
+                return;
+            }
+
+            if is_toggle_window_shortcut(shortcut) {
+                toggle_main_window(app);
                 return;
             }
 
@@ -55,6 +65,7 @@ pub(crate) fn register_media_shortcuts<R: tauri::Runtime>(app: &tauri::AppHandle
         Shortcut::new(None, Code::MediaPlayPause),
         Shortcut::new(None, Code::MediaTrackPrevious),
         Shortcut::new(None, Code::MediaTrackNext),
+        Shortcut::new(Some(Modifiers::CONTROL), Code::Backslash),
     ];
 
     for shortcut in shortcuts {
@@ -64,5 +75,51 @@ pub(crate) fn register_media_shortcuts<R: tauri::Runtime>(app: &tauri::AppHandle
                 format!("无法注册系统媒体热键 | 快捷键={shortcut} | 原因=\"{error}\""),
             );
         }
+    }
+}
+
+/// 切换主窗口显示状态。
+fn toggle_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    let Some(window) = app.get_webview_window("main") else {
+        logger::warn(
+            LogKind::App,
+            "全局快捷键切换窗口失败 | 原因=\"未找到 main 窗口\"",
+        );
+        return;
+    };
+
+    match window.is_visible() {
+        Ok(true) => {
+            if let Err(error) = window.hide() {
+                logger::warn(
+                    LogKind::App,
+                    format!("全局快捷键隐藏窗口失败 | 原因=\"{error}\""),
+                );
+            }
+        }
+        Ok(false) => {
+            if let Err(error) = window.unminimize() {
+                logger::warn(
+                    LogKind::App,
+                    format!("全局快捷键取消最小化失败 | 原因=\"{error}\""),
+                );
+            }
+            if let Err(error) = window.show() {
+                logger::warn(
+                    LogKind::App,
+                    format!("全局快捷键显示窗口失败 | 原因=\"{error}\""),
+                );
+            }
+            if let Err(error) = window.set_focus() {
+                logger::warn(
+                    LogKind::App,
+                    format!("全局快捷键聚焦窗口失败 | 原因=\"{error}\""),
+                );
+            }
+        }
+        Err(error) => logger::warn(
+            LogKind::App,
+            format!("全局快捷键读取窗口状态失败 | 原因=\"{error}\""),
+        ),
     }
 }

@@ -173,7 +173,7 @@ watch([progress_percent, visual_elapsed], () => {
       >
         <span class="svg_icon" :style="icon_style(playback_mode_button.icon)" />
       </button>
-      <button class="hover_border_control" type="button" title="桌面歌词">
+      <button class="hover_border_control" type="button" title="桌面歌词" @click="app_actions.toggle_desktop_lyrics()">
         <span class="svg_icon" :style="icon_style(lyrics_copy_icon)" />
       </button>
       <span class="volume_icon svg_icon" :style="icon_style(volume_icon)" />
@@ -325,9 +325,6 @@ watch([progress_percent, visual_elapsed], () => {
   height: 62px;
   border-radius: 8px;
   color: #ffffff;
-  background:
-    linear-gradient(145deg, #21242b, var(--theme-highlight-color, #426dff)),
-    #21242b;
   font-size: 1.8rem;
   font-weight: 900;
 }

@@ -21,6 +21,7 @@ type AppActions = {
   begin_sidebar_resize: (event: PointerEvent) => void;
   decode_music_files: () => void | Promise<void>;
   reload_library: () => void | Promise<void>;
+  toggle_desktop_lyrics: () => void | Promise<void>;
   start_window_drag: (event: MouseEvent) => void;
   minimize_window: () => void;
   toggle_maximize_window: () => void;
@@ -34,6 +35,7 @@ const default_actions: AppActions = {
   change_volume: noop, play_track: noop, play_queue_track: noop, open_queue_source: noop, create_playlist: noop,
   reorder_playlists: noop, open_playlist_menu: noop, open_track_menu: noop,
   begin_sidebar_resize: noop, decode_music_files: noop, reload_library: noop,
+  toggle_desktop_lyrics: noop,
   start_window_drag: noop, minimize_window: noop, toggle_maximize_window: noop, close_window: noop,
 };
 
@@ -59,6 +61,7 @@ export const use_app_actions_store = defineStore("app_actions", () => {
     open_track_menu: (track: Track, event: MouseEvent) => actions.open_track_menu(track, event),
     begin_sidebar_resize: (event: PointerEvent) => actions.begin_sidebar_resize(event),
     decode_music_files: () => actions.decode_music_files(), reload_library: () => actions.reload_library(),
+    toggle_desktop_lyrics: () => actions.toggle_desktop_lyrics(),
     start_window_drag: (event: MouseEvent) => actions.start_window_drag(event),
     minimize_window: () => actions.minimize_window(), toggle_maximize_window: () => actions.toggle_maximize_window(),
     close_window: () => actions.close_window(),

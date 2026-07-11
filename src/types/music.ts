@@ -126,6 +126,32 @@ export type PlaybackModeItem = {
   label: string;
 };
 
+export type DesktopLyricsTrack = {
+  id: string;
+  title: string;
+  artist: string;
+  album: string;
+  duration?: number | null;
+  lyrics_cache_path: string;
+  lyrics_cache_hash: string;
+};
+
+export type DesktopLyricsTheme = {
+  title_color: string;
+  subtitle_color: string;
+  highlight_color: string;
+};
+
+export type DesktopLyricsState = {
+  track: DesktopLyricsTrack | null;
+  elapsed: number;
+  playing: boolean;
+  playback_mode: PlaybackMode;
+  theme: DesktopLyricsTheme;
+};
+
+export type DesktopLyricsAction = "previous" | "toggle_playback" | "next" | "cycle_mode";
+
 export type PlaybackRecordSource = {
   source_type: QueueSourceType;
   id: string;

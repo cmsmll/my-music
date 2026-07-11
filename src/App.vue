@@ -11,7 +11,8 @@ import {
 } from "vue";
 import { storeToRefs } from "pinia";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { emitTo, listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   currentMonitor,
@@ -44,6 +45,8 @@ import { use_player_queue_store } from "./stores/player_queue";
 import { use_ui_store } from "./stores/ui";
 import type {
   AppConfig,
+  DesktopLyricsAction,
+  DesktopLyricsState,
   AppStartup,
   DecoderRunSummary,
   LibraryRefreshResult,
@@ -122,7 +125,7 @@ const {
   playback_record,
   queue_source,
 } = storeToRefs(player_queue);
-const { status, current_track, progress_dragging } = storeToRefs(playback_store);
+const { status, current_track, progress_dragging, visual_elapsed } = storeToRefs(playback_store);
 const { tracks_by_id } = storeToRefs(library_catalog);
 const { config: app_config } = storeToRefs(app_config_store);
 const { selected_directories, library_loaded, playlists, play_statistics } = storeToRefs(library_store);
@@ -149,6 +152,7 @@ let handled_completion_path = "";
 let sidebar_resize_start_x = 0;
 let sidebar_resize_start_width = 250;
 let media_shortcut_unlisteners: UnlistenFn[] = [];
+let desktop_lyrics_unlisteners: UnlistenFn[] = [];
 let window_resize_unlisten: UnlistenFn | null = null;
 let window_close_unlisten: UnlistenFn | null = null;
 let media_shortcut_listeners_disposed = false;
@@ -159,12 +163,14 @@ let listening_track_id: string | null = null;
 let listening_started_at = 0;
 let closing_window = false;
 let app_window_shown = false;
+let desktop_lyrics_open = false;
 
 const sidebar_min_width = 72;
 const sidebar_max_width = 420;
 const sidebar_compact_width = 100;
 const app_min_width = 600;
 const app_min_height = 700;
+const desktop_lyrics_label = "desktop_lyrics";
 const app_window = getCurrentWindow();
 const playback_modes: PlaybackModeItem[] = [
   { mode: "shuffle", icon: shuffle_icon, label: "随机列表" },
@@ -249,6 +255,42 @@ watchEffect(() => {
 const playback_mode_button = computed(() => {
   return playback_modes.find((item) => item.mode === playback_mode.value) ?? playback_modes[0];
 });
+
+const desktop_lyrics_elapsed_tick = computed(() => Math.round(visual_elapsed.value * 10) / 10);
+
+function desktop_lyrics_state(): DesktopLyricsState {
+  const track = current_track.value;
+  return {
+    track: track
+      ? {
+          id: track.id,
+          title: display_title(track),
+          artist: display_artist(track),
+          album: display_album(track),
+          duration: track.duration,
+          lyrics_cache_path: track.lyrics_cache_path,
+          lyrics_cache_hash: track.lyrics_cache_hash,
+        }
+      : null,
+    elapsed: desktop_lyrics_elapsed_tick.value,
+    playing: status.value.playing,
+    playback_mode: playback_mode.value,
+    theme: {
+      title_color: theme_title_color.value,
+      subtitle_color: theme_subtitle_color.value,
+      highlight_color: theme_highlight_color.value,
+    },
+  };
+}
+
+async function emit_desktop_lyrics_state() {
+  if (!desktop_lyrics_open) return;
+  try {
+    await emitTo("desktop_lyrics", "desktop-lyrics-state", desktop_lyrics_state());
+  } catch {
+    desktop_lyrics_open = false;
+  }
+}
 
 const user_playlist_items = computed<PlaylistCache[]>(() => {
   return playlists.value.my_playlists ?? [];
@@ -663,6 +705,7 @@ async function close_window_after_config_save() {
   closing_window = true;
   try {
     flush_playback_record_cache();
+    await close_desktop_lyrics();
     await flush_app_config();
   } finally {
     await app_window.destroy();
@@ -882,6 +925,70 @@ function cycle_playback_mode() {
   const index = playback_modes.findIndex((item) => item.mode === playback_mode.value);
   const next_mode = playback_modes[(index + 1) % playback_modes.length].mode;
   player_queue.set_playback_mode(next_mode);
+}
+
+async function toggle_desktop_lyrics() {
+  try {
+    const existing_window = await WebviewWindow.getByLabel(desktop_lyrics_label);
+    if (existing_window) {
+      await close_desktop_lyrics();
+      return;
+    }
+
+    await open_desktop_lyrics();
+  } catch (error) {
+    show_error_message(error);
+  }
+}
+
+async function open_desktop_lyrics() {
+  const lyrics_window = new WebviewWindow(desktop_lyrics_label, {
+    url: "index.html#desktop-lyrics",
+    title: "桌面歌词",
+    width: 600,
+    height: 160,
+    resizable: false,
+    decorations: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    center: true,
+    shadow: false,
+    focus: false,
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    void lyrics_window.once("tauri://created", () => resolve());
+    void lyrics_window.once("tauri://error", (event) => reject(event.payload));
+  });
+  desktop_lyrics_open = true;
+  window.setTimeout(() => void emit_desktop_lyrics_state(), 80);
+}
+
+async function close_desktop_lyrics() {
+  desktop_lyrics_open = false;
+  try {
+    const lyrics_window = await WebviewWindow.getByLabel(desktop_lyrics_label);
+    await lyrics_window?.close();
+  } catch (error) {
+    console.warn("无法关闭桌面歌词", error);
+  }
+}
+
+function handle_desktop_lyrics_action(action: DesktopLyricsAction) {
+  if (action === "previous") {
+    void previous_track();
+    return;
+  }
+  if (action === "toggle_playback") {
+    void toggle_playback();
+    return;
+  }
+  if (action === "next") {
+    void next_track();
+    return;
+  }
+  cycle_playback_mode();
 }
 
 function random_track_index(queue: Track[], current_index: number) {
@@ -1376,6 +1483,22 @@ function begin_sidebar_resize(event: PointerEvent) {
   window.addEventListener("pointercancel", end_sidebar_resize);
 }
 
+async function listen_desktop_lyrics_events() {
+  try {
+    desktop_lyrics_unlisteners = await Promise.all([
+      listen<DesktopLyricsAction>("desktop-lyrics-action", (event) => {
+        handle_desktop_lyrics_action(event.payload);
+      }),
+      listen("desktop-lyrics-ready", () => {
+        desktop_lyrics_open = true;
+        void emit_desktop_lyrics_state();
+      }),
+    ]);
+  } catch (error) {
+    console.warn("无法监听桌面歌词事件", error);
+  }
+}
+
 async function listen_media_shortcuts() {
   try {
     const unlisteners = await Promise.all([
@@ -1431,6 +1554,7 @@ function handle_before_unload() {
   flush_playback_record_cache();
   void flush_listening_time();
   void flush_app_config();
+  void close_desktop_lyrics();
 }
 
 function close_context_menus_on_pointer(event: PointerEvent) {
@@ -1474,6 +1598,7 @@ app_actions.register({
   begin_sidebar_resize: begin_sidebar_resize,
   decode_music_files,
   reload_library,
+  toggle_desktop_lyrics,
   start_window_drag,
   minimize_window,
   toggle_maximize_window,
@@ -1487,6 +1612,8 @@ onBeforeUnmount(() => {
   media_shortcut_listeners_disposed = true;
   media_shortcut_unlisteners.forEach((unlisten) => unlisten());
   media_shortcut_unlisteners = [];
+  desktop_lyrics_unlisteners.forEach((unlisten) => unlisten());
+  desktop_lyrics_unlisteners = [];
   window_resize_unlisten?.();
   window_resize_unlisten = null;
   window_close_unlisten?.();
@@ -1509,16 +1636,36 @@ onMounted(() => {
   window.addEventListener("keydown", close_context_menus_on_key);
   void listen_window_resize();
   void listen_window_close();
+  void listen_desktop_lyrics_events();
   void load_startup_state();
 });
 
 watch([current_queue, queue_source, playback_mode], () => {
   save_playback_record_metadata_cache();
+  void emit_desktop_lyrics_state();
 });
 
 watch(() => current_track.value?.id ?? null, () => {
   save_playback_record_metadata_cache();
   save_playback_elapsed_cache(cache_elapsed_seconds(), true);
+  void emit_desktop_lyrics_state();
+});
+
+watch([
+  () => current_track.value?.lyrics_cache_path ?? "",
+  () => current_track.value?.lyrics_cache_hash ?? "",
+], () => {
+  void emit_desktop_lyrics_state();
+});
+
+watch([
+  desktop_lyrics_elapsed_tick,
+  () => status.value.playing,
+  theme_title_color,
+  theme_subtitle_color,
+  theme_highlight_color,
+], () => {
+  void emit_desktop_lyrics_state();
 });
 
 </script>
